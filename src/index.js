@@ -1,3 +1,6 @@
+import { dirname } from "node:path";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+
 const MODES = Object.freeze({
   idle: "idle",
   listening: "listening",
@@ -15,6 +18,137 @@ const createId = (prefix) =>
 const nowIso = () => new Date().toISOString();
 
 const freezeCopy = (value) => Object.freeze({ ...value });
+
+const createProjectOsStore = (initialState = {}, persist = () => {}) => {
+  let tickets = Object.freeze([...(initialState.tickets || [])]);
+  let runs = Object.freeze([...(initialState.runs || [])]);
+  let artifacts = Object.freeze([...(initialState.artifacts || [])]);
+
+  const rawSnapshot = () => ({
+    tickets: [...tickets],
+    runs: [...runs],
+    artifacts: [...artifacts]
+  });
+
+  const save = () => persist(rawSnapshot());
+
+  const createTicket = ({
+    title,
+    purpose,
+    acceptance = [],
+    ownerCharacterId,
+    executorHarnessId = null,
+    metadata = {}
+  }) => {
+    const ticket = freezeCopy({
+      id: createId("ticket"),
+      title,
+      purpose,
+      acceptance: Object.freeze([...acceptance]),
+      ownerCharacterId,
+      executorHarnessId,
+      status: "open",
+      createdAt: nowIso(),
+      updatedAt: nowIso(),
+      metadata: freezeCopy(metadata)
+    });
+    tickets = Object.freeze([...tickets, ticket]);
+    save();
+    return ticket;
+  };
+
+  const updateTicket = (ticketId, patch) => {
+    let nextTicket = null;
+    tickets = Object.freeze(
+      tickets.map((ticket) => {
+        if (ticket.id !== ticketId) {
+          return ticket;
+        }
+        nextTicket = freezeCopy({
+          ...ticket,
+          ...patch,
+          updatedAt: nowIso()
+        });
+        return nextTicket;
+      })
+    );
+    if (!nextTicket) {
+      throw new Error(`Ticket not found: ${ticketId}`);
+    }
+    save();
+    return nextTicket;
+  };
+
+  const createRun = ({ ticketId, harnessId, input }) => {
+    const run = freezeCopy({
+      id: createId("run"),
+      ticketId,
+      harnessId,
+      status: "running",
+      input,
+      output: null,
+      createdAt: nowIso(),
+      updatedAt: nowIso()
+    });
+    runs = Object.freeze([...runs, run]);
+    save();
+    return run;
+  };
+
+  const completeRun = (runId, output, status = "completed") => {
+    let nextRun = null;
+    runs = Object.freeze(
+      runs.map((run) => {
+        if (run.id !== runId) {
+          return run;
+        }
+        nextRun = freezeCopy({
+          ...run,
+          status,
+          output,
+          updatedAt: nowIso()
+        });
+        return nextRun;
+      })
+    );
+    if (!nextRun) {
+      throw new Error(`Run not found: ${runId}`);
+    }
+    save();
+    return nextRun;
+  };
+
+  const addArtifact = ({ ticketId, runId, kind, uri, title }) => {
+    const artifact = freezeCopy({
+      id: createId("artifact"),
+      ticketId,
+      runId,
+      kind,
+      uri,
+      title,
+      createdAt: nowIso()
+    });
+    artifacts = Object.freeze([...artifacts, artifact]);
+    save();
+    return artifact;
+  };
+
+  const snapshot = () =>
+    freezeCopy({
+      tickets: Object.freeze([...tickets]),
+      runs: Object.freeze([...runs]),
+      artifacts: Object.freeze([...artifacts])
+    });
+
+  return Object.freeze({
+    createTicket,
+    updateTicket,
+    createRun,
+    completeRun,
+    addArtifact,
+    snapshot
+  });
+};
 
 export const createCharacterState = ({
   characterId,
@@ -40,121 +174,56 @@ export const createCharacterState = ({
   });
 
 export const createInMemoryProjectOs = () => {
-  let tickets = [];
-  let runs = [];
-  let artifacts = [];
+  return createProjectOsStore();
+};
 
-  const createTicket = ({
-    title,
-    purpose,
-    acceptance = [],
-    ownerCharacterId,
-    executorHarnessId = null,
-    metadata = {}
-  }) => {
-    const ticket = freezeCopy({
-      id: createId("ticket"),
-      title,
-      purpose,
-      acceptance: Object.freeze([...acceptance]),
-      ownerCharacterId,
-      executorHarnessId,
-      status: "open",
-      createdAt: nowIso(),
-      updatedAt: nowIso(),
-      metadata: freezeCopy(metadata)
-    });
-    tickets = Object.freeze([...tickets, ticket]);
-    return ticket;
-  };
-
-  const updateTicket = (ticketId, patch) => {
-    let nextTicket = null;
-    tickets = Object.freeze(
-      tickets.map((ticket) => {
-        if (ticket.id !== ticketId) {
-          return ticket;
-        }
-        nextTicket = freezeCopy({
-          ...ticket,
-          ...patch,
-          updatedAt: nowIso()
-        });
-        return nextTicket;
-      })
-    );
-    if (!nextTicket) {
-      throw new Error(`Ticket not found: ${ticketId}`);
+export const createFileProjectOs = ({ path }) => {
+  if (!path) {
+    throw new Error("createFileProjectOs requires path");
+  }
+  const load = () => {
+    if (!existsSync(path)) {
+      return {};
     }
-    return nextTicket;
-  };
-
-  const createRun = ({ ticketId, harnessId, input }) => {
-    const run = freezeCopy({
-      id: createId("run"),
-      ticketId,
-      harnessId,
-      status: "running",
-      input,
-      output: null,
-      createdAt: nowIso(),
-      updatedAt: nowIso()
-    });
-    runs = Object.freeze([...runs, run]);
-    return run;
-  };
-
-  const completeRun = (runId, output, status = "completed") => {
-    let nextRun = null;
-    runs = Object.freeze(
-      runs.map((run) => {
-        if (run.id !== runId) {
-          return run;
-        }
-        nextRun = freezeCopy({
-          ...run,
-          status,
-          output,
-          updatedAt: nowIso()
-        });
-        return nextRun;
-      })
-    );
-    if (!nextRun) {
-      throw new Error(`Run not found: ${runId}`);
+    const raw = readFileSync(path, "utf8");
+    if (!raw.trim()) {
+      return {};
     }
-    return nextRun;
+    return JSON.parse(raw);
+  };
+  const persist = (snapshot) => {
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, `${JSON.stringify(snapshot, null, 2)}\n`, "utf8");
   };
 
-  const addArtifact = ({ ticketId, runId, kind, uri, title }) => {
-    const artifact = freezeCopy({
-      id: createId("artifact"),
-      ticketId,
-      runId,
-      kind,
-      uri,
-      title,
-      createdAt: nowIso()
-    });
-    artifacts = Object.freeze([...artifacts, artifact]);
-    return artifact;
-  };
+  return createProjectOsStore(load(), persist);
+};
 
-  const snapshot = () =>
-    freezeCopy({
-      tickets: Object.freeze([...tickets]),
-      runs: Object.freeze([...runs]),
-      artifacts: Object.freeze([...artifacts])
-    });
+export const createProjectOsMarkdown = (snapshot) => {
+  const ticketLines = snapshot.tickets.map(
+    (ticket) =>
+      `- [${ticket.status}] ${ticket.id}: ${ticket.title} -> ${ticket.executorHarnessId || "unassigned"}`
+  );
+  const runLines = snapshot.runs.map(
+    (run) => `- [${run.status}] ${run.id}: ${run.harnessId} for ${run.ticketId}`
+  );
+  const artifactLines = snapshot.artifacts.map(
+    (artifact) => `- ${artifact.kind}: [${artifact.title}](${artifact.uri})`
+  );
 
-  return Object.freeze({
-    createTicket,
-    updateTicket,
-    createRun,
-    completeRun,
-    addArtifact,
-    snapshot
-  });
+  return [
+    "# IroHarness Project OS",
+    "",
+    "## Tickets",
+    ticketLines.length ? ticketLines.join("\n") : "- none",
+    "",
+    "## Runs",
+    runLines.length ? runLines.join("\n") : "- none",
+    "",
+    "## Artifacts",
+    artifactLines.length ? artifactLines.join("\n") : "- none",
+    ""
+  ].join("\n");
 };
 
 export const createHeuristicRouter = () => {
@@ -415,6 +484,17 @@ export const createIroHarness = ({
       projectOs: projectOs.snapshot()
     });
     const completedRun = projectOs.completeRun(run.id, output, output.status);
+    const artifacts = Array.isArray(output.artifacts)
+      ? output.artifacts.map((artifact) =>
+          projectOs.addArtifact({
+            ticketId: ticket.id,
+            runId: run.id,
+            kind: artifact.kind || "generic",
+            uri: artifact.uri || "",
+            title: artifact.title || artifact.uri || "artifact"
+          })
+        )
+      : [];
     projectOs.updateTicket(ticket.id, {
       status: output.status === "completed" ? "done" : "needs_attention"
     });
@@ -442,7 +522,8 @@ export const createIroHarness = ({
       route,
       ticket,
       run: completedRun,
-      output
+      output,
+      artifacts: Object.freeze(artifacts)
     });
   };
 

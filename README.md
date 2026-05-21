@@ -61,6 +61,7 @@ There are no runtime dependencies today.
 ```bash
 npm run example
 npm run example:bodies
+npm run example:pjos
 ```
 
 Or import the core:
@@ -68,14 +69,14 @@ Or import the core:
 ```js
 import {
   createIroHarness,
-  createInMemoryProjectOs,
+  createFileProjectOs,
   createConsoleDevice,
   createEchoBrain,
   createHeuristicRouter,
   createStubMicroHarness
 } from "iroharness";
 
-const projectOs = createInMemoryProjectOs();
+const projectOs = createFileProjectOs({ path: ".iroharness/pjos.json" });
 
 const iroha = createIroHarness({
   character: {
@@ -100,6 +101,33 @@ await iroha.receive({
   source: "web",
   modality: "text",
   text: "この機能をCodexで実装して"
+});
+```
+
+## Adapter Examples
+
+Connect an HTTP runtime such as an OpenClaw or Hermes bridge:
+
+```js
+import { createHttpMicroHarness } from "iroharness/adapters";
+
+const openclaw = createHttpMicroHarness({
+  id: "openclaw",
+  endpoint: "http://127.0.0.1:8787/run",
+  capabilities: ["assistant", "tools", "memory"]
+});
+```
+
+Connect a local JSONL worker process:
+
+```js
+import { createJsonlProcessMicroHarness } from "iroharness/adapters";
+
+const hermes = createJsonlProcessMicroHarness({
+  id: "hermes",
+  command: "node",
+  args: ["./workers/hermes-bridge.mjs"],
+  capabilities: ["learning", "skills"]
 });
 ```
 
@@ -182,8 +210,10 @@ docs/
   architecture.md
 examples/
   basic.mjs
+  body-mappers.mjs
+  file-pjos.mjs
 test/
-  harness.test.js
+  *.test.js
 ```
 
 ## Roadmap

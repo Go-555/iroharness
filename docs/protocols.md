@@ -80,3 +80,50 @@ A micro harness is a delegated worker, often a different character or runtime.
   "status": "open"
 }
 ```
+
+## HTTP Micro Harness Bridge
+
+The built-in HTTP adapter sends:
+
+```json
+{
+  "task": {
+    "id": "ticket_abc123",
+    "title": "Implement adapter",
+    "purpose": "Connect to Codex"
+  },
+  "context": {
+    "character": {
+      "id": "iroha",
+      "name": "Iroha"
+    },
+    "projectOs": {
+      "tickets": [],
+      "runs": [],
+      "artifacts": []
+    }
+  }
+}
+```
+
+The bridge should return:
+
+```json
+{
+  "status": "completed",
+  "summary": "Implemented the adapter.",
+  "artifacts": [
+    {
+      "kind": "file",
+      "uri": "file:///repo/src/adapter.js",
+      "title": "adapter.js"
+    }
+  ]
+}
+```
+
+## JSONL Process Micro Harness Bridge
+
+The process adapter writes one JSON line to stdin and reads the final JSON line
+from stdout. This is useful for local wrappers around Codex CLI, Hermes Agent,
+OpenClaw tools, or custom workers.

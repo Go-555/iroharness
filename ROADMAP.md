@@ -13,6 +13,9 @@ micro harnesses.
 - [x] micro harness adapter contract
 - [x] device/body adapter contract
 - [x] MotionPNGTuber, M5Stack, and Even G2 mapper sketches
+- [x] file-backed PJOS
+- [x] HTTP micro-harness adapter
+- [x] JSONL process micro-harness adapter
 
 ## Milestone 1: Useful Local Demo
 
@@ -20,7 +23,7 @@ micro harnesses.
 - [ ] streaming event endpoint
 - [ ] voice/text model switch demo
 - [ ] Codex app-server adapter
-- [ ] file-backed PJOS
+- [x] file-backed PJOS
 - [ ] MotionPNGTuber renderer bridge
 
 ## Milestone 2: Harness Interop

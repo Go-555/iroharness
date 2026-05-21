@@ -12,7 +12,8 @@
     "test": "node --test",
     "example": "node examples/basic.mjs",
     "example:bodies": "node examples/body-mappers.mjs",
-    "check": "node --check src/index.js && node --check src/adapters/index.js && node --check examples/basic.mjs && node --check examples/body-mappers.mjs"
+    "example:pjos": "node examples/file-pjos.mjs",
+    "check": "node --check src/index.js && node --check src/adapters/index.js && node --check examples/basic.mjs && node --check examples/body-mappers.mjs && node --check examples/file-pjos.mjs"
   },
   "keywords": [
     "ai-agent",
@@ -29,5 +30,14 @@
   "license": "MIT",
   "engines": {
     "node": ">=20"
-  }
+  },
+  "files": [
+    "src",
+    "protocols",
+    "docs",
+    "examples",
+    "README.md",
+    "ROADMAP.md",
+    "LICENSE"
+  ]
 }
