@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://iroharness.dev/protocols/character-state.schema.json",
+  "title": "IroHarness Character State",
+  "type": "object",
+  "required": ["characterId", "mode", "emotion"],
+  "properties": {
+    "characterId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "mode": {
+      "type": "string",
+      "enum": ["idle", "listening", "thinking", "speaking", "working", "error"]
+    },
+    "emotion": {
+      "type": "string",
+      "minLength": 1
+    },
+    "speechText": {
+      "type": ["string", "null"]
+    },
+    "taskRef": {
+      "type": ["string", "null"]
+    },
+    "mouth": {
+      "type": "string",
+      "enum": ["closed", "talking", "smile", "surprised"]
+    },
+    "gaze": {
+      "type": "string",
+      "enum": ["user", "away", "down", "device", "unknown"]
+    },
+    "motion": {
+      "type": "string",
+      "enum": ["idle", "listening", "thinking", "speaking", "working", "error"]
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": false
+}

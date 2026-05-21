@@ -1,0 +1,33 @@
+{
+  "name": "iroharness",
+  "version": "0.1.0",
+  "description": "Character macro harness for multi-body AI companions, PJOS state, and micro-harness delegation.",
+  "type": "module",
+  "main": "src/index.js",
+  "exports": {
+    ".": "./src/index.js",
+    "./adapters": "./src/adapters/index.js"
+  },
+  "scripts": {
+    "test": "node --test",
+    "example": "node examples/basic.mjs",
+    "example:bodies": "node examples/body-mappers.mjs",
+    "check": "node --check src/index.js && node --check src/adapters/index.js && node --check examples/basic.mjs && node --check examples/body-mappers.mjs"
+  },
+  "keywords": [
+    "ai-agent",
+    "character",
+    "macro-harness",
+    "project-os",
+    "live2d",
+    "motionpngtuber",
+    "m5stack",
+    "codex",
+    "openclaw",
+    "hermes"
+  ],
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  }
+}
