@@ -1,0 +1,72 @@
+# Brains And Model Switching
+
+IroHarness keeps identity in the macro harness and treats models as replaceable
+brains.
+
+```text
+same character
+  + voice brain -> low latency, short responses
+  + text brain  -> ordinary chat
+  + deep brain  -> architecture, strategy, deep discussion
+  + work brain  -> delegated micro harness such as Codex
+```
+
+## Routing Order
+
+The default heuristic router uses this priority:
+
+```text
+work signal -> micro harness
+voice input -> voice brain
+deep text   -> deep brain
+other text  -> text brain
+```
+
+This means a spoken phrase like "設計について話そう" still uses the low-latency
+voice brain, while a typed architecture discussion can use a deeper model.
+
+## HTTP Brain
+
+Use `createHttpBrain` to connect a model service while preserving the same
+IroHarness context:
+
+```js
+import { createHttpBrain } from "iroharness";
+
+const deep = createHttpBrain({
+  id: "text-deep",
+  endpoint: "http://127.0.0.1:8788/respond",
+  model: "deep-model"
+});
+```
+
+The endpoint receives:
+
+```json
+{
+  "model": "deep-model",
+  "character": {},
+  "actor": {},
+  "input": {},
+  "route": {},
+  "state": {},
+  "projectOs": {}
+}
+```
+
+It should return:
+
+```json
+{
+  "text": "response text",
+  "emotion": "focused"
+}
+```
+
+## Example
+
+```bash
+npm run example:brains
+```
+
+The example shows voice/text/deep routing without changing character identity.

@@ -17,6 +17,7 @@ micro harnesses.
 - [x] HTTP micro-harness adapter
 - [x] JSONL process micro-harness adapter
 - [x] Codex app-server micro-harness adapter
+- [x] voice/text/deep brain switching
 - [x] browser avatar demo
 - [x] streaming event endpoint
 - [x] audience user registry
@@ -33,7 +34,7 @@ micro harnesses.
 
 - [x] browser avatar demo
 - [x] streaming event endpoint
-- [ ] voice/text model switch demo
+- [x] voice/text model switch demo
 - [x] Codex app-server adapter
 - [x] file-backed PJOS
 - [ ] MotionPNGTuber renderer bridge

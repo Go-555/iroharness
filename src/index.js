@@ -438,15 +438,25 @@ export const createHeuristicRouter = () => {
     "openclaw",
     "hermes"
   ];
+  const deepSignals = [
+    "深い議論",
+    "設計",
+    "architecture",
+    "アーキテクチャ",
+    "方針",
+    "思想",
+    "戦略"
+  ];
 
   const choose = ({ input, microHarnesses }) => {
     const text = input.text.toLowerCase();
     const isWork = workSignals.some((signal) => text.includes(signal.toLowerCase()));
+    const isDeep = deepSignals.some((signal) => text.includes(signal.toLowerCase()));
     if (!isWork) {
       return freezeCopy({
-        kind: input.modality === "voice" ? "voice" : "text",
+        kind: input.modality === "voice" ? "voice" : isDeep ? "deep" : "text",
         harnessId: null,
-        reason: "No work signal detected"
+        reason: isDeep ? "Deep discussion signal detected" : "No work signal detected"
       });
     }
 
@@ -454,6 +464,16 @@ export const createHeuristicRouter = () => {
       text.includes(harness.id.toLowerCase())
     );
     const selectedHarness = mentionedHarness || microHarnesses[0] || null;
+
+    if (!selectedHarness && input.modality !== "voice") {
+      if (isDeep) {
+        return freezeCopy({
+          kind: "deep",
+          harnessId: null,
+          reason: "Deep discussion signal detected"
+        });
+      }
+    }
 
     return freezeCopy({
       kind: selectedHarness ? "work" : "text",
@@ -482,6 +502,52 @@ export const createEchoBrain = (id) =>
       });
     }
   });
+
+export const createHttpBrain = ({
+  id,
+  endpoint,
+  model = null,
+  headers = {},
+  fetchImpl = globalThis.fetch
+}) => {
+  if (!id || !endpoint) {
+    throw new Error("createHttpBrain requires id and endpoint");
+  }
+  if (typeof fetchImpl !== "function") {
+    throw new Error("createHttpBrain requires fetchImpl");
+  }
+  return Object.freeze({
+    id,
+    async respond(context) {
+      const response = await fetchImpl(endpoint, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          ...headers
+        },
+        body: JSON.stringify({
+          model,
+          character: context.character,
+          actor: context.actor,
+          input: context.input,
+          route: context.route,
+          state: context.state,
+          projectOs: context.projectOs
+        })
+      });
+      const responseText = await response.text();
+      if (!response.ok) {
+        throw new Error(`HTTP brain ${id} failed: ${response.status} ${responseText}`);
+      }
+      const payload = responseText.trim() ? JSON.parse(responseText) : {};
+      return freezeCopy({
+        text: payload.text || payload.message || "",
+        emotion: payload.emotion || "attentive",
+        raw: payload
+      });
+    }
+  });
+};
 
 export const createStubMicroHarness = (id, capabilities = []) =>
   Object.freeze({
@@ -606,7 +672,12 @@ export const createIroHarness = ({
       return runMicroHarness(input, route, actor);
     }
 
-    const brain = route.kind === "voice" ? brains.voice : brains.text;
+    const brain =
+      route.kind === "voice"
+        ? brains.voice
+        : route.kind === "deep"
+          ? brains.deep || brains.text
+          : brains.text;
     const response = await brain.respond({
       character,
       input,

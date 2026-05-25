@@ -64,6 +64,7 @@ There are no runtime dependencies today.
 ```bash
 npm run example
 npm run example:bodies
+npm run example:brains
 npm run example:pjos
 npm run example:codex
 npm run example:discord
@@ -146,6 +147,14 @@ IROHARNESS_RUN_CODEX=1 CODEX_WORKSPACE=/path/to/project npm run example:codex --
 ```
 
 See [docs/codex.md](./docs/codex.md).
+
+For voice/text/deep model switching:
+
+```bash
+npm run example:brains
+```
+
+See [docs/brains.md](./docs/brains.md).
 
 ## Platform Adapters
 
@@ -323,6 +332,7 @@ protocols/
 docs/
   architecture.md
   audience-and-permissions.md
+  brains.md
   codex.md
   platform-adapters.md
   obs.md
@@ -330,6 +340,7 @@ docs/
 examples/
   basic.mjs
   body-mappers.mjs
+  brain-switching.mjs
   file-pjos.mjs
   codex-app-server.mjs
   discord-bot.mjs
