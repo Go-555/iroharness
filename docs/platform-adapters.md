@@ -264,7 +264,9 @@ curl -X POST http://127.0.0.1:4178/platform/youtube/message \
 
 When the dev server is created with `userRegistry`, local admin tools can manage
 the shared audience table that Discord, YouTube, Slack, browser, VS Code, and
-device turns resolve through:
+device turns resolve through. Set `adminToken` to require
+`authorization: Bearer <token>` or `x-iroharness-admin-token: <token>` for these
+routes.
 
 ```text
 GET   /audience

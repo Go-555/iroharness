@@ -156,7 +156,8 @@ admin panels, stream setup scripts, and Discord/YouTube fan management UIs.
 const server = createIroHarnessDevServer({
   harness,
   eventStream,
-  userRegistry
+  userRegistry,
+  adminToken: process.env.IROHARNESS_ADMIN_TOKEN
 });
 ```
 
@@ -178,6 +179,7 @@ stream control:
 ```bash
 curl -X POST http://127.0.0.1:4178/audience/users \
   -H 'content-type: application/json' \
+  -H "authorization: Bearer $IROHARNESS_ADMIN_TOKEN" \
   -d '{
     "id": "dev_1",
     "displayName": "Developer",
@@ -188,6 +190,7 @@ curl -X POST http://127.0.0.1:4178/audience/users \
 
 curl -X POST http://127.0.0.1:4178/audience/users/dev_1/identities \
   -H 'content-type: application/json' \
+  -H "authorization: Bearer $IROHARNESS_ADMIN_TOKEN" \
   -d '{
     "platform": "youtube",
     "platformUserId": "UCDEV",
@@ -196,6 +199,7 @@ curl -X POST http://127.0.0.1:4178/audience/users/dev_1/identities \
 
 curl -X POST http://127.0.0.1:4178/audience/users/dev_1/permissions \
   -H 'content-type: application/json' \
+  -H "authorization: Bearer $IROHARNESS_ADMIN_TOKEN" \
   -d '{
     "permission": "manage_stream",
     "effect": "allow",
@@ -203,6 +207,10 @@ curl -X POST http://127.0.0.1:4178/audience/users/dev_1/permissions \
     "reason": "trusted stream host"
   }'
 ```
+
+Set `adminToken` whenever the dev server is reachable beyond a trusted local
+machine. Requests may send either `authorization: Bearer <token>` or
+`x-iroharness-admin-token: <token>`.
 
 ## Operational Pattern
 

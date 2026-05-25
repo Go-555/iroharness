@@ -1664,6 +1664,7 @@ export const createMappedBodyBridgeDevice = ({
 export const createIroHarnessDevServerHandler = ({
   harness,
   userRegistry = null,
+  adminToken = null,
   eventStream,
   bodyDevices = [],
   platformAdapters = createPlatformAdapterRegistry([
@@ -1684,10 +1685,30 @@ export const createIroHarnessDevServerHandler = ({
     }
     return audienceRegistry;
   };
+  const headerValue = (request, name) => {
+    const headers = request.headers || {};
+    return headers[name] || headers[name.toLowerCase()] || headers[name.toUpperCase()] || null;
+  };
+  const hasAdminAccess = (request) => {
+    if (!adminToken) {
+      return true;
+    }
+    const authorization = headerValue(request, "authorization");
+    const token = authorization?.startsWith("Bearer ")
+      ? authorization.slice("Bearer ".length)
+      : headerValue(request, "x-iroharness-admin-token");
+    return token === adminToken;
+  };
+  const audiencePath = (pathname) =>
+    pathname === "/audience" || pathname.startsWith("/audience/");
 
   return async (request, response) => {
     const url = new URL(request.url, "http://127.0.0.1");
     try {
+      if (audiencePath(url.pathname) && !hasAdminAccess(request)) {
+        sendJson(response, 401, { error: "admin_token_required" });
+        return;
+      }
       if (request.method === "GET" && url.pathname === "/events") {
         eventStream.connect(request, response);
         return;

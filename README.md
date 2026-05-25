@@ -347,7 +347,8 @@ The dev server can also expose local audience management endpoints such as
 `POST /audience/users/:userId/identities`, and
 `POST /audience/users/:userId/permissions` when it is created with a
 `userRegistry`. This is the setup path for Discord fan communities, YouTube
-live streams, OBS operators, and developer-only deep discussion.
+live streams, OBS operators, and developer-only deep discussion. Add
+`adminToken` if the server is reachable outside a trusted local machine.
 
 ## Browser Avatar Demo
 

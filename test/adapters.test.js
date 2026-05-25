@@ -189,7 +189,10 @@ const createFakeCodexTransport = () => {
   };
 };
 
-const callHandler = async (handler, { method = "GET", url = "/", json = null } = {}) => {
+const callHandler = async (
+  handler,
+  { method = "GET", url = "/", json = null, headers = {} } = {}
+) => {
   let statusCode = null;
   let body = "";
   const requestBody = json === null ? "" : JSON.stringify(json);
@@ -208,6 +211,7 @@ const callHandler = async (handler, { method = "GET", url = "/", json = null } =
     {
       method,
       url,
+      headers,
       on(event, callback) {
         if (event === "data" && requestBody) {
           setTimeout(() => callback(Buffer.from(requestBody)), 0);
@@ -792,6 +796,53 @@ test("dev server manages audience users, identities, permissions, and stream ses
   assert.equal(snapshot.json.users[0].identities.youtube, "UCDEV");
   assert.equal(snapshot.json.permissionOverrides[0].scope, "stream:youtube");
   assert.equal(snapshot.json.streamSessions[0].status, "paused");
+});
+
+test("dev server audience management can require an admin token", async () => {
+  const eventStream = createEventStreamDevice("events");
+  const userRegistry = createInMemoryUserRegistry();
+  const handler = createIroHarnessDevServerHandler({
+    eventStream,
+    userRegistry,
+    adminToken: "secret",
+    harness: {
+      state() {
+        return { characterId: "iroha", mode: "idle" };
+      },
+      projectOs() {
+        return { tickets: [], runs: [], artifacts: [] };
+      },
+      async receive() {
+        return { kind: "response", text: "ok" };
+      }
+    },
+    publicDir: process.cwd()
+  });
+
+  const denied = await callHandler(handler, {
+    method: "POST",
+    url: "/audience/users",
+    json: {
+      id: "fan_1",
+      displayName: "Fan"
+    }
+  });
+  const allowed = await callHandler(handler, {
+    method: "POST",
+    url: "/audience/users",
+    headers: {
+      authorization: "Bearer secret"
+    },
+    json: {
+      id: "fan_1",
+      displayName: "Fan"
+    }
+  });
+
+  assert.equal(denied.statusCode, 401);
+  assert.equal(denied.json.error, "admin_token_required");
+  assert.equal(allowed.statusCode, 201);
+  assert.equal(userRegistry.snapshot().users.length, 1);
 });
 
 test("Discord message adapter normalizes multi-person chat payloads", () => {
