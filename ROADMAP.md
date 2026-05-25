@@ -32,6 +32,7 @@ micro harnesses.
 - [x] stream session registry
 - [x] stream session context enrichment
 - [x] role-based permission policy
+- [x] stream operation routing and controller contract
 - [x] OBS browser overlay mode
 - [x] OBS WebSocket control adapter
 - [x] Discord message normalization adapter

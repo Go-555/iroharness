@@ -1042,6 +1042,13 @@ export const createPermissionPolicy = ({
         reason: "delegate_work permission is required"
       });
     }
+    if (route.kind === "stream" && !can(user, requirements.manageStream, contextScopes)) {
+      return freezeCopy({
+        allowed: false,
+        permission: requirements.manageStream,
+        reason: "manage_stream permission is required"
+      });
+    }
     if (asksDeepDiscussion && !can(user, requirements.deepDiscussion, contextScopes)) {
       return freezeCopy({
         allowed: false,
@@ -1092,6 +1099,17 @@ export const createProjectOsMarkdown = (snapshot) => {
 };
 
 export const createHeuristicRouter = () => {
+  const streamSignals = [
+    "obs",
+    "overlay",
+    "scene",
+    "stream",
+    "配信",
+    "シーン",
+    "オーバーレイ",
+    "ミュート",
+    "mute"
+  ];
   const workSignals = [
     "codex",
     "実装",
@@ -1115,8 +1133,16 @@ export const createHeuristicRouter = () => {
 
   const choose = ({ input, microHarnesses }) => {
     const text = input.text.toLowerCase();
+    const isStream = streamSignals.some((signal) => text.includes(signal.toLowerCase()));
     const isWork = workSignals.some((signal) => text.includes(signal.toLowerCase()));
     const isDeep = deepSignals.some((signal) => text.includes(signal.toLowerCase()));
+    if (isStream) {
+      return freezeCopy({
+        kind: "stream",
+        harnessId: null,
+        reason: "Stream operation signal detected"
+      });
+    }
     if (!isWork) {
       return freezeCopy({
         kind: input.modality === "voice" ? "voice" : isDeep ? "deep" : "text",
@@ -1227,6 +1253,35 @@ export const createStubMicroHarness = (id, capabilities = []) =>
     }
   });
 
+export const createRecorderStreamController = (id = "stream-controller") => {
+  let actions = [];
+  return Object.freeze({
+    id,
+    capabilities: Object.freeze(["scene", "overlay", "mute", "stream"]),
+    async execute({ input, route, actor }) {
+      const action = freezeCopy({
+        id: createId("stream_action"),
+        controllerId: id,
+        text: input.text,
+        route,
+        actorUserId: actor.user.id,
+        streamSessionId: input.metadata?.streamSessionId || null,
+        createdAt: nowIso()
+      });
+      actions = Object.freeze([...actions, action]);
+      return freezeCopy({
+        status: "completed",
+        summary: `${id} accepted stream action: ${input.text.slice(0, 80)}`,
+        action,
+        artifacts: Object.freeze([])
+      });
+    },
+    actions() {
+      return Object.freeze([...actions]);
+    }
+  });
+};
+
 export const createRecorderDevice = (id) => {
   let events = [];
   return Object.freeze({
@@ -1268,7 +1323,8 @@ export const createIroHarness = ({
   router = createHeuristicRouter(),
   brains,
   devices = [],
-  microHarnesses = []
+  microHarnesses = [],
+  streamController = null
 }) => {
   if (!character || !character.id || !character.name) {
     throw new Error("character.id and character.name are required");
@@ -1335,6 +1391,10 @@ export const createIroHarness = ({
 
     if (route.kind === "work" && route.harnessId) {
       return runMicroHarness(input, route, actor);
+    }
+
+    if (route.kind === "stream") {
+      return runStreamController(input, route, actor);
     }
 
     const brain =
@@ -1524,6 +1584,98 @@ export const createIroHarness = ({
       run: completedRun,
       output,
       artifacts: Object.freeze(artifacts)
+    });
+  };
+
+  const runStreamController = async (input, route, actor) => {
+    if (!streamController || typeof streamController.execute !== "function") {
+      const text = "配信操作の接続がまだ設定されていないよ。";
+      setState({
+        mode: MODES.speaking,
+        emotion: "careful",
+        speechText: text,
+        mouth: "talking",
+        motion: MODES.speaking
+      });
+      emit({
+        type: "speech",
+        text,
+        modality: input.modality,
+        brainId: "stream-controller",
+        timestamp: nowIso()
+      });
+      setState({
+        mode: MODES.idle,
+        emotion: "careful",
+        speechText: null,
+        mouth: "closed",
+        motion: MODES.idle
+      });
+      return freezeCopy({
+        kind: "stream_unavailable",
+        route,
+        actor,
+        text
+      });
+    }
+
+    setState({
+      mode: MODES.working,
+      emotion: "focused",
+      speechText: "配信まわりを確認するね。",
+      mouth: "talking",
+      motion: MODES.working,
+      metadata: {
+        actorUserId: actor.user.id,
+        streamSessionId: input.metadata?.streamSessionId || null
+      }
+    });
+    emit({
+      type: "speech",
+      text: "配信まわりを確認するね。",
+      modality: input.modality,
+      brainId: "macro-stream-reflex",
+      timestamp: nowIso()
+    });
+    emit({
+      type: "stream",
+      status: "started",
+      controllerId: streamController.id || "stream-controller",
+      actorUserId: actor.user.id,
+      streamSessionId: input.metadata?.streamSessionId || null,
+      timestamp: nowIso()
+    });
+
+    const output = await streamController.execute({
+      character,
+      input,
+      route,
+      actor,
+      projectOs: projectOs.snapshot()
+    });
+
+    emit({
+      type: "stream",
+      status: output.status || "completed",
+      controllerId: streamController.id || "stream-controller",
+      actorUserId: actor.user.id,
+      streamSessionId: input.metadata?.streamSessionId || null,
+      summary: output.summary,
+      timestamp: nowIso()
+    });
+    setState({
+      mode: MODES.idle,
+      emotion: output.status === "failed" ? "careful" : "relieved",
+      speechText: null,
+      mouth: "closed",
+      motion: MODES.idle
+    });
+
+    return freezeCopy({
+      kind: "stream_operation",
+      route,
+      actor,
+      output
     });
   };
 

@@ -9,6 +9,7 @@ import {
   createInMemoryUserRegistry,
   createIroHarness,
   createRecorderDevice,
+  createRecorderStreamController,
   createStubMicroHarness
 } from "../src/index.js";
 
@@ -207,4 +208,97 @@ test("work input delegates to a micro harness and records ticket/run state", asy
   assert.equal(snapshot.runs.length, 1);
   assert.equal(snapshot.runs[0].status, "completed");
   assert.equal(recorder.events().some((event) => event.type === "task"), true);
+});
+
+test("moderators can run stream operations through the stream controller", async () => {
+  const projectOs = createInMemoryProjectOs();
+  const userRegistry = createInMemoryUserRegistry();
+  userRegistry.registerUser({
+    id: "mod_1",
+    displayName: "Moderator",
+    role: "moderator",
+    identities: { youtube: "UCMOD" }
+  });
+  const recorder = createRecorderDevice("recorder");
+  const streamController = createRecorderStreamController("stream-recorder");
+  const harness = createIroHarness({
+    character: {
+      id: "iroha",
+      name: "Iroha",
+      soul: "Owns macro state.",
+      voiceStyle: "short"
+    },
+    projectOs,
+    userRegistry,
+    router: createHeuristicRouter(),
+    brains: {
+      voice: createEchoBrain("voice-fast"),
+      text: createEchoBrain("text-deep")
+    },
+    devices: [recorder],
+    streamController
+  });
+
+  const result = await harness.receive({
+    source: "youtube",
+    modality: "text",
+    text: "OBSのシーンを配信用に変えて",
+    metadata: {
+      streamSessionId: "stream_1"
+    },
+    actor: {
+      platform: "youtube",
+      platformUserId: "UCMOD",
+      displayName: "Moderator"
+    }
+  });
+
+  assert.equal(result.kind, "stream_operation");
+  assert.equal(result.route.kind, "stream");
+  assert.equal(result.output.status, "completed");
+  assert.equal(streamController.actions().length, 1);
+  assert.equal(streamController.actions()[0].streamSessionId, "stream_1");
+  assert.equal(recorder.events().some((event) => event.type === "stream"), true);
+});
+
+test("fans cannot run stream operations without manage_stream permission", async () => {
+  const userRegistry = createInMemoryUserRegistry();
+  userRegistry.registerUser({
+    id: "fan_1",
+    displayName: "Fan",
+    role: "fan",
+    identities: { youtube: "UCFAN" }
+  });
+  const streamController = createRecorderStreamController("stream-recorder");
+  const harness = createIroHarness({
+    character: {
+      id: "iroha",
+      name: "Iroha",
+      soul: "Owns macro state.",
+      voiceStyle: "short"
+    },
+    projectOs: createInMemoryProjectOs(),
+    userRegistry,
+    router: createHeuristicRouter(),
+    brains: {
+      voice: createEchoBrain("voice-fast"),
+      text: createEchoBrain("text-deep")
+    },
+    streamController
+  });
+
+  const result = await harness.receive({
+    source: "youtube",
+    modality: "text",
+    text: "OBSのシーンを変えて",
+    actor: {
+      platform: "youtube",
+      platformUserId: "UCFAN",
+      displayName: "Fan"
+    }
+  });
+
+  assert.equal(result.kind, "permission_denied");
+  assert.equal(result.permission.permission, "manage_stream");
+  assert.equal(streamController.actions().length, 0);
 });

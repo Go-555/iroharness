@@ -399,6 +399,11 @@ Role permissions decide whether a user can only chat, have deep architecture
 discussion, or delegate work to micro harnesses. The personality stays owned by
 the character macro harness.
 
+Stream operations use the same policy. Requests that mention OBS, scene,
+overlay, mute, or live stream control are routed as `stream` operations and
+require `manage_stream`. Moderators and owners can operate a stream; public fans
+cannot.
+
 For long-running deployments, use the PostgreSQL/Supabase schema in
 `protocols/sql/postgres-audience.sql`:
 

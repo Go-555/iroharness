@@ -56,3 +56,36 @@ obs.close();
 
 The OBS adapter controls stream presentation only. It does not own personality,
 memory, PJOS, or permissions.
+
+## Macro-Harness Stream Operations
+
+IroHarness can route stream operation requests through the same permission
+policy used for fans, members, moderators, and developers.
+
+```js
+import {
+  createIroHarness,
+  createRecorderStreamController
+} from "iroharness";
+
+const streamController = createRecorderStreamController();
+
+const iroha = createIroHarness({
+  character,
+  projectOs,
+  userRegistry,
+  brains,
+  streamController
+});
+```
+
+Messages such as `OBSのシーンを変えて`, `overlay`, `scene`, `mute`, or `配信`
+are routed as `stream` operations. The permission policy requires
+`manage_stream`; public fans are denied without changing the character's
+personality. Moderators and owners can execute stream operations, and scoped
+overrides can grant temporary power for one stream session.
+
+Production integrations should wrap `createObsWebSocketAdapter` behind a
+stream controller that translates approved macro operations into OBS WebSocket
+calls. The included `createRecorderStreamController` is a dependency-free
+contract implementation for tests and local demos.
