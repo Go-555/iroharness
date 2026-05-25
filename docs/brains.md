@@ -47,12 +47,17 @@ The endpoint receives:
   "model": "deep-model",
   "character": {},
   "actor": {},
+  "audience": {},
   "input": {},
   "route": {},
   "state": {},
   "projectOs": {}
 }
 ```
+
+`audience` is the normalized relationship and permission context for the
+current turn. It is where a brain can see whether the same character should use
+brief voice mode, ordinary public chat, or developer-level deep discussion.
 
 It should return:
 

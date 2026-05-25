@@ -54,6 +54,26 @@ The macro harness resolves the actor through the user registry before routing.
 That means permissions and relationship can change while the character identity
 remains stable.
 
+Resolved turns also produce an `audience` context:
+
+```json
+{
+  "role": "developer",
+  "relationship": "core-developer",
+  "tier": "trusted",
+  "responseDepth": "deep",
+  "permissions": ["chat_public", "deep_discussion", "delegate_work"],
+  "canDeepDiscuss": true,
+  "canDelegateWork": true,
+  "canManageStream": false,
+  "identityStable": true
+}
+```
+
+Brains, stream controllers, and micro harnesses receive this context. Platform
+adapters do not create it; they only provide the actor identity needed for the
+macro harness to resolve it.
+
 ## Audience Store
 
 The registry persists audience identity as four collections:

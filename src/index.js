@@ -1116,6 +1116,66 @@ export const createPermissionPolicy = ({
   });
 };
 
+export const createAudienceContextPolicy = ({
+  trustedRoles = ["owner", "developer"],
+  memberRoles = ["member", "moderator"],
+  operatorRoles = ["owner", "moderator"]
+} = {}) => {
+  const trusted = new Set(trustedRoles);
+  const members = new Set(memberRoles);
+  const operators = new Set(operatorRoles);
+  const hasPermission = (permissions, permission) => permissions.includes(permission);
+  const tierFor = (role) => {
+    if (role === "owner") {
+      return "owner";
+    }
+    if (trusted.has(role)) {
+      return "trusted";
+    }
+    if (operators.has(role)) {
+      return "operator";
+    }
+    if (members.has(role)) {
+      return "member";
+    }
+    return role === "anonymous" ? "anonymous" : "public";
+  };
+  const responseDepthFor = ({ route, permissions }) => {
+    if (route.kind === "voice") {
+      return "brief";
+    }
+    if (route.kind === "deep" && hasPermission(permissions, "deep_discussion")) {
+      return "deep";
+    }
+    if (hasPermission(permissions, "deep_discussion")) {
+      return "standard";
+    }
+    return "public";
+  };
+
+  const resolve = ({ actor, route, input, permissions = [], contextScopes = [] }) => {
+    const role = actor?.user?.role || "anonymous";
+    return freezeCopy({
+      role,
+      relationship: actor?.user?.relationship || "public",
+      tier: tierFor(role),
+      actorKnown: Boolean(actor?.known),
+      source: input?.source || "unknown",
+      modality: input?.modality || "text",
+      routeKind: route?.kind || "text",
+      responseDepth: responseDepthFor({ route: route || {}, permissions }),
+      permissions: freezeArray(permissions),
+      contextScopes: freezeArray(contextScopes),
+      canDeepDiscuss: hasPermission(permissions, "deep_discussion"),
+      canDelegateWork: hasPermission(permissions, "delegate_work"),
+      canManageStream: hasPermission(permissions, "manage_stream"),
+      identityStable: true
+    });
+  };
+
+  return Object.freeze({ resolve });
+};
+
 export const createProjectOsMarkdown = (snapshot) => {
   const ticketLines = snapshot.tickets.map(
     (ticket) =>
@@ -1920,6 +1980,7 @@ export const createIroHarness = ({
   projectOs,
   userRegistry = createInMemoryUserRegistry(),
   permissionPolicy = createPermissionPolicy(),
+  audiencePolicy = createAudienceContextPolicy(),
   router = createHeuristicRouter(),
   brains,
   devices = [],
@@ -1979,6 +2040,21 @@ export const createIroHarness = ({
       actor,
       microHarnesses
     });
+    const contextScopes =
+      typeof permissionPolicy.createContextScopes === "function"
+        ? permissionPolicy.createContextScopes(input)
+        : Object.freeze(["global"]);
+    const actorPermissions =
+      typeof permissionPolicy.permissionsFor === "function"
+        ? permissionPolicy.permissionsFor(actor.user, contextScopes)
+        : Object.freeze([]);
+    const audience = audiencePolicy.resolve({
+      actor,
+      route,
+      input,
+      permissions: actorPermissions,
+      contextScopes
+    });
 
     const permission = permissionPolicy.evaluate({
       user: actor.user,
@@ -1986,15 +2062,15 @@ export const createIroHarness = ({
       input
     });
     if (!permission.allowed) {
-      return rejectByPermission(input, route, actor, permission);
+      return rejectByPermission(input, route, actor, permission, audience);
     }
 
     if (route.kind === "work" && route.harnessId) {
-      return runMicroHarness(input, route, actor);
+      return runMicroHarness(input, route, actor, audience);
     }
 
     if (route.kind === "stream") {
-      return runStreamController(input, route, actor);
+      return runStreamController(input, route, actor, audience);
     }
 
     const brain =
@@ -2007,6 +2083,7 @@ export const createIroHarness = ({
       character,
       input,
       actor,
+      audience,
       route,
       state,
       projectOs: projectOs.snapshot()
@@ -2038,12 +2115,13 @@ export const createIroHarness = ({
       kind: "response",
       route,
       actor,
+      audience,
       text: response.text,
       brainId: brain.id
     });
   };
 
-  const rejectByPermission = async (input, route, actor, permission) => {
+  const rejectByPermission = async (input, route, actor, permission, audience) => {
     const text =
       actor.user.role === "anonymous"
         ? "そこは権限が必要だよ。まず本人確認できる場所から話してね。"
@@ -2081,12 +2159,13 @@ export const createIroHarness = ({
       kind: "permission_denied",
       route,
       actor,
+      audience,
       permission,
       text
     });
   };
 
-  const runMicroHarness = async (input, route, actor) => {
+  const runMicroHarness = async (input, route, actor, audience) => {
     const microHarness = microHarnesses.find((candidate) => candidate.id === route.harnessId);
     if (!microHarness) {
       throw new Error(`Micro harness not found: ${route.harnessId}`);
@@ -2139,6 +2218,7 @@ export const createIroHarness = ({
     const output = await microHarness.run(ticket, {
       character,
       actor,
+      audience,
       input,
       projectOs: projectOs.snapshot()
     });
@@ -2180,6 +2260,7 @@ export const createIroHarness = ({
       kind: "delegation",
       route,
       actor,
+      audience,
       ticket,
       run: completedRun,
       output,
@@ -2187,7 +2268,7 @@ export const createIroHarness = ({
     });
   };
 
-  const runStreamController = async (input, route, actor) => {
+  const runStreamController = async (input, route, actor, audience) => {
     if (!streamController || typeof streamController.execute !== "function") {
       const text = "配信操作の接続がまだ設定されていないよ。";
       setState({
@@ -2215,6 +2296,7 @@ export const createIroHarness = ({
         kind: "stream_unavailable",
         route,
         actor,
+        audience,
         text
       });
     }
@@ -2251,6 +2333,7 @@ export const createIroHarness = ({
       input,
       route,
       actor,
+      audience,
       projectOs: projectOs.snapshot()
     });
 
@@ -2275,6 +2358,7 @@ export const createIroHarness = ({
       kind: "stream_operation",
       route,
       actor,
+      audience,
       output
     });
   };

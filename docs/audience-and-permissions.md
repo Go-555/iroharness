@@ -64,6 +64,30 @@ other micro harnesses.
 
 The same Iroha appears to everyone. The permissions change, not the personality.
 
+## Audience Context
+
+After user resolution, the macro harness creates an `audience` context for the
+turn. Brains, stream controllers, and delegated micro harnesses receive this
+context alongside `character`, `actor`, `input`, `route`, and Project OS state.
+
+Example:
+
+```json
+{
+  "tier": "trusted",
+  "relationship": "core-developer",
+  "responseDepth": "deep",
+  "canDeepDiscuss": true,
+  "canDelegateWork": true,
+  "canManageStream": false,
+  "identityStable": true
+}
+```
+
+This lets the same character talk casually with fans, hold deeper architecture
+discussions with developers, and deny privileged operations when needed without
+creating platform-specific personalities.
+
 ## OBS / YouTube Streaming
 
 Use the browser avatar as an OBS Browser Source:

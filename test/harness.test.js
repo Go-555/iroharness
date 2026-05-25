@@ -134,6 +134,104 @@ test("deep text input uses the deep brain when configured", async () => {
   assert.equal(result.text, "deep");
 });
 
+test("developer deep discussion keeps character identity while exposing audience context", async () => {
+  const calls = [];
+  const projectOs = createInMemoryProjectOs();
+  const userRegistry = createInMemoryUserRegistry();
+  userRegistry.registerUser({
+    id: "developer",
+    displayName: "Developer",
+    role: "developer",
+    relationship: "core-developer",
+    identities: { discord: "DDEV" }
+  });
+  const harness = createIroHarness({
+    character: {
+      id: "iroha",
+      name: "Iroha",
+      soul: "Stable identity across all bodies.",
+      voiceStyle: "short"
+    },
+    projectOs,
+    userRegistry,
+    router: createHeuristicRouter(),
+    brains: {
+      voice: createNamedBrain("voice-fast", "voice"),
+      text: createNamedBrain("text-standard", "text"),
+      deep: Object.freeze({
+        id: "text-deep",
+        async respond(context) {
+          calls.push(context);
+          return { text: "deep", emotion: "focused" };
+        }
+      })
+    }
+  });
+
+  const result = await harness.receive({
+    source: "discord",
+    modality: "text",
+    text: "IroHarnessの設計思想について深い議論をしたい",
+    actor: {
+      platform: "discord",
+      platformUserId: "DDEV",
+      displayName: "Developer"
+    }
+  });
+
+  assert.equal(result.kind, "response");
+  assert.equal(result.brainId, "text-deep");
+  assert.equal(result.audience.tier, "trusted");
+  assert.equal(result.audience.responseDepth, "deep");
+  assert.equal(result.audience.canDeepDiscuss, true);
+  assert.equal(result.audience.identityStable, true);
+  assert.equal(calls[0].character.soul, "Stable identity across all bodies.");
+  assert.equal(calls[0].audience.relationship, "core-developer");
+});
+
+test("fan deep discussion is denied by permission without changing personality", async () => {
+  const userRegistry = createInMemoryUserRegistry();
+  userRegistry.registerUser({
+    id: "fan_1",
+    displayName: "Fan",
+    role: "fan",
+    identities: { youtube: "UCFAN" }
+  });
+  const harness = createIroHarness({
+    character: {
+      id: "iroha",
+      name: "Iroha",
+      soul: "Same character for fans and developers.",
+      voiceStyle: "short"
+    },
+    projectOs: createInMemoryProjectOs(),
+    userRegistry,
+    router: createHeuristicRouter(),
+    brains: {
+      voice: createNamedBrain("voice-fast", "voice"),
+      text: createNamedBrain("text-standard", "text"),
+      deep: createNamedBrain("text-deep", "deep")
+    }
+  });
+
+  const result = await harness.receive({
+    source: "youtube",
+    modality: "text",
+    text: "設計について深い議論をしたい",
+    actor: {
+      platform: "youtube",
+      platformUserId: "UCFAN",
+      displayName: "Fan"
+    }
+  });
+
+  assert.equal(result.kind, "permission_denied");
+  assert.equal(result.permission.permission, "deep_discussion");
+  assert.equal(result.audience.tier, "public");
+  assert.equal(result.audience.canDeepDiscuss, false);
+  assert.equal(result.audience.identityStable, true);
+});
+
 test("voice input keeps the low-latency voice brain even with deep words", async () => {
   const projectOs = createInMemoryProjectOs();
   const userRegistry = createInMemoryUserRegistry();
