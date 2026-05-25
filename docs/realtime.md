@@ -65,6 +65,43 @@ Event types:
 - `tts.completed`
 - `tts.interrupted`
 
+## Interruption / Barge-In
+
+`createRealtimeVoiceSession` wires STT, TTS, and latency tracking together. If a
+partial STT event arrives while TTS is speaking, the session aborts active TTS
+and emits `realtime.barge_in`.
+
+```js
+import {
+  createRealtimeVoiceSession,
+  createTextStreamingStt,
+  createTextStreamingTts
+} from "iroharness";
+
+const session = createRealtimeVoiceSession({
+  stt: createTextStreamingStt(),
+  tts: createTextStreamingTts(),
+  onEvent(event) {
+    console.log(event.type);
+  }
+});
+
+const listening = session.listen();
+await session.speak({ text: "説明するね。", voice: "iroha" });
+
+// Usually this is called by a real STT adapter when the user starts talking.
+listening.push("待って");
+```
+
+Session event types:
+
+- `realtime.listening`
+- `realtime.speaking`
+- `realtime.barge_in`
+- `realtime.interrupted`
+- `realtime.spoken`
+- `realtime.closed`
+
 ## Latency Metrics
 
 `createRealtimeLatencyTracker` records named marks and measures durations. Use it

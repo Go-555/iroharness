@@ -1403,6 +1403,133 @@ export const createTextStreamingTts = ({
     }
   });
 
+export const createRealtimeVoiceSession = ({
+  id = "realtime-voice-session",
+  stt = createTextStreamingStt(),
+  tts = createTextStreamingTts(),
+  latency = createRealtimeLatencyTracker(),
+  onEvent = () => {}
+} = {}) => {
+  let activeTts = null;
+  let speaking = false;
+  let interruptedCount = 0;
+  let sttSession = null;
+
+  const emit = (event) => {
+    const nextEvent = freezeCopy({
+      ...event,
+      sessionId: id,
+      timestamp: nowIso()
+    });
+    onEvent(nextEvent);
+    return nextEvent;
+  };
+
+  const interrupt = (reason = "barge-in") => {
+    if (!activeTts || activeTts.signal.aborted) {
+      return null;
+    }
+    interruptedCount += 1;
+    activeTts.abort(reason);
+    return emit({
+      type: "realtime.barge_in",
+      reason,
+      interruptedCount
+    });
+  };
+
+  const handleSttEvent = (event) => {
+    const nextEvent = emit(event);
+    if (
+      event.type === "stt.partial" &&
+      speaking &&
+      String(event.delta || event.text || "").trim()
+    ) {
+      interrupt("barge-in");
+    }
+    if (event.type === "stt.final") {
+      latency.mark("stt.final");
+    }
+    return nextEvent;
+  };
+
+  const listen = () => {
+    latency.mark("audio.received");
+    sttSession = stt.start({
+      onEvent: handleSttEvent
+    });
+    emit({
+      type: "realtime.listening",
+      sttId: stt.id
+    });
+    return sttSession;
+  };
+
+  const speak = async ({ text, voice = null } = {}) => {
+    if (activeTts && !activeTts.signal.aborted) {
+      interrupt("superseded");
+    }
+    const controller = new AbortController();
+    activeTts = controller;
+    speaking = true;
+    latency.mark("tts.start");
+    emit({
+      type: "realtime.speaking",
+      ttsId: tts.id,
+      voice
+    });
+    const chunks = await tts.stream({
+      text,
+      voice,
+      signal: controller.signal,
+      onEvent(event) {
+        if (event.type === "tts.audio" && !latency.snapshot().marks["tts.first_audio"]) {
+          latency.mark("tts.first_audio");
+        }
+        emit(event);
+      }
+    });
+    speaking = false;
+    if (activeTts === controller) {
+      activeTts = null;
+    }
+    emit({
+      type: chunks.at(-1)?.type === "tts.interrupted" ? "realtime.interrupted" : "realtime.spoken",
+      ttsId: tts.id,
+      chunkCount: chunks.length
+    });
+    return Object.freeze(chunks);
+  };
+
+  const close = (reason = "closed") => {
+    interrupt(reason);
+    sttSession?.cancel?.(reason);
+    sttSession = null;
+    speaking = false;
+    emit({
+      type: "realtime.closed",
+      reason
+    });
+  };
+
+  return Object.freeze({
+    id,
+    listen,
+    speak,
+    interrupt,
+    handleSttEvent,
+    latency: () => latency.snapshot(),
+    state() {
+      return freezeCopy({
+        speaking,
+        listening: Boolean(sttSession),
+        interruptedCount
+      });
+    },
+    close
+  });
+};
+
 export const createStubMicroHarness = (id, capabilities = []) =>
   Object.freeze({
     id,

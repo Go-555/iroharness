@@ -81,7 +81,7 @@ micro harnesses.
 
 - [x] streaming STT interface
 - [x] streaming TTS interface
-- [ ] interruption and barge-in
+- [x] interruption and barge-in
 - [x] realtime latency metrics
 - [ ] Rust event/audio/device core
 

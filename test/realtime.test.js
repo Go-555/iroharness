@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   createRealtimeLatencyTracker,
+  createRealtimeVoiceSession,
   createTextStreamingStt,
   createTextStreamingTts
 } from "../src/index.js";
@@ -92,4 +93,55 @@ test("realtime latency tracker records turn timing metrics", () => {
   assert.equal(stt.durationMs, 15);
   assert.equal(firstAudio.durationMs, 130);
   assert.equal(snapshot.measures.length, 2);
+});
+
+test("realtime voice session interrupts TTS when STT detects barge-in", async () => {
+  const events = [];
+  let session = null;
+  session = createRealtimeVoiceSession({
+    stt: createTextStreamingStt({ id: "stt-test" }),
+    tts: createTextStreamingTts({ id: "tts-test", chunkSize: 2 }),
+    onEvent(event) {
+      events.push(event);
+      if (event.type === "tts.audio") {
+        session.handleSttEvent({
+          type: "stt.partial",
+          text: "待って",
+          delta: "待って",
+          final: false
+        });
+      }
+    }
+  });
+
+  const chunks = await session.speak({
+    text: "abcdef",
+    voice: "iroha"
+  });
+
+  assert.equal(chunks.at(-1).type, "tts.interrupted");
+  assert.equal(events.some((event) => event.type === "realtime.barge_in"), true);
+  assert.equal(events.some((event) => event.type === "realtime.interrupted"), true);
+  assert.equal(session.state().interruptedCount, 1);
+});
+
+test("realtime voice session wires STT listening events and latency marks", () => {
+  const events = [];
+  const session = createRealtimeVoiceSession({
+    stt: createTextStreamingStt({ id: "stt-test" }),
+    tts: createTextStreamingTts({ id: "tts-test" }),
+    onEvent(event) {
+      events.push(event);
+    }
+  });
+
+  const listening = session.listen();
+  listening.push("こん");
+  listening.end();
+
+  const latency = session.latency();
+  assert.equal(events.some((event) => event.type === "realtime.listening"), true);
+  assert.equal(events.some((event) => event.type === "stt.final"), true);
+  assert.equal(typeof latency.marks["audio.received"], "number");
+  assert.equal(typeof latency.marks["stt.final"], "number");
 });
