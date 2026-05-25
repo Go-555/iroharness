@@ -37,21 +37,42 @@ that scene.
 ## Programmatic Use
 
 ```js
-import { createObsWebSocketAdapter } from "iroharness/adapters";
+import {
+  createObsStreamController,
+  createObsWebSocketAdapter
+} from "iroharness/adapters";
 
 const obs = createObsWebSocketAdapter({
   url: "ws://127.0.0.1:4455",
   password: process.env.OBS_WEBSOCKET_PASSWORD
 });
 
-await obs.setInputSettings("IroHarness Overlay", {
-  url: "http://127.0.0.1:4178/?view=overlay",
-  width: 1280,
-  height: 720
+const controller = createObsStreamController({
+  obs,
+  overlayInputName: "IroHarness Overlay",
+  overlayUrl: "http://127.0.0.1:4178/?view=overlay",
+  defaultSceneName: "Main"
 });
 
-await obs.setCurrentProgramScene("Main");
-obs.close();
+await controller.execute({
+  input: {
+    text: "overlayを更新して",
+    metadata: { obsAction: "overlay" }
+  },
+  route: { kind: "stream" },
+  actor: { user: { id: "operator" } }
+});
+
+await controller.execute({
+  input: {
+    text: "OBSのシーンを変えて",
+    metadata: { obsAction: "scene" }
+  },
+  route: { kind: "stream" },
+  actor: { user: { id: "operator" } }
+});
+
+controller.close();
 ```
 
 The OBS adapter controls stream presentation only. It does not own personality,
@@ -85,7 +106,7 @@ are routed as `stream` operations. The permission policy requires
 personality. Moderators and owners can execute stream operations, and scoped
 overrides can grant temporary power for one stream session.
 
-Production integrations should wrap `createObsWebSocketAdapter` behind a
-stream controller that translates approved macro operations into OBS WebSocket
-calls. The included `createRecorderStreamController` is a dependency-free
-contract implementation for tests and local demos.
+Production integrations can use `createObsStreamController` to translate
+approved macro operations into OBS WebSocket calls. The included
+`createRecorderStreamController` is a dependency-free contract implementation
+for tests and local demos.

@@ -1235,6 +1235,152 @@ export const createObsWebSocketAdapter = ({
   return api;
 };
 
+const inferObsStreamAction = ({
+  input,
+  overlayInputName,
+  overlayUrl,
+  overlayWidth,
+  overlayHeight,
+  defaultSceneName
+}) => {
+  const metadata = input.metadata || {};
+  const text = normalizeText(input.text).toLowerCase();
+  const requestedAction = metadata.obsAction || metadata.streamAction || null;
+  const sceneName = metadata.obsSceneName || metadata.sceneName || defaultSceneName;
+  const inputName = metadata.obsInputName || metadata.inputName || overlayInputName;
+  const inputMuted =
+    typeof metadata.inputMuted === "boolean"
+      ? metadata.inputMuted
+      : !(text.includes("unmute") || text.includes("ミュート解除"));
+
+  if (
+    requestedAction === "overlay" ||
+    text.includes("overlay") ||
+    text.includes("オーバーレイ") ||
+    text.includes("browser source")
+  ) {
+    return Object.freeze({
+      kind: "overlay",
+      inputName,
+      inputSettings: Object.freeze({
+        url: metadata.overlayUrl || metadata.obsOverlayUrl || overlayUrl,
+        width: Number(metadata.overlayWidth || overlayWidth),
+        height: Number(metadata.overlayHeight || overlayHeight)
+      })
+    });
+  }
+
+  if (requestedAction === "mute" || text.includes("mute") || text.includes("ミュート")) {
+    return Object.freeze({
+      kind: "mute",
+      inputName,
+      inputMuted
+    });
+  }
+
+  if (
+    requestedAction === "scene" ||
+    text.includes("scene") ||
+    text.includes("シーン") ||
+    text.includes("配信")
+  ) {
+    return Object.freeze({
+      kind: "scene",
+      sceneName
+    });
+  }
+
+  return Object.freeze({
+    kind: "unknown"
+  });
+};
+
+export const createObsStreamController = ({
+  id = "obs-stream-controller",
+  obs,
+  overlayInputName = "IroHarness Overlay",
+  overlayUrl = "http://127.0.0.1:4178/?view=overlay",
+  overlayWidth = 1280,
+  overlayHeight = 720,
+  defaultSceneName = null
+} = {}) => {
+  if (!obs || typeof obs.setCurrentProgramScene !== "function") {
+    throw new Error("createObsStreamController requires an OBS adapter");
+  }
+
+  const execute = async ({ input, route, actor }) => {
+    const action = inferObsStreamAction({
+      input,
+      overlayInputName,
+      overlayUrl,
+      overlayWidth,
+      overlayHeight,
+      defaultSceneName
+    });
+
+    if (action.kind === "scene") {
+      if (!action.sceneName) {
+        return Object.freeze({
+          status: "failed",
+          summary: "OBS scene action requires sceneName or defaultSceneName.",
+          action,
+          artifacts: Object.freeze([])
+        });
+      }
+      const raw = await obs.setCurrentProgramScene(action.sceneName);
+      return Object.freeze({
+        status: "completed",
+        summary: `OBS scene switched to ${action.sceneName}.`,
+        action,
+        raw,
+        artifacts: Object.freeze([])
+      });
+    }
+
+    if (action.kind === "overlay") {
+      const raw = await obs.setInputSettings(action.inputName, action.inputSettings);
+      return Object.freeze({
+        status: "completed",
+        summary: `OBS overlay updated for ${action.inputName}.`,
+        action,
+        raw,
+        artifacts: Object.freeze([])
+      });
+    }
+
+    if (action.kind === "mute") {
+      const raw = await obs.setInputMute(action.inputName, action.inputMuted);
+      return Object.freeze({
+        status: "completed",
+        summary: `OBS input ${action.inputName} mute=${action.inputMuted}.`,
+        action,
+        raw,
+        artifacts: Object.freeze([])
+      });
+    }
+
+    return Object.freeze({
+      status: "failed",
+      summary: "OBS stream action could not be inferred.",
+      action: Object.freeze({
+        ...action,
+        route,
+        actorUserId: actor?.user?.id || null
+      }),
+      artifacts: Object.freeze([])
+    });
+  };
+
+  return Object.freeze({
+    id,
+    capabilities: Object.freeze(["obs", "scene", "overlay", "mute", "stream"]),
+    execute,
+    close() {
+      obs.close?.();
+    }
+  });
+};
+
 export const createEventStreamDevice = (id = "event-stream") => {
   let clients = [];
   let events = [];

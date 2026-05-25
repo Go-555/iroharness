@@ -35,6 +35,7 @@ micro harnesses.
 - [x] stream operation routing and controller contract
 - [x] OBS browser overlay mode
 - [x] OBS WebSocket control adapter
+- [x] OBS stream controller adapter
 - [x] Discord message normalization adapter
 - [x] Slack message normalization adapter
 - [x] YouTube live chat normalization adapter

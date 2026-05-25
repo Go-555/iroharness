@@ -326,7 +326,9 @@ http://127.0.0.1:4178/?view=overlay
 Overlay mode hides the controls and uses a transparent background for OBS
 Browser Source composition.
 
-OBS WebSocket control is available through `createObsWebSocketAdapter`. See
+OBS WebSocket control is available through `createObsWebSocketAdapter`. Approved
+macro stream operations can use `createObsStreamController` so `manage_stream`
+gates scene, overlay, and mute changes before OBS WebSocket is called. See
 [docs/obs.md](./docs/obs.md).
 
 ## Core Concepts

@@ -19,6 +19,7 @@ import {
   createLive2DBodyBridge,
   createM5StackBodyBridge,
   createMotionPngTuberRendererBridge,
+  createObsStreamController,
   createObsWebSocketAdapter,
   createOpenClawMicroHarness,
   createPlatformAdapterRegistry,
@@ -1004,6 +1005,87 @@ test("OBS WebSocket adapter sends browser source input settings", async () => {
     "http://127.0.0.1:4178/?view=overlay"
   );
   adapter.close();
+});
+
+test("OBS stream controller maps approved scene operations to OBS WebSocket requests", async () => {
+  const sent = [];
+  const obs = createObsWebSocketAdapter({
+    WebSocketImpl: createFakeObsWebSocket({ sent })
+  });
+  const controller = createObsStreamController({
+    obs,
+    defaultSceneName: "Iroha Stream"
+  });
+
+  const output = await controller.execute({
+    input: {
+      text: "OBSのシーンを配信用に変えて",
+      metadata: {}
+    },
+    route: { kind: "stream" },
+    actor: { user: { id: "moderator" } }
+  });
+
+  const request = sent.find((message) => message.op === 6);
+  assert.equal(output.status, "completed");
+  assert.equal(output.action.kind, "scene");
+  assert.equal(request.d.requestType, "SetCurrentProgramScene");
+  assert.equal(request.d.requestData.sceneName, "Iroha Stream");
+  controller.close();
+});
+
+test("OBS stream controller maps overlay and mute actions to OBS requests", async () => {
+  const overlaySent = [];
+  const overlayController = createObsStreamController({
+    obs: createObsWebSocketAdapter({
+      WebSocketImpl: createFakeObsWebSocket({ sent: overlaySent })
+    }),
+    overlayInputName: "IroHarness Overlay",
+    overlayUrl: "http://127.0.0.1:4178/?view=overlay"
+  });
+
+  const overlayOutput = await overlayController.execute({
+    input: {
+      text: "overlayを更新して",
+      metadata: {}
+    },
+    route: { kind: "stream" },
+    actor: { user: { id: "moderator" } }
+  });
+  const overlayRequest = overlaySent.find((message) => message.op === 6);
+
+  assert.equal(overlayOutput.status, "completed");
+  assert.equal(overlayRequest.d.requestType, "SetInputSettings");
+  assert.equal(overlayRequest.d.requestData.inputName, "IroHarness Overlay");
+  assert.equal(
+    overlayRequest.d.requestData.inputSettings.url,
+    "http://127.0.0.1:4178/?view=overlay"
+  );
+  overlayController.close();
+
+  const muteSent = [];
+  const muteController = createObsStreamController({
+    obs: createObsWebSocketAdapter({
+      WebSocketImpl: createFakeObsWebSocket({ sent: muteSent })
+    }),
+    overlayInputName: "Mic"
+  });
+
+  const muteOutput = await muteController.execute({
+    input: {
+      text: "Micをミュートして",
+      metadata: { obsAction: "mute", inputMuted: true }
+    },
+    route: { kind: "stream" },
+    actor: { user: { id: "moderator" } }
+  });
+  const muteRequest = muteSent.find((message) => message.op === 6);
+
+  assert.equal(muteOutput.status, "completed");
+  assert.equal(muteRequest.d.requestType, "SetInputMute");
+  assert.equal(muteRequest.d.requestData.inputName, "Mic");
+  assert.equal(muteRequest.d.requestData.inputMuted, true);
+  muteController.close();
 });
 
 test("Discord bot runtime identifies, receives messages, and replies", async () => {
