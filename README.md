@@ -397,6 +397,16 @@ iroharness_stream_sessions
 This is the table layer for OBS/YouTube streams, Discord fan chats, and
 developer-only work delegation.
 
+Use it from the core with a `pg`-style query function:
+
+```js
+import { createPostgresUserRegistry } from "iroharness";
+
+const userRegistry = createPostgresUserRegistry({
+  query: (sql, params) => pool.query(sql, params)
+});
+```
+
 ## Why Rust Later
 
 Rust will not make remote LLMs think faster. It can reduce the overhead around

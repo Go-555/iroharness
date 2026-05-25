@@ -119,3 +119,18 @@ Use `permissionOverrides` for temporary or scoped powers such as:
 
 The file registry remains useful for local demos. The SQL schema is the intended
 shape for long-running OBS, YouTube, Discord, and multi-device deployments.
+
+Use `createPostgresUserRegistry` with any `pg`-style query function:
+
+```js
+import { createPostgresUserRegistry } from "iroharness";
+
+const userRegistry = createPostgresUserRegistry({
+  query: (sql, params) => pool.query(sql, params)
+});
+```
+
+The adapter has the same methods as the file and in-memory registries, but its
+methods are async. `createIroHarness().receive(...)` awaits actor resolution, so
+the same macro harness can run against a local JSON file during development and
+PostgreSQL/Supabase in production.

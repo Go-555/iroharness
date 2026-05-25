@@ -11,6 +11,7 @@ import {
   createInMemoryProjectOs,
   createInMemoryUserRegistry,
   createIroHarness,
+  createPostgresUserRegistry,
   createRecorderDevice,
   createStubMicroHarness
 } from "../src/index.js";
@@ -33,6 +34,169 @@ const createBaseHarness = ({ userRegistry }) =>
     devices: [createRecorderDevice("recorder")],
     microHarnesses: [createStubMicroHarness("codex", ["code"])]
   });
+
+const createFakePostgresAudienceQuery = () => {
+  let users = [];
+  let identities = [];
+  let overrides = [];
+  let streams = [];
+  const timestamp = "2026-05-25T00:00:00.000Z";
+
+  const touch = (row) => ({
+    ...row,
+    created_at: row.created_at || timestamp,
+    updated_at: timestamp
+  });
+
+  const query = async (sql, params = []) => {
+    const normalized = sql.replace(/\s+/g, " ").trim().toLowerCase();
+
+    if (normalized.startsWith("insert into iroharness_users")) {
+      const [id, display_name, role, relationship, permissions, metadata] = params;
+      const row = touch({ id, display_name, role, relationship, permissions, metadata });
+      users = [...users.filter((candidate) => candidate.id !== id), row];
+      return { rows: [row] };
+    }
+
+    if (normalized.startsWith("update iroharness_users")) {
+      const [id, display_name, role, relationship, permissions, metadata] = params;
+      users = users.map((candidate) =>
+        candidate.id === id
+          ? touch({ ...candidate, display_name, role, relationship, permissions, metadata })
+          : candidate
+      );
+      return { rows: users.filter((candidate) => candidate.id === id) };
+    }
+
+    if (normalized.startsWith("delete from iroharness_user_identities")) {
+      const [userId] = params;
+      identities = identities.filter((identity) => identity.user_id !== userId);
+      return { rows: [] };
+    }
+
+    if (normalized.startsWith("insert into iroharness_user_identities")) {
+      const [id, user_id, platform, platform_user_id, display_name, metadata] = params;
+      const row = touch({ id, user_id, platform, platform_user_id, display_name, metadata });
+      identities = [
+        ...identities.filter(
+          (identity) =>
+            !(identity.platform === platform && identity.platform_user_id === platform_user_id)
+        ),
+        row
+      ];
+      return { rows: [row] };
+    }
+
+    if (
+      normalized.startsWith("select * from iroharness_user_identities where platform = $1")
+    ) {
+      const [platform, platformUserId] = params;
+      return {
+        rows: identities.filter(
+          (identity) =>
+            identity.platform === platform && identity.platform_user_id === platformUserId
+        )
+      };
+    }
+
+    if (
+      normalized.startsWith("select * from iroharness_user_identities where user_id = $1")
+    ) {
+      const [userId] = params;
+      return { rows: identities.filter((identity) => identity.user_id === userId) };
+    }
+
+    if (normalized.startsWith("insert into iroharness_permission_overrides")) {
+      const [id, user_id, permission, effect, scope, reason, expires_at, metadata] = params;
+      const row = touch({
+        id,
+        user_id,
+        permission,
+        effect,
+        scope,
+        reason,
+        expires_at,
+        metadata
+      });
+      overrides = [
+        ...overrides.filter(
+          (override) =>
+            !(
+              override.user_id === user_id &&
+              override.permission === permission &&
+              override.scope === scope
+            )
+        ),
+        row
+      ];
+      return { rows: [row] };
+    }
+
+    if (
+      normalized.startsWith("select * from iroharness_permission_overrides where user_id = $1")
+    ) {
+      const [userId] = params;
+      return { rows: overrides.filter((override) => override.user_id === userId) };
+    }
+
+    if (normalized.startsWith("insert into iroharness_stream_sessions")) {
+      const [id, platform, platform_channel_id, title, host_user_id, status, metadata] = params;
+      const row = touch({
+        id,
+        platform,
+        platform_channel_id,
+        title,
+        host_user_id,
+        status,
+        metadata,
+        started_at: timestamp,
+        ended_at: null
+      });
+      streams = [...streams.filter((session) => session.id !== id), row];
+      return { rows: [row] };
+    }
+
+    if (normalized.startsWith("update iroharness_stream_sessions")) {
+      const [id, title, host_user_id, status, metadata, ended_at] = params;
+      streams = streams.map((session) =>
+        session.id === id
+          ? touch({ ...session, title, host_user_id, status, metadata, ended_at })
+          : session
+      );
+      return { rows: streams.filter((session) => session.id === id) };
+    }
+
+    if (normalized.startsWith("select * from iroharness_stream_sessions where id = $1")) {
+      const [id] = params;
+      return { rows: streams.filter((session) => session.id === id) };
+    }
+
+    if (normalized.startsWith("select * from iroharness_users where id = $1")) {
+      const [id] = params;
+      return { rows: users.filter((user) => user.id === id) };
+    }
+
+    if (normalized.startsWith("select * from iroharness_users order by")) {
+      return { rows: users };
+    }
+
+    if (normalized.startsWith("select * from iroharness_user_identities order by")) {
+      return { rows: identities };
+    }
+
+    if (normalized.startsWith("select * from iroharness_permission_overrides order by")) {
+      return { rows: overrides };
+    }
+
+    if (normalized.startsWith("select * from iroharness_stream_sessions order by")) {
+      return { rows: streams };
+    }
+
+    throw new Error(`Unhandled fake query: ${sql}`);
+  };
+
+  return query;
+};
 
 test("user registry links Discord and YouTube identities to one person", () => {
   const registry = createInMemoryUserRegistry();
@@ -162,6 +326,94 @@ test("file user registry persists stream sessions and permission overrides", () 
   assert.equal(snapshot.permissionOverrides.length, 1);
   assert.equal(snapshot.streamSessions.length, 1);
   assert.equal(snapshot.streamSessions[0].status, "live");
+});
+
+test("Postgres user registry resolves linked platform identities and scoped permissions", async () => {
+  const registry = createPostgresUserRegistry({
+    query: createFakePostgresAudienceQuery()
+  });
+
+  await registry.registerUser({
+    id: "dev_1",
+    displayName: "Developer",
+    role: "developer",
+    identities: {
+      discord: "discord-dev"
+    },
+    relationship: "developer"
+  });
+  await registry.linkIdentity({
+    userId: "dev_1",
+    platform: "youtube",
+    platformUserId: "UCDEV",
+    displayName: "Dev Channel"
+  });
+  await registry.setPermissionOverride({
+    userId: "dev_1",
+    permission: "manage_stream",
+    effect: "allow",
+    scope: "stream:youtube"
+  });
+  await registry.createStreamSession({
+    id: "stream_1",
+    platform: "youtube",
+    platformChannelId: "live-chat-1",
+    title: "IroHarness Dev Stream",
+    hostUserId: "dev_1"
+  });
+  await registry.updateStreamSession("stream_1", {
+    status: "paused",
+    metadata: { reason: "break" }
+  });
+
+  const discordActor = await registry.resolveActor({
+    platform: "discord",
+    platformUserId: "discord-dev",
+    displayName: "Developer"
+  });
+  const youtubeActor = await registry.resolveActor({
+    platform: "youtube",
+    platformUserId: "UCDEV",
+    displayName: "Dev Channel"
+  });
+  const snapshot = await registry.snapshot();
+
+  assert.equal(discordActor.user.id, "dev_1");
+  assert.equal(youtubeActor.user.id, "dev_1");
+  assert.equal(youtubeActor.identity.displayName, "Dev Channel");
+  assert.equal(youtubeActor.user.permissionOverrides[0].permission, "manage_stream");
+  assert.equal(snapshot.users.length, 1);
+  assert.equal(snapshot.userIdentities.length, 2);
+  assert.equal(snapshot.streamSessions[0].status, "paused");
+  assert.equal(snapshot.streamSessions[0].metadata.reason, "break");
+});
+
+test("IroHarness can use an async Postgres user registry for developer delegation", async () => {
+  const registry = createPostgresUserRegistry({
+    query: createFakePostgresAudienceQuery()
+  });
+  await registry.registerUser({
+    id: "dev_1",
+    displayName: "Developer",
+    role: "developer",
+    identities: { discord: "discord-dev" }
+  });
+  const harness = createBaseHarness({ userRegistry: registry });
+
+  const result = await harness.receive({
+    source: "discord",
+    modality: "text",
+    text: "Codexでコードをレビューして",
+    actor: {
+      platform: "discord",
+      platformUserId: "discord-dev",
+      displayName: "Developer"
+    }
+  });
+
+  assert.equal(result.kind, "delegation");
+  assert.equal(result.actor.user.id, "dev_1");
+  assert.equal(harness.projectOs().tickets[0].metadata.actorRole, "developer");
 });
 
 test("fans can chat but cannot delegate work to micro harnesses", async () => {

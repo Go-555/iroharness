@@ -19,6 +19,85 @@ const nowIso = () => new Date().toISOString();
 
 const freezeCopy = (value) => Object.freeze({ ...value });
 
+const freezeArray = (value = []) => Object.freeze([...value]);
+
+const dbRows = (result) => Object.freeze([...(result?.rows || result || [])]);
+
+const dbOne = (result) => dbRows(result)[0] || null;
+
+const fromDbUser = (row) =>
+  row
+    ? freezeCopy({
+        id: row.id,
+        displayName: row.display_name ?? row.displayName,
+        role: row.role,
+        identities: freezeCopy({}),
+        permissions: freezeArray(row.permissions || []),
+        relationship: row.relationship,
+        metadata: freezeCopy(row.metadata || {}),
+        createdAt: row.created_at ?? row.createdAt,
+        updatedAt: row.updated_at ?? row.updatedAt
+      })
+    : null;
+
+const fromDbIdentity = (row) =>
+  row
+    ? freezeCopy({
+        id: row.id,
+        userId: row.user_id ?? row.userId,
+        platform: row.platform,
+        platformUserId: String(row.platform_user_id ?? row.platformUserId),
+        displayName: row.display_name ?? row.displayName ?? null,
+        metadata: freezeCopy(row.metadata || {}),
+        createdAt: row.created_at ?? row.createdAt,
+        updatedAt: row.updated_at ?? row.updatedAt
+      })
+    : null;
+
+const fromDbPermissionOverride = (row) =>
+  row
+    ? freezeCopy({
+        id: row.id,
+        userId: row.user_id ?? row.userId,
+        permission: row.permission,
+        effect: row.effect,
+        scope: row.scope,
+        reason: row.reason ?? null,
+        expiresAt: row.expires_at ?? row.expiresAt ?? null,
+        metadata: freezeCopy(row.metadata || {}),
+        createdAt: row.created_at ?? row.createdAt,
+        updatedAt: row.updated_at ?? row.updatedAt
+      })
+    : null;
+
+const fromDbStreamSession = (row) =>
+  row
+    ? freezeCopy({
+        id: row.id,
+        platform: row.platform,
+        platformChannelId: String(row.platform_channel_id ?? row.platformChannelId),
+        title: row.title ?? null,
+        hostUserId: row.host_user_id ?? row.hostUserId ?? null,
+        status: row.status,
+        metadata: freezeCopy(row.metadata || {}),
+        startedAt: row.started_at ?? row.startedAt,
+        endedAt: row.ended_at ?? row.endedAt ?? null,
+        createdAt: row.created_at ?? row.createdAt,
+        updatedAt: row.updated_at ?? row.updatedAt
+      })
+    : null;
+
+const hydrateUserWithRows = ({ user, identities = [], permissionOverrides = [] }) =>
+  freezeCopy({
+    ...user,
+    identities: createIdentitiesObject(identities, user.id),
+    permissions: freezeArray(user.permissions || []),
+    metadata: freezeCopy(user.metadata || {}),
+    permissionOverrides: freezeArray(
+      permissionOverrides.filter((override) => override.userId === user.id)
+    )
+  });
+
 const createProjectOsStore = (initialState = {}, persist = () => {}) => {
   let tickets = Object.freeze([...(initialState.tickets || [])]);
   let runs = Object.freeze([...(initialState.runs || [])]);
@@ -559,6 +638,336 @@ export const createFileUserRegistry = ({ path }) => {
   return createUserRegistryStore(load(), persist);
 };
 
+export const createPostgresUserRegistry = ({ query }) => {
+  if (typeof query !== "function") {
+    throw new Error("createPostgresUserRegistry requires query");
+  }
+
+  const run = async (sql, params = []) => query(sql, params);
+
+  const loadUserContext = async (userId) => {
+    const [userResult, identityResult, overrideResult] = await Promise.all([
+      run("select * from iroharness_users where id = $1", [userId]),
+      run("select * from iroharness_user_identities where user_id = $1 order by created_at asc", [
+        userId
+      ]),
+      run(
+        "select * from iroharness_permission_overrides where user_id = $1 order by created_at asc",
+        [userId]
+      )
+    ]);
+    const user = fromDbUser(dbOne(userResult));
+    if (!user) {
+      return null;
+    }
+    return hydrateUserWithRows({
+      user,
+      identities: dbRows(identityResult).map(fromDbIdentity).filter(Boolean),
+      permissionOverrides: dbRows(overrideResult).map(fromDbPermissionOverride).filter(Boolean)
+    });
+  };
+
+  const registerUser = async ({
+    id = createId("user"),
+    displayName,
+    role = "fan",
+    identities = {},
+    permissions = [],
+    relationship = "public",
+    metadata = {}
+  }) => {
+    const userResult = await run(
+      [
+        "insert into iroharness_users",
+        "(id, display_name, role, relationship, permissions, metadata)",
+        "values ($1, $2, $3, $4, $5, $6)",
+        "on conflict (id) do update set",
+        "display_name = excluded.display_name,",
+        "role = excluded.role,",
+        "relationship = excluded.relationship,",
+        "permissions = excluded.permissions,",
+        "metadata = excluded.metadata",
+        "returning *"
+      ].join(" "),
+      [id, displayName || id, role, relationship, permissions, metadata]
+    );
+    await run("delete from iroharness_user_identities where user_id = $1", [id]);
+    const identityRows = [];
+    for (const [platform, platformUserId] of Object.entries(identities)) {
+      const identity = await run(
+        [
+          "insert into iroharness_user_identities",
+          "(id, user_id, platform, platform_user_id, display_name, metadata)",
+          "values ($1, $2, $3, $4, $5, $6)",
+          "on conflict (platform, platform_user_id) do update set",
+          "user_id = excluded.user_id,",
+          "display_name = excluded.display_name,",
+          "metadata = excluded.metadata",
+          "returning *"
+        ].join(" "),
+        [createId("identity"), id, platform, String(platformUserId), null, {}]
+      );
+      identityRows.push(fromDbIdentity(dbOne(identity)));
+    }
+    return hydrateUserWithRows({
+      user: fromDbUser(dbOne(userResult)),
+      identities: identityRows.filter(Boolean)
+    });
+  };
+
+  const updateUser = async (userId, patch) => {
+    const current = await loadUserContext(userId);
+    if (!current) {
+      throw new Error(`User not found: ${userId}`);
+    }
+    const next = {
+      displayName: patch.displayName ?? current.displayName,
+      role: patch.role ?? current.role,
+      relationship: patch.relationship ?? current.relationship,
+      permissions: patch.permissions || current.permissions,
+      metadata: patch.metadata || current.metadata
+    };
+    const result = await run(
+      [
+        "update iroharness_users set",
+        "display_name = $2, role = $3, relationship = $4, permissions = $5, metadata = $6",
+        "where id = $1 returning *"
+      ].join(" "),
+      [userId, next.displayName, next.role, next.relationship, next.permissions, next.metadata]
+    );
+    if (patch.identities) {
+      await run("delete from iroharness_user_identities where user_id = $1", [userId]);
+      for (const [platform, platformUserId] of Object.entries(patch.identities)) {
+        await linkIdentity({
+          userId,
+          platform,
+          platformUserId
+        });
+      }
+    }
+    const user = fromDbUser(dbOne(result));
+    return loadUserContext(user.id);
+  };
+
+  const linkIdentity = async ({
+    userId,
+    platform,
+    platformUserId,
+    displayName = null,
+    metadata = {}
+  }) => {
+    if (!userId || !platform || !platformUserId) {
+      throw new Error("linkIdentity requires userId, platform, and platformUserId");
+    }
+    const user = await loadUserContext(userId);
+    if (!user) {
+      throw new Error(`User not found: ${userId}`);
+    }
+    const result = await run(
+      [
+        "insert into iroharness_user_identities",
+        "(id, user_id, platform, platform_user_id, display_name, metadata)",
+        "values ($1, $2, $3, $4, $5, $6)",
+        "on conflict (platform, platform_user_id) do update set",
+        "user_id = excluded.user_id,",
+        "display_name = excluded.display_name,",
+        "metadata = excluded.metadata",
+        "returning *"
+      ].join(" "),
+      [createId("identity"), userId, platform, String(platformUserId), displayName, metadata]
+    );
+    return fromDbIdentity(dbOne(result));
+  };
+
+  const setPermissionOverride = async ({
+    userId,
+    permission,
+    effect = "allow",
+    scope = "global",
+    reason = null,
+    expiresAt = null,
+    metadata = {}
+  }) => {
+    if (!userId || !permission) {
+      throw new Error("setPermissionOverride requires userId and permission");
+    }
+    if (!["allow", "deny"].includes(effect)) {
+      throw new Error("permission override effect must be allow or deny");
+    }
+    const user = await loadUserContext(userId);
+    if (!user) {
+      throw new Error(`User not found: ${userId}`);
+    }
+    const result = await run(
+      [
+        "insert into iroharness_permission_overrides",
+        "(id, user_id, permission, effect, scope, reason, expires_at, metadata)",
+        "values ($1, $2, $3, $4, $5, $6, $7, $8)",
+        "on conflict (user_id, permission, scope) do update set",
+        "effect = excluded.effect,",
+        "reason = excluded.reason,",
+        "expires_at = excluded.expires_at,",
+        "metadata = excluded.metadata",
+        "returning *"
+      ].join(" "),
+      [createId("permission"), userId, permission, effect, scope, reason, expiresAt, metadata]
+    );
+    return fromDbPermissionOverride(dbOne(result));
+  };
+
+  const createStreamSession = async ({
+    id = createId("stream"),
+    platform,
+    platformChannelId,
+    title = null,
+    hostUserId = null,
+    status = "live",
+    metadata = {}
+  }) => {
+    if (!platform || !platformChannelId) {
+      throw new Error("createStreamSession requires platform and platformChannelId");
+    }
+    const result = await run(
+      [
+        "insert into iroharness_stream_sessions",
+        "(id, platform, platform_channel_id, title, host_user_id, status, metadata)",
+        "values ($1, $2, $3, $4, $5, $6, $7)",
+        "on conflict (id) do update set",
+        "platform = excluded.platform,",
+        "platform_channel_id = excluded.platform_channel_id,",
+        "title = excluded.title,",
+        "host_user_id = excluded.host_user_id,",
+        "status = excluded.status,",
+        "metadata = excluded.metadata",
+        "returning *"
+      ].join(" "),
+      [id, platform, String(platformChannelId), title, hostUserId, status, metadata]
+    );
+    return fromDbStreamSession(dbOne(result));
+  };
+
+  const updateStreamSession = async (sessionId, patch) => {
+    const current = fromDbStreamSession(
+      dbOne(await run("select * from iroharness_stream_sessions where id = $1", [sessionId]))
+    );
+    if (!current) {
+      throw new Error(`Stream session not found: ${sessionId}`);
+    }
+    const next = {
+      title: patch.title ?? current.title,
+      hostUserId: patch.hostUserId ?? current.hostUserId,
+      status: patch.status ?? current.status,
+      metadata: patch.metadata || current.metadata,
+      endedAt: patch.endedAt ?? current.endedAt
+    };
+    const result = await run(
+      [
+        "update iroharness_stream_sessions set",
+        "title = $2, host_user_id = $3, status = $4, metadata = $5, ended_at = $6",
+        "where id = $1 returning *"
+      ].join(" "),
+      [sessionId, next.title, next.hostUserId, next.status, next.metadata, next.endedAt]
+    );
+    return fromDbStreamSession(dbOne(result));
+  };
+
+  const findByIdentity = async ({ platform, platformUserId }) => {
+    if (!platform || !platformUserId) {
+      return null;
+    }
+    const identity = fromDbIdentity(
+      dbOne(
+        await run(
+          "select * from iroharness_user_identities where platform = $1 and platform_user_id = $2",
+          [platform, String(platformUserId)]
+        )
+      )
+    );
+    return identity ? loadUserContext(identity.userId) : null;
+  };
+
+  const resolveActor = async (actor = {}) => {
+    const user = await findByIdentity(actor);
+    if (user) {
+      const identityResult = await run(
+        "select * from iroharness_user_identities where platform = $1 and platform_user_id = $2",
+        [actor.platform, String(actor.platformUserId)]
+      );
+      const identity = fromDbIdentity(dbOne(identityResult));
+      return freezeCopy({
+        user,
+        identity: freezeCopy({
+          platform: actor.platform,
+          platformUserId: actor.platformUserId,
+          displayName: actor.displayName || identity?.displayName || user.displayName
+        }),
+        known: true
+      });
+    }
+    return freezeCopy({
+      user: freezeCopy({
+        id: "anonymous",
+        displayName: actor.displayName || "Anonymous",
+        role: "anonymous",
+        identities: freezeCopy(
+          actor.platform && actor.platformUserId
+            ? { [actor.platform]: actor.platformUserId }
+            : {}
+        ),
+        permissions: Object.freeze(["chat_public"]),
+        relationship: "public",
+        metadata: freezeCopy({})
+      }),
+      identity: freezeCopy({
+        platform: actor.platform || "unknown",
+        platformUserId: actor.platformUserId || "unknown",
+        displayName: actor.displayName || "Anonymous"
+      }),
+      known: false
+    });
+  };
+
+  const snapshot = async () => {
+    const [usersResult, identitiesResult, overridesResult, streamsResult] = await Promise.all([
+      run("select * from iroharness_users order by created_at asc"),
+      run("select * from iroharness_user_identities order by created_at asc"),
+      run("select * from iroharness_permission_overrides order by created_at asc"),
+      run("select * from iroharness_stream_sessions order by created_at asc")
+    ]);
+    const users = dbRows(usersResult).map(fromDbUser).filter(Boolean);
+    const userIdentities = dbRows(identitiesResult).map(fromDbIdentity).filter(Boolean);
+    const permissionOverrides = dbRows(overridesResult)
+      .map(fromDbPermissionOverride)
+      .filter(Boolean);
+    return freezeCopy({
+      users: freezeArray(
+        users.map((user) =>
+          hydrateUserWithRows({
+            user,
+            identities: userIdentities,
+            permissionOverrides
+          })
+        )
+      ),
+      userIdentities: freezeArray(userIdentities),
+      permissionOverrides: freezeArray(permissionOverrides),
+      streamSessions: freezeArray(dbRows(streamsResult).map(fromDbStreamSession).filter(Boolean))
+    });
+  };
+
+  return Object.freeze({
+    registerUser,
+    updateUser,
+    linkIdentity,
+    setPermissionOverride,
+    createStreamSession,
+    updateStreamSession,
+    findByIdentity,
+    resolveActor,
+    snapshot
+  });
+};
+
 export const createPermissionPolicy = ({
   rolePermissions = {},
   requiredPermissions = {}
@@ -898,7 +1307,7 @@ export const createIroHarness = ({
     if (!input || !input.text || !input.modality || !input.source) {
       throw new Error("input.source, input.modality, and input.text are required");
     }
-    const actor = userRegistry.resolveActor(input.actor || {});
+    const actor = await userRegistry.resolveActor(input.actor || {});
 
     setState({
       mode: MODES.thinking,
