@@ -35,6 +35,7 @@ import {
   createVsCodeCompanionAdapter,
   createVsCodeCompanionWebviewHtml
 } from "../src/adapters/index.js";
+import { createInMemoryUserRegistry } from "../src/index.js";
 
 const createFakeObsWebSocket = ({ sent }) => {
   return class FakeObsWebSocket {
@@ -188,9 +189,10 @@ const createFakeCodexTransport = () => {
   };
 };
 
-const callHandler = async (handler, { method = "GET", url = "/" } = {}) => {
+const callHandler = async (handler, { method = "GET", url = "/", json = null } = {}) => {
   let statusCode = null;
   let body = "";
+  const requestBody = json === null ? "" : JSON.stringify(json);
   const response = {
     writeHead(status) {
       statusCode = status;
@@ -206,7 +208,14 @@ const callHandler = async (handler, { method = "GET", url = "/" } = {}) => {
     {
       method,
       url,
-      on() {}
+      on(event, callback) {
+        if (event === "data" && requestBody) {
+          setTimeout(() => callback(Buffer.from(requestBody)), 0);
+        }
+        if (event === "end") {
+          setTimeout(callback, 0);
+        }
+      }
     },
     response
   );
@@ -694,6 +703,95 @@ test("dev server exposes body bridge snapshots", async () => {
   assert.equal(bodies.json.bodies[0].id, "motionpngtuber");
   assert.equal(snapshot.statusCode, 200);
   assert.equal(snapshot.json.state.payload.stateKey, "mouth_on_eye_on");
+});
+
+test("dev server manages audience users, identities, permissions, and stream sessions", async () => {
+  const eventStream = createEventStreamDevice("events");
+  const userRegistry = createInMemoryUserRegistry();
+  const handler = createIroHarnessDevServerHandler({
+    eventStream,
+    userRegistry,
+    harness: {
+      state() {
+        return { characterId: "iroha", mode: "idle" };
+      },
+      projectOs() {
+        return { tickets: [], runs: [], artifacts: [] };
+      },
+      async receive() {
+        return { kind: "response", text: "ok" };
+      },
+      users() {
+        return userRegistry.snapshot();
+      }
+    },
+    publicDir: process.cwd()
+  });
+
+  const created = await callHandler(handler, {
+    method: "POST",
+    url: "/audience/users",
+    json: {
+      id: "dev_1",
+      displayName: "Developer",
+      role: "developer",
+      relationship: "core-developer",
+      identities: { discord: "DDEV" }
+    }
+  });
+  const identity = await callHandler(handler, {
+    method: "POST",
+    url: "/audience/users/dev_1/identities",
+    json: {
+      platform: "youtube",
+      platformUserId: "UCDEV",
+      displayName: "Dev Channel"
+    }
+  });
+  const permission = await callHandler(handler, {
+    method: "POST",
+    url: "/audience/users/dev_1/permissions",
+    json: {
+      permission: "manage_stream",
+      effect: "allow",
+      scope: "stream:youtube",
+      reason: "trusted stream host"
+    }
+  });
+  const stream = await callHandler(handler, {
+    method: "POST",
+    url: "/audience/stream-sessions",
+    json: {
+      id: "stream_1",
+      platform: "youtube",
+      platformChannelId: "live_1",
+      title: "Dev Stream",
+      hostUserId: "dev_1"
+    }
+  });
+  const paused = await callHandler(handler, {
+    method: "PATCH",
+    url: "/audience/stream-sessions/stream_1",
+    json: {
+      status: "paused"
+    }
+  });
+  const snapshot = await callHandler(handler, { url: "/audience" });
+
+  assert.equal(created.statusCode, 201);
+  assert.equal(created.json.user.id, "dev_1");
+  assert.equal(identity.statusCode, 201);
+  assert.equal(identity.json.identity.platform, "youtube");
+  assert.equal(permission.statusCode, 201);
+  assert.equal(permission.json.permissionOverride.permission, "manage_stream");
+  assert.equal(stream.statusCode, 201);
+  assert.equal(stream.json.streamSession.id, "stream_1");
+  assert.equal(paused.statusCode, 200);
+  assert.equal(paused.json.streamSession.status, "paused");
+  assert.equal(snapshot.json.users[0].identities.discord, "DDEV");
+  assert.equal(snapshot.json.users[0].identities.youtube, "UCDEV");
+  assert.equal(snapshot.json.permissionOverrides[0].scope, "stream:youtube");
+  assert.equal(snapshot.json.streamSessions[0].status, "paused");
 });
 
 test("Discord message adapter normalizes multi-person chat payloads", () => {

@@ -1663,6 +1663,7 @@ export const createMappedBodyBridgeDevice = ({
 
 export const createIroHarnessDevServerHandler = ({
   harness,
+  userRegistry = null,
   eventStream,
   bodyDevices = [],
   platformAdapters = createPlatformAdapterRegistry([
@@ -1676,6 +1677,13 @@ export const createIroHarnessDevServerHandler = ({
   if (!harness || !eventStream) {
     throw new Error("createIroHarnessDevServer requires harness and eventStream");
   }
+  const audienceRegistry = userRegistry;
+  const requireAudienceRegistry = (methodName) => {
+    if (!audienceRegistry || typeof audienceRegistry[methodName] !== "function") {
+      throw new Error(`audience registry does not support ${methodName}`);
+    }
+    return audienceRegistry;
+  };
 
   return async (request, response) => {
     const url = new URL(request.url, "http://127.0.0.1");
@@ -1690,6 +1698,71 @@ export const createIroHarnessDevServerHandler = ({
       }
       if (request.method === "GET" && url.pathname === "/pjos") {
         sendJson(response, 200, harness.projectOs());
+        return;
+      }
+      if (request.method === "GET" && url.pathname === "/audience") {
+        const snapshot =
+          audienceRegistry && typeof audienceRegistry.snapshot === "function"
+            ? await audienceRegistry.snapshot()
+            : typeof harness.users === "function"
+              ? await harness.users()
+              : null;
+        if (!snapshot) {
+          sendJson(response, 404, { error: "audience_registry_not_configured" });
+          return;
+        }
+        sendJson(response, 200, snapshot);
+        return;
+      }
+      if (request.method === "POST" && url.pathname === "/audience/users") {
+        const payload = await readRequestJson(request);
+        const user = await requireAudienceRegistry("registerUser").registerUser(payload);
+        sendJson(response, 201, { user });
+        return;
+      }
+      const userMatch = url.pathname.match(/^\/audience\/users\/([^/]+)$/);
+      if (request.method === "PATCH" && userMatch) {
+        const payload = await readRequestJson(request);
+        const user = await requireAudienceRegistry("updateUser").updateUser(userMatch[1], payload);
+        sendJson(response, 200, { user });
+        return;
+      }
+      const identityMatch = url.pathname.match(/^\/audience\/users\/([^/]+)\/identities$/);
+      if (request.method === "POST" && identityMatch) {
+        const payload = await readRequestJson(request);
+        const identity = await requireAudienceRegistry("linkIdentity").linkIdentity({
+          ...payload,
+          userId: identityMatch[1]
+        });
+        sendJson(response, 201, { identity });
+        return;
+      }
+      const permissionMatch = url.pathname.match(/^\/audience\/users\/([^/]+)\/permissions$/);
+      if (request.method === "POST" && permissionMatch) {
+        const payload = await readRequestJson(request);
+        const permissionOverride = await requireAudienceRegistry(
+          "setPermissionOverride"
+        ).setPermissionOverride({
+          ...payload,
+          userId: permissionMatch[1]
+        });
+        sendJson(response, 201, { permissionOverride });
+        return;
+      }
+      if (request.method === "POST" && url.pathname === "/audience/stream-sessions") {
+        const payload = await readRequestJson(request);
+        const streamSession =
+          await requireAudienceRegistry("createStreamSession").createStreamSession(payload);
+        sendJson(response, 201, { streamSession });
+        return;
+      }
+      const streamMatch = url.pathname.match(/^\/audience\/stream-sessions\/([^/]+)$/);
+      if (request.method === "PATCH" && streamMatch) {
+        const payload = await readRequestJson(request);
+        const streamSession = await requireAudienceRegistry(
+          "updateStreamSession"
+        ).updateStreamSession(streamMatch[1], payload);
+        sendJson(response, 200, { streamSession });
         return;
       }
       if (request.method === "GET" && url.pathname === "/bodies") {

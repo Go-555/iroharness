@@ -260,6 +260,25 @@ curl -X POST http://127.0.0.1:4178/platform/youtube/message \
   }'
 ```
 
+## Audience Management Endpoints
+
+When the dev server is created with `userRegistry`, local admin tools can manage
+the shared audience table that Discord, YouTube, Slack, browser, VS Code, and
+device turns resolve through:
+
+```text
+GET   /audience
+POST  /audience/users
+PATCH /audience/users/:userId
+POST  /audience/users/:userId/identities
+POST  /audience/users/:userId/permissions
+POST  /audience/stream-sessions
+PATCH /audience/stream-sessions/:sessionId
+```
+
+Use this for stream setup, fan/member role management, and linking platform IDs
+to one durable person before permissions and personality routing run.
+
 ## Why This Layer Exists
 
 Discord, YouTube, Slack, and future platforms should all become the same macro

@@ -342,6 +342,13 @@ npm run example:audience
 See [docs/audience-data-model.md](./docs/audience-data-model.md) and
 [docs/audience-and-permissions.md](./docs/audience-and-permissions.md).
 
+The dev server can also expose local audience management endpoints such as
+`GET /audience`, `POST /audience/users`,
+`POST /audience/users/:userId/identities`, and
+`POST /audience/users/:userId/permissions` when it is created with a
+`userRegistry`. This is the setup path for Discord fan communities, YouTube
+live streams, OBS operators, and developer-only deep discussion.
+
 ## Browser Avatar Demo
 
 Run:

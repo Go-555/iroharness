@@ -147,6 +147,63 @@ Scoped overrides apply only to matching input contexts. A `stream:youtube`
 override affects YouTube stream turns but does not change Discord or Slack
 developer conversations.
 
+## Dev Server Audience API
+
+The built-in dev server can expose the audience registry for local tools,
+admin panels, stream setup scripts, and Discord/YouTube fan management UIs.
+
+```js
+const server = createIroHarnessDevServer({
+  harness,
+  eventStream,
+  userRegistry
+});
+```
+
+Available endpoints:
+
+```text
+GET   /audience
+POST  /audience/users
+PATCH /audience/users/:userId
+POST  /audience/users/:userId/identities
+POST  /audience/users/:userId/permissions
+POST  /audience/stream-sessions
+PATCH /audience/stream-sessions/:sessionId
+```
+
+Example: link the same developer across Discord and YouTube, then grant scoped
+stream control:
+
+```bash
+curl -X POST http://127.0.0.1:4178/audience/users \
+  -H 'content-type: application/json' \
+  -d '{
+    "id": "dev_1",
+    "displayName": "Developer",
+    "role": "developer",
+    "relationship": "core-developer",
+    "identities": { "discord": "DDEV" }
+  }'
+
+curl -X POST http://127.0.0.1:4178/audience/users/dev_1/identities \
+  -H 'content-type: application/json' \
+  -d '{
+    "platform": "youtube",
+    "platformUserId": "UCDEV",
+    "displayName": "Dev Channel"
+  }'
+
+curl -X POST http://127.0.0.1:4178/audience/users/dev_1/permissions \
+  -H 'content-type: application/json' \
+  -d '{
+    "permission": "manage_stream",
+    "effect": "allow",
+    "scope": "stream:youtube",
+    "reason": "trusted stream host"
+  }'
+```
+
 ## Operational Pattern
 
 In an OBS / YouTube / Discord setup:
