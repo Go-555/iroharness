@@ -1240,6 +1240,169 @@ export const createHttpBrain = ({
   });
 };
 
+export const createRealtimeLatencyTracker = ({ clock = () => Date.now() } = {}) => {
+  let marks = Object.freeze({});
+  let measures = Object.freeze([]);
+
+  const mark = (name, at = clock()) => {
+    marks = freezeCopy({
+      ...marks,
+      [name]: at
+    });
+    return freezeCopy({ name, at });
+  };
+
+  const measure = (name, startMark, endMark) => {
+    const start = marks[startMark];
+    const end = marks[endMark];
+    if (typeof start !== "number" || typeof end !== "number") {
+      throw new Error(`latency measure ${name} requires marks: ${startMark}, ${endMark}`);
+    }
+    const metric = freezeCopy({
+      name,
+      startMark,
+      endMark,
+      start,
+      end,
+      durationMs: end - start
+    });
+    measures = Object.freeze([...measures, metric]);
+    return metric;
+  };
+
+  const snapshot = () =>
+    freezeCopy({
+      marks: freezeCopy(marks),
+      measures: Object.freeze([...measures])
+    });
+
+  return Object.freeze({
+    mark,
+    measure,
+    snapshot
+  });
+};
+
+export const createTextStreamingStt = ({ id = "text-streaming-stt" } = {}) =>
+  Object.freeze({
+    id,
+    kind: "stt",
+    capabilities: Object.freeze(["streaming-stt", "partial-transcript", "final-transcript"]),
+    start({ onEvent = () => {} } = {}) {
+      let text = "";
+      let sequence = 0;
+      let closed = false;
+
+      const emit = (event) => {
+        const nextEvent = freezeCopy({
+          ...event,
+          adapterId: id,
+          sequence,
+          timestamp: nowIso()
+        });
+        sequence += 1;
+        onEvent(nextEvent);
+        return nextEvent;
+      };
+
+      return Object.freeze({
+        push(chunk) {
+          if (closed) {
+            throw new Error(`${id} STT session is closed`);
+          }
+          const nextText =
+            typeof chunk === "string" ? chunk : chunk?.text || chunk?.transcript || "";
+          text = `${text}${nextText}`;
+          return emit({
+            type: chunk?.final ? "stt.final" : "stt.partial",
+            text,
+            delta: nextText,
+            final: Boolean(chunk?.final)
+          });
+        },
+        end() {
+          if (closed) {
+            return null;
+          }
+          closed = true;
+          return emit({
+            type: "stt.final",
+            text,
+            delta: "",
+            final: true
+          });
+        },
+        cancel(reason = "cancelled") {
+          if (closed) {
+            return null;
+          }
+          closed = true;
+          return emit({
+            type: "stt.cancelled",
+            text,
+            reason,
+            final: false
+          });
+        }
+      });
+    }
+  });
+
+export const createTextStreamingTts = ({
+  id = "text-streaming-tts",
+  chunkSize = 24
+} = {}) =>
+  Object.freeze({
+    id,
+    kind: "tts",
+    capabilities: Object.freeze(["streaming-tts", "audio-chunks", "interruptible"]),
+    async stream({ text, voice = null, onEvent = () => {}, signal = null } = {}) {
+      const chunks = [];
+      const source = String(text || "");
+      let sequence = 0;
+
+      const emit = (event) => {
+        const nextEvent = freezeCopy({
+          ...event,
+          adapterId: id,
+          voice,
+          sequence,
+          timestamp: nowIso()
+        });
+        sequence += 1;
+        onEvent(nextEvent);
+        chunks.push(nextEvent);
+        return nextEvent;
+      };
+
+      for (let index = 0; index < source.length; index += chunkSize) {
+        if (signal?.aborted) {
+          emit({
+            type: "tts.interrupted",
+            text: source.slice(0, index),
+            reason: signal.reason || "aborted"
+          });
+          return Object.freeze(chunks);
+        }
+        const chunkText = source.slice(index, index + chunkSize);
+        emit({
+          type: "tts.audio",
+          text: chunkText,
+          audio: chunkText,
+          final: false
+        });
+      }
+
+      emit({
+        type: "tts.completed",
+        text: source,
+        audio: "",
+        final: true
+      });
+      return Object.freeze(chunks);
+    }
+  });
+
 export const createStubMicroHarness = (id, capabilities = []) =>
   Object.freeze({
     id,

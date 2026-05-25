@@ -214,6 +214,18 @@ npm run example:brains
 
 See [docs/brains.md](./docs/brains.md).
 
+For realtime voice contracts:
+
+```js
+import {
+  createRealtimeLatencyTracker,
+  createTextStreamingStt,
+  createTextStreamingTts
+} from "iroharness";
+```
+
+See [docs/realtime.md](./docs/realtime.md).
+
 ## Platform Adapters
 
 Discord and YouTube inputs are normalized before they reach personality,
@@ -476,6 +488,7 @@ docs/
   external-bridges.md
   platform-adapters.md
   obs.md
+  realtime.md
   protocols.md
 examples/
   audience-registry.mjs

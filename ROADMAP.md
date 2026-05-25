@@ -79,10 +79,10 @@ micro harnesses.
 
 ## Milestone 4: Realtime Core
 
-- [ ] streaming STT interface
-- [ ] streaming TTS interface
+- [x] streaming STT interface
+- [x] streaming TTS interface
 - [ ] interruption and barge-in
-- [ ] realtime latency metrics
+- [x] realtime latency metrics
 - [ ] Rust event/audio/device core
 
 ## Guiding Principle
