@@ -150,10 +150,63 @@ const createProjectOsStore = (initialState = {}, persist = () => {}) => {
   });
 };
 
+const createIdentityRows = (userId, identities = {}, createdAt = nowIso()) =>
+  Object.freeze(
+    Object.entries(identities).map(([platform, platformUserId]) =>
+      freezeCopy({
+        id: createId("identity"),
+        userId,
+        platform,
+        platformUserId: String(platformUserId),
+        displayName: null,
+        metadata: freezeCopy({}),
+        createdAt,
+        updatedAt: createdAt
+      })
+    )
+  );
+
+const createIdentitiesObject = (identityRows, userId) =>
+  freezeCopy(
+    identityRows
+      .filter((identity) => identity.userId === userId)
+      .reduce(
+        (identities, identity) => ({
+          ...identities,
+          [identity.platform]: identity.platformUserId
+        }),
+        {}
+      )
+  );
+
 const createUserRegistryStore = (initialState = {}, persist = () => {}) => {
   let users = Object.freeze([...(initialState.users || [])]);
+  let userIdentities = Object.freeze(
+    initialState.userIdentities
+      ? [...initialState.userIdentities]
+      : users.flatMap((user) => createIdentityRows(user.id, user.identities || {}))
+  );
+  let permissionOverrides = Object.freeze([...(initialState.permissionOverrides || [])]);
+  let streamSessions = Object.freeze([...(initialState.streamSessions || [])]);
 
-  const save = () => persist({ users: [...users] });
+  const hydrateUser = (user) =>
+    freezeCopy({
+      ...user,
+      identities: createIdentitiesObject(userIdentities, user.id),
+      permissions: Object.freeze([...(user.permissions || [])]),
+      metadata: freezeCopy(user.metadata || {}),
+      permissionOverrides: Object.freeze(
+        permissionOverrides.filter((override) => override.userId === user.id)
+      )
+    });
+
+  const save = () =>
+    persist({
+      users: [...users],
+      userIdentities: [...userIdentities],
+      permissionOverrides: [...permissionOverrides],
+      streamSessions: [...streamSessions]
+    });
 
   const registerUser = ({
     id = createId("user"),
@@ -164,20 +217,25 @@ const createUserRegistryStore = (initialState = {}, persist = () => {}) => {
     relationship = "public",
     metadata = {}
   }) => {
+    const timestamp = nowIso();
     const user = freezeCopy({
       id,
       displayName: displayName || id,
       role,
-      identities: freezeCopy(identities),
+      identities: freezeCopy({}),
       permissions: Object.freeze([...permissions]),
       relationship,
       metadata: freezeCopy(metadata),
-      createdAt: nowIso(),
-      updatedAt: nowIso()
+      createdAt: timestamp,
+      updatedAt: timestamp
     });
     users = Object.freeze([...users.filter((candidate) => candidate.id !== id), user]);
+    userIdentities = Object.freeze([
+      ...userIdentities.filter((identity) => identity.userId !== id),
+      ...createIdentityRows(id, identities, timestamp)
+    ]);
     save();
-    return user;
+    return hydrateUser(user);
   };
 
   const updateUser = (userId, patch) => {
@@ -190,7 +248,6 @@ const createUserRegistryStore = (initialState = {}, persist = () => {}) => {
         nextUser = freezeCopy({
           ...user,
           ...patch,
-          identities: freezeCopy(patch.identities || user.identities),
           permissions: Object.freeze([...(patch.permissions || user.permissions)]),
           metadata: freezeCopy(patch.metadata || user.metadata),
           updatedAt: nowIso()
@@ -201,28 +258,187 @@ const createUserRegistryStore = (initialState = {}, persist = () => {}) => {
     if (!nextUser) {
       throw new Error(`User not found: ${userId}`);
     }
+    if (patch.identities) {
+      userIdentities = Object.freeze([
+        ...userIdentities.filter((identity) => identity.userId !== userId),
+        ...createIdentityRows(userId, patch.identities)
+      ]);
+    }
     save();
-    return nextUser;
+    return hydrateUser(nextUser);
+  };
+
+  const linkIdentity = ({
+    userId,
+    platform,
+    platformUserId,
+    displayName = null,
+    metadata = {}
+  }) => {
+    if (!userId || !platform || !platformUserId) {
+      throw new Error("linkIdentity requires userId, platform, and platformUserId");
+    }
+    if (!users.some((user) => user.id === userId)) {
+      throw new Error(`User not found: ${userId}`);
+    }
+    const timestamp = nowIso();
+    const identity = freezeCopy({
+      id: createId("identity"),
+      userId,
+      platform,
+      platformUserId: String(platformUserId),
+      displayName,
+      metadata: freezeCopy(metadata),
+      createdAt: timestamp,
+      updatedAt: timestamp
+    });
+    userIdentities = Object.freeze([
+      ...userIdentities.filter(
+        (candidate) =>
+          !(
+            candidate.platform === platform &&
+            String(candidate.platformUserId) === String(platformUserId)
+          )
+      ),
+      identity
+    ]);
+    save();
+    return identity;
+  };
+
+  const setPermissionOverride = ({
+    userId,
+    permission,
+    effect = "allow",
+    scope = "global",
+    reason = null,
+    expiresAt = null,
+    metadata = {}
+  }) => {
+    if (!userId || !permission) {
+      throw new Error("setPermissionOverride requires userId and permission");
+    }
+    if (!["allow", "deny"].includes(effect)) {
+      throw new Error("permission override effect must be allow or deny");
+    }
+    if (!users.some((user) => user.id === userId)) {
+      throw new Error(`User not found: ${userId}`);
+    }
+    const timestamp = nowIso();
+    const override = freezeCopy({
+      id: createId("permission"),
+      userId,
+      permission,
+      effect,
+      scope,
+      reason,
+      expiresAt,
+      metadata: freezeCopy(metadata),
+      createdAt: timestamp,
+      updatedAt: timestamp
+    });
+    permissionOverrides = Object.freeze([
+      ...permissionOverrides.filter(
+        (candidate) =>
+          !(
+            candidate.userId === userId &&
+            candidate.permission === permission &&
+            candidate.scope === scope
+          )
+      ),
+      override
+    ]);
+    save();
+    return override;
+  };
+
+  const createStreamSession = ({
+    id = createId("stream"),
+    platform,
+    platformChannelId,
+    title = null,
+    hostUserId = null,
+    status = "live",
+    metadata = {}
+  }) => {
+    if (!platform || !platformChannelId) {
+      throw new Error("createStreamSession requires platform and platformChannelId");
+    }
+    const timestamp = nowIso();
+    const session = freezeCopy({
+      id,
+      platform,
+      platformChannelId: String(platformChannelId),
+      title,
+      hostUserId,
+      status,
+      metadata: freezeCopy(metadata),
+      startedAt: timestamp,
+      endedAt: null,
+      createdAt: timestamp,
+      updatedAt: timestamp
+    });
+    streamSessions = Object.freeze([
+      ...streamSessions.filter((candidate) => candidate.id !== id),
+      session
+    ]);
+    save();
+    return session;
+  };
+
+  const updateStreamSession = (sessionId, patch) => {
+    let nextSession = null;
+    streamSessions = Object.freeze(
+      streamSessions.map((session) => {
+        if (session.id !== sessionId) {
+          return session;
+        }
+        nextSession = freezeCopy({
+          ...session,
+          ...patch,
+          metadata: freezeCopy(patch.metadata || session.metadata),
+          updatedAt: nowIso()
+        });
+        return nextSession;
+      })
+    );
+    if (!nextSession) {
+      throw new Error(`Stream session not found: ${sessionId}`);
+    }
+    save();
+    return nextSession;
   };
 
   const findByIdentity = ({ platform, platformUserId }) => {
     if (!platform || !platformUserId) {
       return null;
     }
-    return (
-      users.find((user) => String(user.identities[platform]) === String(platformUserId)) || null
+    const identity = userIdentities.find(
+      (candidate) =>
+        candidate.platform === platform &&
+        String(candidate.platformUserId) === String(platformUserId)
     );
+    if (!identity) {
+      return null;
+    }
+    const user = users.find((candidate) => candidate.id === identity.userId);
+    return user ? hydrateUser(user) : null;
   };
 
   const resolveActor = (actor = {}) => {
     const user = findByIdentity(actor);
     if (user) {
+      const identity = userIdentities.find(
+        (candidate) =>
+          candidate.platform === actor.platform &&
+          String(candidate.platformUserId) === String(actor.platformUserId)
+      );
       return freezeCopy({
         user,
         identity: freezeCopy({
           platform: actor.platform,
           platformUserId: actor.platformUserId,
-          displayName: actor.displayName || user.displayName
+          displayName: actor.displayName || identity?.displayName || user.displayName
         }),
         known: true
       });
@@ -252,12 +468,19 @@ const createUserRegistryStore = (initialState = {}, persist = () => {}) => {
 
   const snapshot = () =>
     freezeCopy({
-      users: Object.freeze([...users])
+      users: Object.freeze(users.map((user) => hydrateUser(user))),
+      userIdentities: Object.freeze([...userIdentities]),
+      permissionOverrides: Object.freeze([...permissionOverrides]),
+      streamSessions: Object.freeze([...streamSessions])
     });
 
   return Object.freeze({
     registerUser,
     updateUser,
+    linkIdentity,
+    setPermissionOverride,
+    createStreamSession,
+    updateStreamSession,
     findByIdentity,
     resolveActor,
     snapshot
@@ -358,27 +581,59 @@ export const createPermissionPolicy = ({
     manageStream: "manage_stream",
     ...requiredPermissions
   });
-  const permissionsFor = (user) =>
-    Object.freeze([
+  const createContextScopes = (input = {}) => {
+    const platform = input.actor?.platform || input.source || null;
+    const scopes = [
+      "global",
+      input.source ? `source:${input.source}` : null,
+      platform ? `platform:${platform}` : null,
+      input.source ? `stream:${input.source}` : null,
+      input.metadata?.streamSessionId ? `streamSession:${input.metadata.streamSessionId}` : null
+    ];
+    return Object.freeze(scopes.filter(Boolean));
+  };
+  const permissionsFor = (user, contextScopes = Object.freeze(["global"])) => {
+    const basePermissions = [
       ...(permissionsByRole[user.role] || []),
       ...(Array.isArray(user.permissions) ? user.permissions : [])
-    ]);
-  const can = (user, permission) => permissionsFor(user).includes(permission);
+    ];
+    const activeOverrides = Array.isArray(user.permissionOverrides)
+      ? user.permissionOverrides.filter(
+          (override) =>
+            (!override.expiresAt || new Date(override.expiresAt).getTime() > Date.now()) &&
+            (override.scope === "global" || contextScopes.includes(override.scope))
+        )
+      : [];
+    const denied = activeOverrides
+      .filter((override) => override.effect === "deny")
+      .map((override) => override.permission);
+    const allowed = activeOverrides
+      .filter((override) => override.effect === "allow")
+      .map((override) => override.permission);
+    return Object.freeze(
+      [...new Set([...basePermissions, ...allowed])].filter(
+        (permission) => !denied.includes(permission)
+      )
+    );
+  };
+  const can = (user, permission, contextScopes) =>
+    permissionsFor(user, contextScopes).includes(permission);
   const evaluate = ({ user, route, input }) => {
     const text = input.text.toLowerCase();
+    const contextScopes = createContextScopes(input);
     const asksDeepDiscussion =
       text.includes("深い議論") ||
       text.includes("設計") ||
       text.includes("architecture") ||
       text.includes("アーキテクチャ");
-    if (route.kind === "work" && !can(user, requirements.work)) {
+    if (route.kind === "work" && !can(user, requirements.work, contextScopes)) {
       return freezeCopy({
         allowed: false,
         permission: requirements.work,
         reason: "delegate_work permission is required"
       });
     }
-    if (asksDeepDiscussion && !can(user, requirements.deepDiscussion)) {
+    if (asksDeepDiscussion && !can(user, requirements.deepDiscussion, contextScopes)) {
       return freezeCopy({
         allowed: false,
         permission: requirements.deepDiscussion,
@@ -394,6 +649,7 @@ export const createPermissionPolicy = ({
 
   return Object.freeze({
     can,
+    createContextScopes,
     evaluate,
     permissionsFor
   });

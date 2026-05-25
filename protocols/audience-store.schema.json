@@ -1,0 +1,115 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://iroharness.dev/protocols/audience-store.schema.json",
+  "title": "IroHarness Audience Store",
+  "type": "object",
+  "required": ["users", "userIdentities", "permissionOverrides", "streamSessions"],
+  "properties": {
+    "users": {
+      "type": "array",
+      "items": {
+        "$ref": "./user.schema.json"
+      }
+    },
+    "userIdentities": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "userId", "platform", "platformUserId"],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "userId": {
+            "type": "string"
+          },
+          "platform": {
+            "type": "string"
+          },
+          "platformUserId": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": ["string", "null"]
+          },
+          "metadata": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
+        "additionalProperties": true
+      }
+    },
+    "permissionOverrides": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "userId", "permission", "effect", "scope"],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "userId": {
+            "type": "string"
+          },
+          "permission": {
+            "type": "string"
+          },
+          "effect": {
+            "type": "string",
+            "enum": ["allow", "deny"]
+          },
+          "scope": {
+            "type": "string"
+          },
+          "reason": {
+            "type": ["string", "null"]
+          },
+          "expiresAt": {
+            "type": ["string", "null"],
+            "format": "date-time"
+          },
+          "metadata": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
+        "additionalProperties": true
+      }
+    },
+    "streamSessions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "platform", "platformChannelId", "status"],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "platform": {
+            "type": "string"
+          },
+          "platformChannelId": {
+            "type": "string"
+          },
+          "title": {
+            "type": ["string", "null"]
+          },
+          "hostUserId": {
+            "type": ["string", "null"]
+          },
+          "status": {
+            "type": "string",
+            "enum": ["live", "ended", "paused"]
+          },
+          "metadata": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
+        "additionalProperties": true
+      }
+    }
+  },
+  "additionalProperties": true
+}

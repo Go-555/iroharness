@@ -63,6 +63,7 @@ There are no runtime dependencies today.
 
 ```bash
 npm run example
+npm run example:audience
 npm run example:bodies
 npm run example:brains
 npm run example:pjos
@@ -199,6 +200,19 @@ GET  /platforms
 
 See [docs/platform-adapters.md](./docs/platform-adapters.md).
 
+## Audience Registry
+
+YouTube, Discord, Slack, browser, M5Stack, and Even G2 identities can all point
+to the same durable user. Roles and permission overrides decide what the person
+can do without changing the character's personality.
+
+```bash
+npm run example:audience
+```
+
+See [docs/audience-data-model.md](./docs/audience-data-model.md) and
+[docs/audience-and-permissions.md](./docs/audience-and-permissions.md).
+
 ## Browser Avatar Demo
 
 Run:
@@ -326,18 +340,21 @@ src/
   index.js              core macro harness, router, PJOS, adapters
   adapters/             built-in adapter helpers
 protocols/
+  audience-store.schema.json
   character-state.schema.json
   user.schema.json
   adapter-contracts.md
 docs/
   architecture.md
   audience-and-permissions.md
+  audience-data-model.md
   brains.md
   codex.md
   platform-adapters.md
   obs.md
   protocols.md
 examples/
+  audience-registry.mjs
   basic.mjs
   body-mappers.mjs
   brain-switching.mjs

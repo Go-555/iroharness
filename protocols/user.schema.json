@@ -37,6 +37,30 @@
     "metadata": {
       "type": "object",
       "additionalProperties": true
+    },
+    "permissionOverrides": {
+      "type": "array",
+      "description": "Resolved permission override rows for this user when returned from a registry snapshot.",
+      "items": {
+        "type": "object",
+        "required": ["userId", "permission", "effect", "scope"],
+        "properties": {
+          "userId": {
+            "type": "string"
+          },
+          "permission": {
+            "type": "string"
+          },
+          "effect": {
+            "type": "string",
+            "enum": ["allow", "deny"]
+          },
+          "scope": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": true
+      }
     }
   },
   "additionalProperties": true

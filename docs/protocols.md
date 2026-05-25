@@ -54,6 +54,26 @@ The macro harness resolves the actor through the user registry before routing.
 That means permissions and relationship can change while the character identity
 remains stable.
 
+## Audience Store
+
+The registry persists audience identity as four collections:
+
+```json
+{
+  "users": [],
+  "userIdentities": [],
+  "permissionOverrides": [],
+  "streamSessions": []
+}
+```
+
+Use `userIdentities` to link YouTube, Discord, Slack, browser, M5Stack, Even G2,
+and future device identities to one person. Use `permissionOverrides` for narrow
+or temporary powers such as stream operation. Use `streamSessions` to keep live
+chat state separate from the character identity.
+
+See `protocols/audience-store.schema.json`.
+
 ## Platform Message Endpoint
 
 The dev server exposes platform-normalized webhook endpoints:

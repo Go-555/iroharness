@@ -21,6 +21,9 @@ micro harnesses.
 - [x] browser avatar demo
 - [x] streaming event endpoint
 - [x] audience user registry
+- [x] normalized user identity registry
+- [x] permission overrides
+- [x] stream session registry
 - [x] role-based permission policy
 - [x] OBS browser overlay mode
 - [x] OBS WebSocket control adapter
@@ -42,6 +45,7 @@ micro harnesses.
 - [x] YouTube live chat normalization adapter
 - [x] YouTube Live Chat API polling runtime
 - [x] OBS control/websocket adapter
+- [x] audience registry demo
 
 ## Milestone 2: Harness Interop
 

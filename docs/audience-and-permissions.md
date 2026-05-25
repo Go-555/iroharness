@@ -12,7 +12,7 @@ slack:U123
 browser:browser-guest
 ```
 
-Those identities can point to the same user record.
+Those identities point to the same user record through the audience registry.
 
 ```json
 {
@@ -27,6 +27,18 @@ Those identities can point to the same user record.
   "relationship": "developer"
 }
 ```
+
+Internally this is normalized as:
+
+```text
+users
+userIdentities
+permissionOverrides
+streamSessions
+```
+
+See [audience-data-model.md](./audience-data-model.md) for the table shape and
+the persisted JSON contract.
 
 ## Default Roles
 
@@ -83,3 +95,25 @@ A Discord adapter should pass the platform identity into `/turn`:
 
 The macro harness will resolve the actor, evaluate permissions, then either
 respond as the character or deny privileged actions without changing character.
+
+## Temporary Stream Operators
+
+Permission overrides can grant a narrow operational power without changing the
+person's relationship to the character:
+
+```js
+registry.setPermissionOverride({
+  userId: "fan_operator",
+  permission: "delegate_work",
+  effect: "allow",
+  scope: "stream:youtube",
+  reason: "temporary stream operator"
+});
+```
+
+The user can help during a stream, but still remains a fan. This preserves the
+character relationship model while supporting real operations.
+
+Scoped overrides apply only to matching input contexts. A `stream:youtube`
+override affects YouTube stream turns but does not change Discord or Slack
+developer conversations.
