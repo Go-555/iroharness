@@ -46,6 +46,37 @@ const turn = discord.normalize({
 });
 ```
 
+For a real Discord Gateway bot runtime, use `createDiscordBotRuntime`:
+
+```js
+import {
+  createDiscordBotRuntime,
+  createDiscordMessageAdapter
+} from "iroharness/adapters";
+
+const runtime = createDiscordBotRuntime({
+  token: process.env.DISCORD_BOT_TOKEN,
+  harness,
+  adapter: createDiscordMessageAdapter({
+    mentionOnly: true,
+    botUserId: process.env.DISCORD_BOT_USER_ID
+  })
+});
+
+runtime.start();
+```
+
+Or run the example:
+
+```bash
+DISCORD_BOT_TOKEN=... DISCORD_BOT_USER_ID=... npm run example:discord
+```
+
+The runtime uses Discord Gateway messages, turns `MESSAGE_CREATE` into an
+IroHarness turn, and replies through Discord's Create Message REST endpoint.
+In production, enable the bot intents needed for message events and message
+content.
+
 The built-in dev server accepts normalized Discord-like payloads:
 
 ```bash

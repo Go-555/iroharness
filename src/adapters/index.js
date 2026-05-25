@@ -120,6 +120,8 @@ const buildTurn = ({ source, text, actor, metadata = {}, raw }) =>
 const createObsRequestId = () =>
   `obs_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 
+const truncateDiscordMessage = (value) => String(value || "").slice(0, 2000);
+
 const createObsAuthentication = ({ password, salt, challenge }) => {
   const secret = createHash("sha256")
     .update(`${password}${salt}`)
@@ -212,6 +214,211 @@ export const createPlatformAdapterRegistry = (adapters = []) => {
     },
     platforms() {
       return Object.freeze([...byPlatform.keys()]);
+    }
+  });
+};
+
+export const createDiscordBotRuntime = ({
+  token,
+  harness,
+  WebSocketImpl = globalThis.WebSocket,
+  fetchImpl = globalThis.fetch,
+  gatewayUrl = "wss://gateway.discord.gg/?v=10&encoding=json",
+  apiBaseUrl = "https://discord.com/api/v10",
+  intents = 33280,
+  adapter = createDiscordMessageAdapter(),
+  respond = true,
+  responseFormatter = ({ result }) => result.text || result.output?.summary || null,
+  onReady = () => {},
+  onResult = () => {},
+  onError = () => {}
+}) => {
+  if (!token) {
+    throw new Error("createDiscordBotRuntime requires token");
+  }
+  if (!harness || typeof harness.receive !== "function") {
+    throw new Error("createDiscordBotRuntime requires harness.receive");
+  }
+  if (typeof WebSocketImpl !== "function") {
+    throw new Error("createDiscordBotRuntime requires WebSocketImpl");
+  }
+  if (typeof fetchImpl !== "function") {
+    throw new Error("createDiscordBotRuntime requires fetchImpl");
+  }
+
+  let socket = null;
+  let sequence = null;
+  let heartbeatTimer = null;
+  let sessionId = null;
+  let botUserId = null;
+  let active = false;
+
+  const sendGateway = (payload) => {
+    if (!socket || socket.readyState !== 1) {
+      throw new Error("Discord Gateway is not open");
+    }
+    socket.send(JSON.stringify(payload));
+  };
+
+  const sendHeartbeat = () => {
+    sendGateway({
+      op: 1,
+      d: sequence
+    });
+  };
+
+  const identify = () => {
+    sendGateway({
+      op: 2,
+      d: {
+        token,
+        intents,
+        properties: {
+          os: "iroharness",
+          browser: "iroharness",
+          device: "iroharness"
+        }
+      }
+    });
+  };
+
+  const createMessage = async ({ channelId, content, messageReference = null }) => {
+    const body = {
+      content: truncateDiscordMessage(content)
+    };
+    if (messageReference) {
+      body.message_reference = messageReference;
+    }
+    const response = await fetchImpl(`${apiBaseUrl}/channels/${channelId}/messages`, {
+      method: "POST",
+      headers: {
+        authorization: `Bot ${token}`,
+        "content-type": "application/json"
+      },
+      body: JSON.stringify(body)
+    });
+    const responseText = await response.text();
+    if (!response.ok) {
+      throw new Error(`Discord Create Message ${response.status}: ${responseText}`);
+    }
+    return responseText.trim() ? JSON.parse(responseText) : {};
+  };
+
+  const handleDispatch = async (message) => {
+    if (message.t === "READY") {
+      sessionId = message.d?.session_id || null;
+      botUserId = message.d?.user?.id || null;
+      onReady(Object.freeze({ sessionId, botUserId, raw: message.d }));
+      return;
+    }
+    if (message.t !== "MESSAGE_CREATE") {
+      return;
+    }
+    const author = message.d?.author || {};
+    if (botUserId && String(author.id) === String(botUserId)) {
+      return;
+    }
+    const turn = adapter.normalize(message.d);
+    if (!turn || !turn.text) {
+      return;
+    }
+    const result = await harness.receive(turn);
+    let reply = null;
+    if (respond) {
+      reply = responseFormatter({ turn, result });
+      if (reply) {
+        await createMessage({
+          channelId: message.d.channel_id,
+          content: reply,
+          messageReference: {
+            message_id: message.d.id,
+            channel_id: message.d.channel_id,
+            guild_id: message.d.guild_id,
+            fail_if_not_exists: false
+          }
+        });
+      }
+    }
+    onResult(Object.freeze({ turn, result, reply }));
+  };
+
+  const handleMessage = async (raw) => {
+    const text = typeof raw === "string" ? raw : raw?.data || raw?.toString("utf8");
+    const message = JSON.parse(text);
+    if (typeof message.s === "number") {
+      sequence = message.s;
+    }
+    if (message.op === 10) {
+      heartbeatTimer = setInterval(sendHeartbeat, message.d.heartbeat_interval);
+      identify();
+      return;
+    }
+    if (message.op === 1) {
+      sendHeartbeat();
+      return;
+    }
+    if (message.op === 0) {
+      await handleDispatch(message);
+    }
+  };
+
+  const start = () => {
+    if (active) {
+      return;
+    }
+    active = true;
+    socket = new WebSocketImpl(gatewayUrl);
+    socket.addEventListener?.("message", (event) => {
+      handleMessage(event).catch(onError);
+    });
+    socket.addEventListener?.("error", () => {
+      onError(new Error("Discord Gateway connection error"));
+    });
+    socket.addEventListener?.("close", () => {
+      active = false;
+      if (heartbeatTimer) {
+        clearInterval(heartbeatTimer);
+        heartbeatTimer = null;
+      }
+    });
+    socket.onmessage = (event) => {
+      handleMessage(event).catch(onError);
+    };
+    socket.onerror = () => {
+      onError(new Error("Discord Gateway connection error"));
+    };
+    socket.onclose = () => {
+      active = false;
+      if (heartbeatTimer) {
+        clearInterval(heartbeatTimer);
+        heartbeatTimer = null;
+      }
+    };
+  };
+
+  const stop = () => {
+    active = false;
+    if (heartbeatTimer) {
+      clearInterval(heartbeatTimer);
+      heartbeatTimer = null;
+    }
+    if (socket) {
+      socket.close?.();
+    }
+    socket = null;
+  };
+
+  return Object.freeze({
+    start,
+    stop,
+    createMessage,
+    state() {
+      return Object.freeze({
+        active,
+        sessionId,
+        botUserId,
+        sequence
+      });
     }
   });
 };

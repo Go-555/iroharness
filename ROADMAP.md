@@ -25,6 +25,7 @@ micro harnesses.
 - [x] Discord message normalization adapter
 - [x] YouTube live chat normalization adapter
 - [x] platform webhook endpoints
+- [x] Discord bot runtime
 - [x] YouTube Live Chat polling runtime
 
 ## Milestone 1: Useful Local Demo
@@ -57,7 +58,7 @@ micro harnesses.
 - [ ] Even G2 display adapter
 - [ ] VS Code companion panel
 - [ ] Slack/Discord adapters
-- [ ] Discord bot runtime
+- [x] Discord bot runtime
 
 ## Milestone 4: Realtime Core
 

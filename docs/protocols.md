@@ -67,6 +67,16 @@ GET  /platforms
 Platform adapters convert each payload into the same IroHarness turn shape. From
 there, user registry lookup and permission policy are identical.
 
+## Discord Gateway Runtime
+
+`createDiscordBotRuntime` connects to Discord Gateway, identifies with a bot
+token, maintains heartbeat, listens for `MESSAGE_CREATE`, normalizes the message
+through the Discord adapter, forwards the turn to `harness.receive`, then replies
+through Discord's Create Message REST endpoint when a response is available.
+
+The runtime owns Discord transport only. The macro harness still owns
+personality, permissions, PJOS, and micro-harness delegation.
+
 ## YouTube Polling Runtime
 
 `createYouTubeLiveChatPollingRuntime` calls YouTube Data API

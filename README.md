@@ -65,6 +65,7 @@ There are no runtime dependencies today.
 npm run example
 npm run example:bodies
 npm run example:pjos
+npm run example:discord
 npm run example:youtube
 npm run example:obs
 npm run demo:browser
@@ -156,6 +157,12 @@ For real YouTube live chat polling:
 
 ```bash
 YOUTUBE_API_KEY=... YOUTUBE_LIVE_CHAT_ID=... npm run example:youtube
+```
+
+For a Discord Gateway bot:
+
+```bash
+DISCORD_BOT_TOKEN=... DISCORD_BOT_USER_ID=... npm run example:discord
 ```
 
 For OBS Browser Source control:
@@ -314,6 +321,7 @@ examples/
   basic.mjs
   body-mappers.mjs
   file-pjos.mjs
+  discord-bot.mjs
   youtube-live-poller.mjs
   obs-overlay-control.mjs
   browser-server.mjs

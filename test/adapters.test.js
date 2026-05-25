@@ -5,6 +5,7 @@ import { join } from "node:path";
 import test from "node:test";
 
 import {
+  createDiscordBotRuntime,
   createDiscordMessageAdapter,
   createEventStreamDevice,
   createHttpMicroHarness,
@@ -59,6 +60,60 @@ const createFakeObsWebSocket = ({ sent }) => {
                 requestId: message.d.requestId,
                 requestStatus: { result: true, code: 100 },
                 responseData: { ok: true }
+              }
+            }),
+          0
+        );
+      }
+    }
+
+    close() {
+      this.readyState = 3;
+    }
+  };
+};
+
+const createFakeDiscordGatewayWebSocket = ({ sent }) => {
+  return class FakeDiscordGatewayWebSocket {
+    static instances = [];
+
+    constructor() {
+      this.readyState = 1;
+      this.listeners = new Map();
+      FakeDiscordGatewayWebSocket.instances.push(this);
+      setTimeout(() => {
+        this.emit({
+          op: 10,
+          d: {
+            heartbeat_interval: 60_000
+          }
+        });
+      }, 0);
+    }
+
+    addEventListener(type, callback) {
+      const callbacks = this.listeners.get(type) || [];
+      this.listeners.set(type, [...callbacks, callback]);
+    }
+
+    emit(message) {
+      const event = { data: JSON.stringify(message) };
+      (this.listeners.get("message") || []).forEach((callback) => callback(event));
+    }
+
+    send(raw) {
+      const message = JSON.parse(raw);
+      sent.push(message);
+      if (message.op === 2) {
+        setTimeout(
+          () =>
+            this.emit({
+              op: 0,
+              t: "READY",
+              s: 1,
+              d: {
+                session_id: "session_1",
+                user: { id: "bot-user" }
               }
             }),
           0
@@ -354,4 +409,107 @@ test("OBS WebSocket adapter sends browser source input settings", async () => {
     "http://127.0.0.1:4178/?view=overlay"
   );
   adapter.close();
+});
+
+test("Discord bot runtime identifies, receives messages, and replies", async () => {
+  const sentGateway = [];
+  const restCalls = [];
+  const receivedTurns = [];
+  const Gateway = createFakeDiscordGatewayWebSocket({ sent: sentGateway });
+  const harness = {
+    async receive(turn) {
+      receivedTurns.push(turn);
+      return { kind: "response", text: `reply to ${turn.actor.displayName}` };
+    }
+  };
+  const fetchImpl = async (url, options) => {
+    restCalls.push({ url, options });
+    return {
+      ok: true,
+      status: 200,
+      async text() {
+        return JSON.stringify({ id: "reply_1" });
+      }
+    };
+  };
+
+  const runtime = createDiscordBotRuntime({
+    token: "discord-token",
+    harness,
+    WebSocketImpl: Gateway,
+    fetchImpl
+  });
+  runtime.start();
+  await new Promise((resolve) => setTimeout(resolve, 10));
+
+  Gateway.instances[0].emit({
+    op: 0,
+    t: "MESSAGE_CREATE",
+    s: 2,
+    d: {
+      id: "message_1",
+      channel_id: "channel_1",
+      guild_id: "guild_1",
+      content: "こんにちは",
+      author: {
+        id: "discord-user-1",
+        username: "Fan One"
+      }
+    }
+  });
+  await new Promise((resolve) => setTimeout(resolve, 10));
+
+  assert.equal(sentGateway[0].op, 2);
+  assert.equal(sentGateway[0].d.token, "discord-token");
+  assert.equal(runtime.state().botUserId, "bot-user");
+  assert.equal(receivedTurns.length, 1);
+  assert.equal(receivedTurns[0].source, "discord");
+  assert.equal(restCalls.length, 1);
+  assert.equal(restCalls[0].url, "https://discord.com/api/v10/channels/channel_1/messages");
+  assert.equal(JSON.parse(restCalls[0].options.body).content, "reply to Fan One");
+  runtime.stop();
+});
+
+test("Discord bot runtime ignores messages from itself", async () => {
+  const sentGateway = [];
+  const receivedTurns = [];
+  const Gateway = createFakeDiscordGatewayWebSocket({ sent: sentGateway });
+  const runtime = createDiscordBotRuntime({
+    token: "discord-token",
+    harness: {
+      async receive(turn) {
+        receivedTurns.push(turn);
+        return { kind: "response", text: "ok" };
+      }
+    },
+    WebSocketImpl: Gateway,
+    fetchImpl: async () => ({
+      ok: true,
+      status: 200,
+      async text() {
+        return "{}";
+      }
+    })
+  });
+  runtime.start();
+  await new Promise((resolve) => setTimeout(resolve, 10));
+
+  Gateway.instances[0].emit({
+    op: 0,
+    t: "MESSAGE_CREATE",
+    s: 2,
+    d: {
+      id: "message_1",
+      channel_id: "channel_1",
+      content: "self message",
+      author: {
+        id: "bot-user",
+        username: "Iroha"
+      }
+    }
+  });
+  await new Promise((resolve) => setTimeout(resolve, 10));
+
+  assert.equal(receivedTurns.length, 0);
+  runtime.stop();
 });
