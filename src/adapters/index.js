@@ -1638,3 +1638,120 @@ export const createEvenG2DisplayBridge = ({ id = "even-g2-display" } = {}) => {
     }
   });
 };
+
+const createExpressionMapper = ({
+  id,
+  expressions = {},
+  motions = {},
+  fallbackExpression = "neutral",
+  fallbackMotion = "idle"
+}) =>
+  Object.freeze({
+    id,
+    mapState(state) {
+      const expression =
+        expressions[state.emotion] || expressions[state.mode] || fallbackExpression;
+      const motion = motions[state.motion] || motions[state.mode] || fallbackMotion;
+      return Object.freeze({
+        expression,
+        motion,
+        speaking: state.mode === "speaking",
+        mode: state.mode,
+        emotion: state.emotion || "neutral"
+      });
+    }
+  });
+
+export const createLive2DBodyBridge = ({
+  id = "live2d",
+  expressions = {
+    attentive: "smile",
+    focused: "serious",
+    careful: "serious",
+    relieved: "smile",
+    error: "troubled"
+  },
+  motions = {
+    idle: "Idle",
+    listening: "Listen",
+    thinking: "Think",
+    speaking: "Talk",
+    working: "Work",
+    error: "Error"
+  }
+} = {}) => {
+  const mapper = createExpressionMapper({
+    id: "live2d-expression-mapper",
+    expressions,
+    motions,
+    fallbackExpression: "neutral",
+    fallbackMotion: "Idle"
+  });
+  return createMappedBodyBridgeDevice({
+    id,
+    kind: "live2d",
+    mapper,
+    capabilities: ["state", "speech", "task", "expression", "motion", "lip-sync", "sse"],
+    mapPayload({ state, mapped, speechText }) {
+      return Object.freeze({
+        expression: mapped.expression,
+        motion: mapped.motion,
+        lipSync: {
+          active: Boolean(mapped.speaking),
+          text: speechText || ""
+        },
+        parameters: {
+          mouthOpenY: mapped.speaking ? 1 : 0,
+          eyeOpenLeft: state?.mode === "error" ? 0 : 1,
+          eyeOpenRight: state?.mode === "error" ? 0 : 1
+        },
+        mode: mapped.mode,
+        emotion: mapped.emotion
+      });
+    }
+  });
+};
+
+export const createVrmBodyBridge = ({
+  id = "vrm",
+  expressions = {
+    attentive: "happy",
+    focused: "serious",
+    careful: "serious",
+    relieved: "relaxed",
+    error: "sad"
+  },
+  motions = {
+    idle: "idle",
+    listening: "listen",
+    thinking: "think",
+    speaking: "talk",
+    working: "work",
+    error: "error"
+  }
+} = {}) => {
+  const mapper = createExpressionMapper({
+    id: "vrm-expression-mapper",
+    expressions,
+    motions,
+    fallbackExpression: "neutral",
+    fallbackMotion: "idle"
+  });
+  return createMappedBodyBridgeDevice({
+    id,
+    kind: "vrm",
+    mapper,
+    capabilities: ["state", "speech", "task", "expression", "animation", "gaze", "sse"],
+    mapPayload({ state, mapped, speechText }) {
+      return Object.freeze({
+        expression: mapped.expression,
+        animation: mapped.motion,
+        gaze: state?.gaze || "user",
+        speaking: Boolean(mapped.speaking),
+        caption: speechText || "",
+        mode: mapped.mode,
+        emotion: mapped.emotion
+      });
+    }
+  });
+};

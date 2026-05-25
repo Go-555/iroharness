@@ -62,8 +62,8 @@ micro harnesses.
 
 ## Milestone 3: Multi-Body Character
 
-- [ ] Live2D adapter
-- [ ] VRM/3D adapter
+- [x] Live2D adapter
+- [x] VRM/3D adapter
 - [x] M5Stack body adapter
 - [x] Even G2 display adapter
 - [ ] VS Code companion panel

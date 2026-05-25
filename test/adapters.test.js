@@ -15,11 +15,13 @@ import {
   createHttpMicroHarness,
   createIroHarnessDevServerHandler,
   createJsonlProcessMicroHarness,
+  createLive2DBodyBridge,
   createM5StackBodyBridge,
   createMotionPngTuberRendererBridge,
   createObsWebSocketAdapter,
   createOpenClawMicroHarness,
   createPlatformAdapterRegistry,
+  createVrmBodyBridge,
   createYouTubeLiveChatAdapter,
   createYouTubeLiveChatPollingRuntime
 } from "../src/adapters/index.js";
@@ -471,6 +473,48 @@ test("M5Stack and Even G2 bridges map the same state into device payloads", () =
   assert.equal(m5.snapshot().payload.face, ">_>");
   assert.equal(m5.snapshot().payload.text, "作業中だよ");
   assert.equal(even.snapshot().payload.text, "作業中だよ");
+});
+
+test("Live2D bridge maps character state to expression, motion, and lip sync", () => {
+  const body = createLive2DBodyBridge();
+  body.emit({
+    type: "state",
+    state: {
+      characterId: "iroha",
+      mode: "speaking",
+      emotion: "focused",
+      speechText: "説明するね",
+      mouth: "talking"
+    }
+  });
+
+  const payload = body.snapshot().payload;
+  assert.equal(body.snapshot().kind, "live2d");
+  assert.equal(payload.expression, "serious");
+  assert.equal(payload.motion, "Talk");
+  assert.equal(payload.lipSync.active, true);
+  assert.equal(payload.parameters.mouthOpenY, 1);
+});
+
+test("VRM bridge maps character state to expression, animation, and gaze", () => {
+  const body = createVrmBodyBridge();
+  body.emit({
+    type: "state",
+    state: {
+      characterId: "iroha",
+      mode: "thinking",
+      emotion: "attentive",
+      gaze: "left",
+      speechText: null
+    }
+  });
+
+  const payload = body.snapshot().payload;
+  assert.equal(body.snapshot().kind, "vrm");
+  assert.equal(payload.expression, "happy");
+  assert.equal(payload.animation, "think");
+  assert.equal(payload.gaze, "left");
+  assert.equal(payload.speaking, false);
 });
 
 test("dev server exposes body bridge snapshots", async () => {

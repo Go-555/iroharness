@@ -12,15 +12,19 @@ import {
   createEventStreamDevice,
   createEvenG2DisplayBridge,
   createIroHarnessDevServer,
+  createLive2DBodyBridge,
   createM5StackBodyBridge,
-  createMotionPngTuberRendererBridge
+  createMotionPngTuberRendererBridge,
+  createVrmBodyBridge
 } from "../src/adapters/index.js";
 
 const eventStream = createEventStreamDevice("browser-events");
 const bodyDevices = [
   createMotionPngTuberRendererBridge(),
   createM5StackBodyBridge(),
-  createEvenG2DisplayBridge()
+  createEvenG2DisplayBridge(),
+  createLive2DBodyBridge(),
+  createVrmBodyBridge()
 ];
 const projectOs = createFileProjectOs({
   path: join(process.cwd(), ".iroharness", "browser-pjos.json")

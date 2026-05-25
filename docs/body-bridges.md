@@ -93,6 +93,62 @@ The payload shape is:
 }
 ```
 
+## Live2D
+
+```js
+import { createLive2DBodyBridge } from "iroharness/adapters";
+
+const live2d = createLive2DBodyBridge();
+```
+
+The payload shape is:
+
+```json
+{
+  "expression": "serious",
+  "motion": "Talk",
+  "lipSync": {
+    "active": true,
+    "text": "説明するね"
+  },
+  "parameters": {
+    "mouthOpenY": 1,
+    "eyeOpenLeft": 1,
+    "eyeOpenRight": 1
+  },
+  "mode": "speaking",
+  "emotion": "focused"
+}
+```
+
+Live2D runtimes can map these names to model-specific expression and motion
+files. IroHarness does not need to know the model file layout.
+
+## VRM / 3D
+
+```js
+import { createVrmBodyBridge } from "iroharness/adapters";
+
+const vrm = createVrmBodyBridge();
+```
+
+The payload shape is:
+
+```json
+{
+  "expression": "happy",
+  "animation": "think",
+  "gaze": "left",
+  "speaking": false,
+  "caption": "",
+  "mode": "thinking",
+  "emotion": "attentive"
+}
+```
+
+Three.js, VRM, Unity, or WebXR renderers can subscribe to this payload and map it
+to their local animation clips and blendshape names.
+
 ## Dev Server Endpoints
 
 When body devices are passed to `createIroHarnessDevServer`, the server exposes:

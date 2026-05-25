@@ -266,7 +266,7 @@ Then open the printed URL. The demo exposes:
 - `GET /state` for current character state
 - `GET /pjos` for Project OS state
 - `GET /bodies`, `/body/:id`, and `/body/:id/events` for MotionPNGTuber,
-  M5Stack, and Even G2 bridge state
+  M5Stack, Even G2, Live2D, and VRM bridge state
 - `POST /platform/discord/message` and `/platform/youtube/message` for chat
   platform testing
 

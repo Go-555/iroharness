@@ -4,10 +4,12 @@ import {
 import {
   createEvenG2DisplayBridge,
   createEvenG2DisplayMapper,
+  createLive2DBodyBridge,
   createM5StackBodyBridge,
   createM5StackFaceMapper,
   createMotionPngTuberRendererBridge,
-  createMotionPngTuberMapper
+  createMotionPngTuberMapper,
+  createVrmBodyBridge
 } from "../src/adapters/index.js";
 
 const speaking = createCharacterState({
@@ -32,7 +34,9 @@ for (const mapper of mappers) {
 const bodies = [
   createMotionPngTuberRendererBridge(),
   createM5StackBodyBridge(),
-  createEvenG2DisplayBridge()
+  createEvenG2DisplayBridge(),
+  createLive2DBodyBridge(),
+  createVrmBodyBridge()
 ];
 
 for (const body of bodies) {
