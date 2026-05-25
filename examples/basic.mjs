@@ -3,11 +3,19 @@ import {
   createEchoBrain,
   createHeuristicRouter,
   createInMemoryProjectOs,
+  createInMemoryUserRegistry,
   createIroHarness,
   createStubMicroHarness
 } from "../src/index.js";
 
 const projectOs = createInMemoryProjectOs();
+const userRegistry = createInMemoryUserRegistry();
+userRegistry.registerUser({
+  id: "local-developer",
+  displayName: "Local Developer",
+  role: "developer",
+  identities: { web: "local-dev" }
+});
 
 const iroha = createIroHarness({
   character: {
@@ -17,6 +25,7 @@ const iroha = createIroHarness({
     voiceStyle: "short, natural, responsive"
   },
   projectOs,
+  userRegistry,
   router: createHeuristicRouter(),
   brains: {
     voice: createEchoBrain("voice-fast"),
@@ -29,13 +38,23 @@ const iroha = createIroHarness({
 await iroha.receive({
   source: "web",
   modality: "voice",
-  text: "こんにちは"
+  text: "こんにちは",
+  actor: {
+    platform: "web",
+    platformUserId: "local-dev",
+    displayName: "Local Developer"
+  }
 });
 
 await iroha.receive({
   source: "web",
   modality: "text",
-  text: "CodexでREADMEの実装方針をレビューして"
+  text: "CodexでREADMEの実装方針をレビューして",
+  actor: {
+    platform: "web",
+    platformUserId: "local-dev",
+    displayName: "Local Developer"
+  }
 });
 
 console.log(JSON.stringify(iroha.projectOs(), null, 2));

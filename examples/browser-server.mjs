@@ -3,6 +3,7 @@ import { join } from "node:path";
 import {
   createEchoBrain,
   createFileProjectOs,
+  createFileUserRegistry,
   createHeuristicRouter,
   createIroHarness,
   createStubMicroHarness
@@ -16,6 +17,21 @@ const eventStream = createEventStreamDevice("browser-events");
 const projectOs = createFileProjectOs({
   path: join(process.cwd(), ".iroharness", "browser-pjos.json")
 });
+const userRegistry = createFileUserRegistry({
+  path: join(process.cwd(), ".iroharness", "users.json")
+});
+
+userRegistry.registerUser({
+  id: "owner-local",
+  displayName: "Local Developer",
+  role: "developer",
+  identities: {
+    browser: "browser-guest",
+    discord: "discord-developer",
+    youtube: "youtube-developer"
+  },
+  relationship: "developer"
+});
 
 const harness = createIroHarness({
   character: {
@@ -25,6 +41,7 @@ const harness = createIroHarness({
     voiceStyle: "short, natural, responsive"
   },
   projectOs,
+  userRegistry,
   router: createHeuristicRouter(),
   brains: {
     voice: createEchoBrain("voice-fast"),

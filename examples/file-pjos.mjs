@@ -3,6 +3,7 @@ import { join } from "node:path";
 import {
   createEchoBrain,
   createFileProjectOs,
+  createFileUserRegistry,
   createHeuristicRouter,
   createIroHarness,
   createProjectOsMarkdown,
@@ -11,6 +12,16 @@ import {
 
 const projectOs = createFileProjectOs({
   path: join(process.cwd(), ".iroharness", "pjos.json")
+});
+const userRegistry = createFileUserRegistry({
+  path: join(process.cwd(), ".iroharness", "users.json")
+});
+
+userRegistry.registerUser({
+  id: "cli-developer",
+  displayName: "CLI Developer",
+  role: "developer",
+  identities: { cli: "local-dev" }
 });
 
 const iroha = createIroHarness({
@@ -21,6 +32,7 @@ const iroha = createIroHarness({
     voiceStyle: "short"
   },
   projectOs,
+  userRegistry,
   router: createHeuristicRouter(),
   brains: {
     voice: createEchoBrain("voice-fast"),
@@ -34,7 +46,12 @@ const iroha = createIroHarness({
 await iroha.receive({
   source: "cli",
   modality: "text",
-  text: "CodexでPJOSの使い方を確認して"
+  text: "CodexでPJOSの使い方を確認して",
+  actor: {
+    platform: "cli",
+    platformUserId: "local-dev",
+    displayName: "CLI Developer"
+  }
 });
 
 console.log(createProjectOsMarkdown(projectOs.snapshot()));

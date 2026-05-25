@@ -32,6 +32,28 @@ A device adapter renders state or sends output to a body.
 }
 ```
 
+## Actor Identity
+
+Incoming messages can include an actor. This lets Discord, YouTube, Slack, and
+browser identities map to the same person.
+
+```json
+{
+  "source": "discord",
+  "modality": "text",
+  "text": "こんにちは",
+  "actor": {
+    "platform": "discord",
+    "platformUserId": "123456",
+    "displayName": "Fan One"
+  }
+}
+```
+
+The macro harness resolves the actor through the user registry before routing.
+That means permissions and relationship can change while the character identity
+remains stable.
+
 ## Event Stream Device
 
 The built-in dev server streams events as Server-Sent Events.

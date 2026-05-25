@@ -150,6 +150,120 @@ const createProjectOsStore = (initialState = {}, persist = () => {}) => {
   });
 };
 
+const createUserRegistryStore = (initialState = {}, persist = () => {}) => {
+  let users = Object.freeze([...(initialState.users || [])]);
+
+  const save = () => persist({ users: [...users] });
+
+  const registerUser = ({
+    id = createId("user"),
+    displayName,
+    role = "fan",
+    identities = {},
+    permissions = [],
+    relationship = "public",
+    metadata = {}
+  }) => {
+    const user = freezeCopy({
+      id,
+      displayName: displayName || id,
+      role,
+      identities: freezeCopy(identities),
+      permissions: Object.freeze([...permissions]),
+      relationship,
+      metadata: freezeCopy(metadata),
+      createdAt: nowIso(),
+      updatedAt: nowIso()
+    });
+    users = Object.freeze([...users.filter((candidate) => candidate.id !== id), user]);
+    save();
+    return user;
+  };
+
+  const updateUser = (userId, patch) => {
+    let nextUser = null;
+    users = Object.freeze(
+      users.map((user) => {
+        if (user.id !== userId) {
+          return user;
+        }
+        nextUser = freezeCopy({
+          ...user,
+          ...patch,
+          identities: freezeCopy(patch.identities || user.identities),
+          permissions: Object.freeze([...(patch.permissions || user.permissions)]),
+          metadata: freezeCopy(patch.metadata || user.metadata),
+          updatedAt: nowIso()
+        });
+        return nextUser;
+      })
+    );
+    if (!nextUser) {
+      throw new Error(`User not found: ${userId}`);
+    }
+    save();
+    return nextUser;
+  };
+
+  const findByIdentity = ({ platform, platformUserId }) => {
+    if (!platform || !platformUserId) {
+      return null;
+    }
+    return (
+      users.find((user) => String(user.identities[platform]) === String(platformUserId)) || null
+    );
+  };
+
+  const resolveActor = (actor = {}) => {
+    const user = findByIdentity(actor);
+    if (user) {
+      return freezeCopy({
+        user,
+        identity: freezeCopy({
+          platform: actor.platform,
+          platformUserId: actor.platformUserId,
+          displayName: actor.displayName || user.displayName
+        }),
+        known: true
+      });
+    }
+    return freezeCopy({
+      user: freezeCopy({
+        id: "anonymous",
+        displayName: actor.displayName || "Anonymous",
+        role: "anonymous",
+        identities: freezeCopy(
+          actor.platform && actor.platformUserId
+            ? { [actor.platform]: actor.platformUserId }
+            : {}
+        ),
+        permissions: Object.freeze(["chat_public"]),
+        relationship: "public",
+        metadata: freezeCopy({})
+      }),
+      identity: freezeCopy({
+        platform: actor.platform || "unknown",
+        platformUserId: actor.platformUserId || "unknown",
+        displayName: actor.displayName || "Anonymous"
+      }),
+      known: false
+    });
+  };
+
+  const snapshot = () =>
+    freezeCopy({
+      users: Object.freeze([...users])
+    });
+
+  return Object.freeze({
+    registerUser,
+    updateUser,
+    findByIdentity,
+    resolveActor,
+    snapshot
+  });
+};
+
 export const createCharacterState = ({
   characterId,
   mode = MODES.idle,
@@ -197,6 +311,92 @@ export const createFileProjectOs = ({ path }) => {
   };
 
   return createProjectOsStore(load(), persist);
+};
+
+export const createInMemoryUserRegistry = () => createUserRegistryStore();
+
+export const createFileUserRegistry = ({ path }) => {
+  if (!path) {
+    throw new Error("createFileUserRegistry requires path");
+  }
+  const load = () => {
+    if (!existsSync(path)) {
+      return {};
+    }
+    const raw = readFileSync(path, "utf8");
+    if (!raw.trim()) {
+      return {};
+    }
+    return JSON.parse(raw);
+  };
+  const persist = (snapshot) => {
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, `${JSON.stringify(snapshot, null, 2)}\n`, "utf8");
+  };
+  return createUserRegistryStore(load(), persist);
+};
+
+export const createPermissionPolicy = ({
+  rolePermissions = {},
+  requiredPermissions = {}
+} = {}) => {
+  const defaultRolePermissions = {
+    owner: ["chat_public", "deep_discussion", "delegate_work", "manage_stream", "manage_users"],
+    developer: ["chat_public", "deep_discussion", "delegate_work"],
+    moderator: ["chat_public", "deep_discussion", "manage_stream"],
+    member: ["chat_public", "deep_discussion"],
+    fan: ["chat_public"],
+    anonymous: ["chat_public"]
+  };
+  const permissionsByRole = freezeCopy({
+    ...defaultRolePermissions,
+    ...rolePermissions
+  });
+  const requirements = freezeCopy({
+    work: "delegate_work",
+    deepDiscussion: "deep_discussion",
+    manageStream: "manage_stream",
+    ...requiredPermissions
+  });
+  const permissionsFor = (user) =>
+    Object.freeze([
+      ...(permissionsByRole[user.role] || []),
+      ...(Array.isArray(user.permissions) ? user.permissions : [])
+    ]);
+  const can = (user, permission) => permissionsFor(user).includes(permission);
+  const evaluate = ({ user, route, input }) => {
+    const text = input.text.toLowerCase();
+    const asksDeepDiscussion =
+      text.includes("深い議論") ||
+      text.includes("設計") ||
+      text.includes("architecture") ||
+      text.includes("アーキテクチャ");
+    if (route.kind === "work" && !can(user, requirements.work)) {
+      return freezeCopy({
+        allowed: false,
+        permission: requirements.work,
+        reason: "delegate_work permission is required"
+      });
+    }
+    if (asksDeepDiscussion && !can(user, requirements.deepDiscussion)) {
+      return freezeCopy({
+        allowed: false,
+        permission: requirements.deepDiscussion,
+        reason: "deep_discussion permission is required"
+      });
+    }
+    return freezeCopy({
+      allowed: true,
+      permission: null,
+      reason: "allowed"
+    });
+  };
+
+  return Object.freeze({
+    can,
+    evaluate,
+    permissionsFor
+  });
 };
 
 export const createProjectOsMarkdown = (snapshot) => {
@@ -332,6 +532,8 @@ export const createConsoleDevice = (id = "console") =>
 export const createIroHarness = ({
   character,
   projectOs,
+  userRegistry = createInMemoryUserRegistry(),
+  permissionPolicy = createPermissionPolicy(),
   router = createHeuristicRouter(),
   brains,
   devices = [],
@@ -374,6 +576,7 @@ export const createIroHarness = ({
     if (!input || !input.text || !input.modality || !input.source) {
       throw new Error("input.source, input.modality, and input.text are required");
     }
+    const actor = userRegistry.resolveActor(input.actor || {});
 
     setState({
       mode: MODES.thinking,
@@ -386,17 +589,28 @@ export const createIroHarness = ({
     const route = router.choose({
       input,
       character,
+      actor,
       microHarnesses
     });
 
+    const permission = permissionPolicy.evaluate({
+      user: actor.user,
+      route,
+      input
+    });
+    if (!permission.allowed) {
+      return rejectByPermission(input, route, actor, permission);
+    }
+
     if (route.kind === "work" && route.harnessId) {
-      return runMicroHarness(input, route);
+      return runMicroHarness(input, route, actor);
     }
 
     const brain = route.kind === "voice" ? brains.voice : brains.text;
     const response = await brain.respond({
       character,
       input,
+      actor,
       route,
       state,
       projectOs: projectOs.snapshot()
@@ -427,12 +641,56 @@ export const createIroHarness = ({
     return freezeCopy({
       kind: "response",
       route,
+      actor,
       text: response.text,
       brainId: brain.id
     });
   };
 
-  const runMicroHarness = async (input, route) => {
+  const rejectByPermission = async (input, route, actor, permission) => {
+    const text =
+      actor.user.role === "anonymous"
+        ? "そこは権限が必要だよ。まず本人確認できる場所から話してね。"
+        : "そこは今の権限ではできないよ。必要なら開発者に確認してね。";
+    setState({
+      mode: MODES.speaking,
+      emotion: "careful",
+      speechText: text,
+      mouth: "talking",
+      motion: MODES.speaking,
+      metadata: {
+        permission: permission.permission,
+        actorUserId: actor.user.id
+      }
+    });
+    emit({
+      type: "speech",
+      text,
+      modality: input.modality,
+      brainId: "permission-policy",
+      timestamp: nowIso()
+    });
+    setState({
+      mode: MODES.idle,
+      emotion: "careful",
+      speechText: null,
+      mouth: "closed",
+      motion: MODES.idle,
+      metadata: {
+        permission: permission.permission,
+        actorUserId: actor.user.id
+      }
+    });
+    return freezeCopy({
+      kind: "permission_denied",
+      route,
+      actor,
+      permission,
+      text
+    });
+  };
+
+  const runMicroHarness = async (input, route, actor) => {
     const microHarness = microHarnesses.find((candidate) => candidate.id === route.harnessId);
     if (!microHarness) {
       throw new Error(`Micro harness not found: ${route.harnessId}`);
@@ -446,7 +704,11 @@ export const createIroHarness = ({
       executorHarnessId: microHarness.id,
       metadata: {
         source: input.source,
-        modality: input.modality
+        modality: input.modality,
+        actorUserId: actor.user.id,
+        actorRole: actor.user.role,
+        actorPlatform: actor.identity.platform,
+        actorPlatformUserId: actor.identity.platformUserId
       }
     });
 
@@ -480,6 +742,7 @@ export const createIroHarness = ({
     });
     const output = await microHarness.run(ticket, {
       character,
+      actor,
       input,
       projectOs: projectOs.snapshot()
     });
@@ -520,6 +783,7 @@ export const createIroHarness = ({
     return freezeCopy({
       kind: "delegation",
       route,
+      actor,
       ticket,
       run: completedRun,
       output,
@@ -531,7 +795,8 @@ export const createIroHarness = ({
     character: freezeCopy(character),
     receive,
     state: () => state,
-    projectOs: () => projectOs.snapshot()
+    projectOs: () => projectOs.snapshot(),
+    users: () => userRegistry.snapshot()
   });
 };
 

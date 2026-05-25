@@ -5,6 +5,17 @@ const events = document.querySelector("#events");
 const form = document.querySelector("#turn-form");
 const text = document.querySelector("#text");
 const modality = document.querySelector("#modality");
+const params = new URLSearchParams(window.location.search);
+const overlay = params.get("view") === "overlay" || params.get("obs") === "1";
+const actor = {
+  platform: params.get("platform") || "browser",
+  platformUserId: params.get("user") || "browser-guest",
+  displayName: params.get("name") || "Browser Guest"
+};
+
+if (overlay) {
+  document.body.classList.add("overlay");
+}
 
 const appendEvent = (label, value) => {
   const row = document.createElement("div");
@@ -59,7 +70,8 @@ form.addEventListener("submit", async (event) => {
     body: JSON.stringify({
       text: value,
       modality: modality.value,
-      source: "browser"
+      source: actor.platform,
+      actor
     })
   });
   text.value = "";

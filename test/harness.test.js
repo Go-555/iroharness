@@ -5,6 +5,7 @@ import {
   createEchoBrain,
   createHeuristicRouter,
   createInMemoryProjectOs,
+  createInMemoryUserRegistry,
   createIroHarness,
   createRecorderDevice,
   createStubMicroHarness
@@ -12,6 +13,13 @@ import {
 
 const createHarness = () => {
   const projectOs = createInMemoryProjectOs();
+  const userRegistry = createInMemoryUserRegistry();
+  userRegistry.registerUser({
+    id: "developer",
+    displayName: "Developer",
+    role: "developer",
+    identities: { slack: "UDEV" }
+  });
   const recorder = createRecorderDevice("recorder");
   const harness = createIroHarness({
     character: {
@@ -21,6 +29,7 @@ const createHarness = () => {
       voiceStyle: "short"
     },
     projectOs,
+    userRegistry,
     router: createHeuristicRouter(),
     brains: {
       voice: createEchoBrain("voice-fast"),
@@ -51,7 +60,12 @@ test("work input delegates to a micro harness and records ticket/run state", asy
   const result = await harness.receive({
     source: "slack",
     modality: "text",
-    text: "Codexでこのコードをレビューして"
+    text: "Codexでこのコードをレビューして",
+    actor: {
+      platform: "slack",
+      platformUserId: "UDEV",
+      displayName: "Developer"
+    }
   });
 
   const snapshot = harness.projectOs();

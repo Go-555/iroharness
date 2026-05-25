@@ -20,6 +20,8 @@ Micro Harnesses
 ```text
 Human input
   -> interface adapter
+  -> actor identity resolution
+  -> permission policy
   -> macro harness
   -> router
   -> brain or micro harness
@@ -50,6 +52,22 @@ work         delegates to Codex, Claude Code, OpenClaw, Hermes, or others
 ```
 
 The switch does not define identity. Identity belongs to the character instance.
+
+## Audience And Permissions
+
+IroHarness separates personality from access control.
+
+```text
+same Iroha
+  + public fan on YouTube    -> public chat
+  + member in Discord        -> deeper conversation
+  + developer in Discord     -> deep design discussion + work delegation
+```
+
+The macro harness resolves platform identities through a user registry. A user
+can have `youtube`, `discord`, `slack`, `browser`, and other IDs on the same
+record. Permission checks happen before privileged actions such as micro-harness
+delegation.
 
 ## Body Expression
 

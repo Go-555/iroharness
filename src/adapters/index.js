@@ -164,7 +164,12 @@ export const createIroHarnessDevServer = ({
         const result = await harness.receive({
           source: payload.source || "browser",
           modality: payload.modality || "text",
-          text: payload.text || ""
+          text: payload.text || "",
+          actor: payload.actor || {
+            platform: payload.source || "browser",
+            platformUserId: payload.userId || "browser-guest",
+            displayName: payload.displayName || "Browser Guest"
+          }
         });
         sendJson(response, 200, result);
         return;

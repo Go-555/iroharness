@@ -18,6 +18,9 @@ micro harnesses.
 - [x] JSONL process micro-harness adapter
 - [x] browser avatar demo
 - [x] streaming event endpoint
+- [x] audience user registry
+- [x] role-based permission policy
+- [x] OBS browser overlay mode
 
 ## Milestone 1: Useful Local Demo
 
@@ -27,6 +30,9 @@ micro harnesses.
 - [ ] Codex app-server adapter
 - [x] file-backed PJOS
 - [ ] MotionPNGTuber renderer bridge
+- [ ] Discord adapter
+- [ ] YouTube live chat adapter
+- [ ] OBS control/websocket adapter
 
 ## Milestone 2: Harness Interop
 

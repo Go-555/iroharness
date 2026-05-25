@@ -41,6 +41,9 @@ IroHarness aims at a different center:
 - Project OS keeps goals, specs, tickets, runs, and artifacts as the durable state
 - micro harnesses do specialized work, while the macro harness owns the character
   and the relationship with the user
+- YouTube, Discord, Slack, and browser identities can resolve to the same user
+  record, so fans, members, and developers get appropriate access without
+  changing the character's personality
 
 ## Status
 
@@ -151,6 +154,15 @@ The browser avatar is intentionally simple: it proves that the same normalized
 character state can drive a visual body while PJOS and micro harness delegation
 continue to run behind it.
 
+For OBS or YouTube streaming, add overlay mode:
+
+```text
+http://127.0.0.1:4178/?view=overlay
+```
+
+Overlay mode hides the controls and uses a transparent background for OBS
+Browser Source composition.
+
 ## Core Concepts
 
 ### Character Instance
@@ -197,6 +209,27 @@ PJOS is the durable state layer between macro decisions and micro execution.
 It records goals, stories, specs, tickets, runs, artifacts, and links back to the
 character and harness that produced them.
 
+### Audience Registry And Permissions
+
+The same person may appear across YouTube, Discord, Slack, and the browser. The
+user registry links those platform IDs to a single user record:
+
+```js
+userRegistry.registerUser({
+  id: "user_keita",
+  displayName: "Keita",
+  role: "developer",
+  identities: {
+    youtube: "UCxxx",
+    discord: "123456"
+  }
+});
+```
+
+Role permissions decide whether a user can only chat, have deep architecture
+discussion, or delegate work to micro harnesses. The personality stays owned by
+the character macro harness.
+
 ## Why Rust Later
 
 Rust will not make remote LLMs think faster. It can reduce the overhead around
@@ -225,9 +258,12 @@ src/
   adapters/             built-in adapter helpers
 protocols/
   character-state.schema.json
+  user.schema.json
   adapter-contracts.md
 docs/
   architecture.md
+  audience-and-permissions.md
+  protocols.md
 examples/
   basic.mjs
   body-mappers.mjs

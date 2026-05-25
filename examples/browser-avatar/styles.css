@@ -22,6 +22,10 @@ body {
   background-size: 32px 32px, 32px 32px, auto, auto;
 }
 
+body.overlay {
+  background: transparent;
+}
+
 button,
 select,
 textarea {
@@ -227,6 +231,22 @@ button {
 .event {
   padding: 6px 0;
   border-bottom: 1px solid rgba(198, 255, 142, 0.08);
+}
+
+body.overlay .shell {
+  grid-template-columns: 1fr;
+  background: transparent;
+}
+
+body.overlay .panel,
+body.overlay .speech {
+  display: none;
+}
+
+body.overlay .avatar-stage {
+  min-height: 100vh;
+  border: 0;
+  background: transparent;
 }
 
 @keyframes talk {
