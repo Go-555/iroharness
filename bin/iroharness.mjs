@@ -6,10 +6,12 @@ const usage = `IroHarness
 
 Usage:
   iroharness init [dir] [--name <package-name>] [--character <character-name>] [--force]
+  iroharness doctor [dir]
   iroharness --help
 
 Examples:
   iroharness init ./my-companion --character Iroha
+  iroharness doctor ./my-companion
 `;
 
 const parseArgs = (argv) => {
@@ -82,7 +84,7 @@ const characterId = (name) =>
 
 const appSource = ({ character }) => {
   const id = characterId(character);
-return `import {
+  return `import {
   createConsoleDevice,
   createEchoBrain,
   createFileCharacterProfile,
@@ -199,10 +201,61 @@ const init = ({ dir, name, character, force }) => {
   };
 };
 
+const doctor = ({ dir }) => {
+  const targetDir = resolve(dir);
+  const checks = [
+    {
+      label: "package.json",
+      path: join(targetDir, "package.json")
+    },
+    {
+      label: "src/app.mjs",
+      path: join(targetDir, "src", "app.mjs")
+    },
+    {
+      label: "SOUL.md",
+      path: join(targetDir, "SOUL.md")
+    },
+    {
+      label: "IDENTITY.md",
+      path: join(targetDir, "IDENTITY.md")
+    },
+    {
+      label: "MEMORY.md",
+      path: join(targetDir, "MEMORY.md")
+    },
+    {
+      label: ".iroharness",
+      path: join(targetDir, ".iroharness")
+    }
+  ].map((check) => ({
+    ...check,
+    ok: existsSync(check.path)
+  }));
+  const missing = checks.filter((check) => !check.ok);
+  return {
+    targetDir,
+    ok: missing.length === 0,
+    checks,
+    missing
+  };
+};
+
 const main = () => {
   const args = parseArgs(process.argv.slice(2));
   if (args.command === "--help" || args.command === "-h" || args.command === "help") {
     console.log(usage);
+    return;
+  }
+  if (args.command === "doctor") {
+    const result = doctor(args);
+    result.checks.forEach((check) => {
+      console.log(`${check.ok ? "ok" : "missing"} ${check.label}`);
+    });
+    if (!result.ok) {
+      throw new Error(`IroHarness project check failed in ${result.targetDir}`);
+    }
+    console.log(`IroHarness project looks ready: ${result.targetDir}`);
     return;
   }
   if (args.command !== "init") {

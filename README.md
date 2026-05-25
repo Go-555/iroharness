@@ -69,6 +69,7 @@ Create a local companion app:
 ```bash
 npx iroharness init ./my-companion --character Iroha
 cd my-companion
+npx iroharness doctor .
 npm install
 npm start
 ```

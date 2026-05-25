@@ -27,3 +27,14 @@ Use `--force` only when you want to overwrite generated files.
 
 `src/app.mjs` loads the character through `createFileCharacterProfile`, so the
 generated markdown files are the local identity and memory source of truth.
+
+## Doctor
+
+Validate that a generated app still has the expected local shape:
+
+```bash
+npx iroharness doctor ./my-companion
+```
+
+The doctor command checks for `package.json`, `src/app.mjs`, `.iroharness/`,
+`SOUL.md`, `IDENTITY.md`, and `MEMORY.md`.

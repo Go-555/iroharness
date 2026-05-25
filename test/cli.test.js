@@ -45,3 +45,26 @@ test("CLI init refuses to overwrite generated files without force", () => {
   assert.notEqual(second.status, 0);
   assert.match(second.stderr, /already exists/);
 });
+
+test("CLI doctor validates generated companion app shape", () => {
+  const dir = mkdtempSync(join(tmpdir(), "iroharness-doctor-"));
+  const appDir = join(dir, "companion");
+  const init = runCli(["init", appDir, "--character", "Iroha"]);
+  const doctor = runCli(["doctor", appDir]);
+
+  assert.equal(init.status, 0, init.stderr);
+  assert.equal(doctor.status, 0, doctor.stderr);
+  assert.match(doctor.stdout, /ok package\.json/);
+  assert.match(doctor.stdout, /ok SOUL\.md/);
+  assert.match(doctor.stdout, /IroHarness project looks ready/);
+});
+
+test("CLI doctor fails when character profile files are missing", () => {
+  const dir = mkdtempSync(join(tmpdir(), "iroharness-doctor-missing-"));
+  const doctor = runCli(["doctor", dir]);
+
+  assert.notEqual(doctor.status, 0);
+  assert.match(doctor.stdout, /missing package\.json/);
+  assert.match(doctor.stdout, /missing SOUL\.md/);
+  assert.match(doctor.stderr, /project check failed/);
+});
