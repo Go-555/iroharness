@@ -564,6 +564,76 @@ export const createPlatformAdapterRegistry = (adapters = []) => {
   });
 };
 
+const normalizeSessionPlatform = (session) => session.platform || session.source || null;
+
+const normalizeSessionChannelId = (session) =>
+  session.platformChannelId || session.platform_channel_id || session.channelId || null;
+
+const candidateTurnChannelIds = (turn) =>
+  Object.freeze(
+    [
+      turn.metadata?.streamChannelId,
+      turn.metadata?.liveChatId,
+      turn.metadata?.channelId,
+      turn.metadata?.guildId,
+      turn.metadata?.teamId
+    ]
+      .filter(Boolean)
+      .map((value) => String(value))
+  );
+
+export const createSnapshotStreamSessionResolver = ({
+  snapshot,
+  includeStatuses = ["live", "paused"]
+}) => {
+  if (!snapshot) {
+    throw new Error("createSnapshotStreamSessionResolver requires snapshot");
+  }
+
+  return async (turn) => {
+    const currentSnapshot = typeof snapshot === "function" ? await snapshot() : snapshot;
+    const sessions = Array.isArray(currentSnapshot?.streamSessions)
+      ? currentSnapshot.streamSessions
+      : [];
+    const platform = turn.source || turn.actor?.platform || null;
+    const channelIds = candidateTurnChannelIds(turn);
+    return (
+      sessions.find((session) => {
+        const sessionPlatform = normalizeSessionPlatform(session);
+        const sessionChannelId = normalizeSessionChannelId(session);
+        return (
+          sessionPlatform === platform &&
+          channelIds.includes(String(sessionChannelId)) &&
+          includeStatuses.includes(session.status)
+        );
+      }) || null
+    );
+  };
+};
+
+export const createStreamContextEnricher = ({ resolveStreamSession }) => {
+  if (typeof resolveStreamSession !== "function") {
+    throw new Error("createStreamContextEnricher requires resolveStreamSession");
+  }
+
+  return async (turn) => {
+    const session = await resolveStreamSession(turn);
+    if (!session) {
+      return turn;
+    }
+    return Object.freeze({
+      ...turn,
+      metadata: Object.freeze({
+        ...(turn.metadata || {}),
+        streamSessionId: session.id,
+        streamPlatform: normalizeSessionPlatform(session),
+        streamChannelId: normalizeSessionChannelId(session),
+        streamTitle: session.title || null
+      })
+    });
+  };
+};
+
 export const createDiscordBotRuntime = ({
   token,
   harness,
@@ -575,6 +645,7 @@ export const createDiscordBotRuntime = ({
   adapter = createDiscordMessageAdapter(),
   respond = true,
   responseFormatter = ({ result }) => result.text || result.output?.summary || null,
+  turnEnricher = async (turn) => turn,
   onReady = () => {},
   onResult = () => {},
   onError = () => {}
@@ -668,10 +739,11 @@ export const createDiscordBotRuntime = ({
     if (!turn || !turn.text) {
       return;
     }
-    const result = await harness.receive(turn);
+    const enrichedTurn = await turnEnricher(turn);
+    const result = await harness.receive(enrichedTurn);
     let reply = null;
     if (respond) {
-      reply = responseFormatter({ turn, result });
+      reply = responseFormatter({ turn: enrichedTurn, result });
       if (reply) {
         await createMessage({
           channelId: message.d.channel_id,
@@ -685,7 +757,7 @@ export const createDiscordBotRuntime = ({
         });
       }
     }
-    onResult(Object.freeze({ turn, result, reply }));
+    onResult(Object.freeze({ turn: enrichedTurn, result, reply }));
   };
 
   const handleMessage = async (raw) => {
@@ -777,6 +849,7 @@ export const createSlackEventsRuntime = ({
   apiBaseUrl = "https://slack.com/api",
   respond = true,
   responseFormatter = ({ result }) => result.text || result.output?.summary || null,
+  turnEnricher = async (turn) => turn,
   onResult = () => {},
   onError = () => {}
 }) => {
@@ -832,20 +905,21 @@ export const createSlackEventsRuntime = ({
       });
     }
     try {
-      const result = await harness.receive(turn);
+      const enrichedTurn = await turnEnricher(turn);
+      const result = await harness.receive(enrichedTurn);
       let reply = null;
       let posted = null;
       if (respond) {
-        reply = responseFormatter({ turn, result });
+        reply = responseFormatter({ turn: enrichedTurn, result });
         if (reply) {
           posted = await postMessage({
-            channelId: turn.metadata.channelId,
+            channelId: enrichedTurn.metadata.channelId,
             text: reply,
-            threadTs: turn.metadata.threadTs
+            threadTs: enrichedTurn.metadata.threadTs
           });
         }
       }
-      const event = Object.freeze({ turn, result, reply, posted });
+      const event = Object.freeze({ turn: enrichedTurn, result, reply, posted });
       onResult(event);
       return event;
     } catch (error) {
@@ -869,6 +943,7 @@ export const createYouTubeLiveChatPollingRuntime = ({
   intervalMs = 5_000,
   maxResults = 50,
   pageToken = null,
+  turnEnricher = async (turn) => turn,
   onResult = () => {},
   onError = () => {}
 }) => {
@@ -923,8 +998,9 @@ export const createYouTubeLiveChatPollingRuntime = ({
       if (!turn || !turn.text) {
         continue;
       }
-      const result = await harness.receive(turn);
-      const event = Object.freeze({ item, turn, result });
+      const enrichedTurn = await turnEnricher(turn);
+      const result = await harness.receive(enrichedTurn);
+      const event = Object.freeze({ item, turn: enrichedTurn, result });
       results.push(event);
       onResult(event);
     }
@@ -1290,6 +1366,7 @@ export const createIroHarnessDevServerHandler = ({
     createSlackMessageAdapter(),
     createYouTubeLiveChatAdapter()
   ]),
+  turnEnricher = async (turn) => turn,
   publicDir = defaultPublicDir()
 }) => {
   if (!harness || !eventStream) {
@@ -1366,9 +1443,10 @@ export const createIroHarnessDevServerHandler = ({
           sendJson(response, 202, { ignored: true });
           return;
         }
-        const result = await harness.receive(turn);
+        const enrichedTurn = await turnEnricher(turn);
+        const result = await harness.receive(enrichedTurn);
         sendJson(response, 200, {
-          turn,
+          turn: enrichedTurn,
           result
         });
         return;

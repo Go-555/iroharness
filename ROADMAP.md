@@ -30,6 +30,7 @@ micro harnesses.
 - [x] PostgreSQL/Supabase audience registry adapter
 - [x] permission overrides
 - [x] stream session registry
+- [x] stream session context enrichment
 - [x] role-based permission policy
 - [x] OBS browser overlay mode
 - [x] OBS WebSocket control adapter

@@ -24,6 +24,8 @@ import {
   createPlatformAdapterRegistry,
   createSlackEventsRuntime,
   createSlackMessageAdapter,
+  createSnapshotStreamSessionResolver,
+  createStreamContextEnricher,
   createTextProcessMicroHarness,
   createVrmBodyBridge,
   createYouTubeLiveChatAdapter,
@@ -766,6 +768,42 @@ test("platform adapter registry dispatches by platform", () => {
   assert.equal(turn.actor.platformUserId, "U999");
 });
 
+test("stream context enricher attaches live stream session metadata", async () => {
+  const resolver = createSnapshotStreamSessionResolver({
+    snapshot: {
+      streamSessions: [
+        {
+          id: "stream_1",
+          platform: "youtube",
+          platformChannelId: "live_1",
+          status: "live",
+          title: "Dev Stream"
+        }
+      ]
+    }
+  });
+  const enrichTurn = createStreamContextEnricher({
+    resolveStreamSession: resolver
+  });
+
+  const turn = createYouTubeLiveChatAdapter().normalize({
+    id: "chat_1",
+    snippet: {
+      liveChatId: "live_1",
+      displayMessage: "こんにちは"
+    },
+    authorDetails: {
+      channelId: "UC123",
+      displayName: "Viewer"
+    }
+  });
+  const enriched = await enrichTurn(turn);
+
+  assert.equal(enriched.metadata.streamSessionId, "stream_1");
+  assert.equal(enriched.metadata.streamChannelId, "live_1");
+  assert.equal(enriched.metadata.streamTitle, "Dev Stream");
+});
+
 test("Slack events runtime handles challenge, receives events, and replies in thread", async () => {
   const receivedTurns = [];
   const restCalls = [];
@@ -825,6 +863,20 @@ test("Slack events runtime handles challenge, receives events, and replies in th
 
 test("YouTube live chat polling runtime fetches messages and sends turns to harness", async () => {
   const receivedTurns = [];
+  const enrichTurn = createStreamContextEnricher({
+    resolveStreamSession: createSnapshotStreamSessionResolver({
+      snapshot: {
+        streamSessions: [
+          {
+            id: "youtube_stream_1",
+            platform: "youtube",
+            platformChannelId: "live_1",
+            status: "live"
+          }
+        ]
+      }
+    })
+  });
   const harness = {
     async receive(turn) {
       receivedTurns.push(turn);
@@ -863,13 +915,15 @@ test("YouTube live chat polling runtime fetches messages and sends turns to harn
     apiKey: "test-key",
     liveChatId: "live_1",
     harness,
-    fetchImpl
+    fetchImpl,
+    turnEnricher: enrichTurn
   });
   const result = await runtime.pollOnce();
 
   assert.equal(receivedTurns.length, 1);
   assert.equal(receivedTurns[0].source, "youtube");
   assert.equal(receivedTurns[0].actor.platformUserId, "UC123");
+  assert.equal(receivedTurns[0].metadata.streamSessionId, "youtube_stream_1");
   assert.equal(result.nextPageToken, "next-token");
   assert.equal(runtime.state().nextIntervalMs, 9000);
   assert.equal(new URL(fetchCalls[0]).searchParams.get("liveChatId"), "live_1");

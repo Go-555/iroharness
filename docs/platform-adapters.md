@@ -21,6 +21,41 @@ They do not own personality. They only translate platform payloads into:
 The macro harness then resolves the actor through the user registry, checks
 permissions, routes the request, updates PJOS, and emits character state.
 
+## Stream Context
+
+Use `createStreamContextEnricher` when a platform turn should be associated with
+a live stream session before permissions run.
+
+```js
+import {
+  createSnapshotStreamSessionResolver,
+  createStreamContextEnricher
+} from "iroharness/adapters";
+
+const enrichTurn = createStreamContextEnricher({
+  resolveStreamSession: createSnapshotStreamSessionResolver({
+    snapshot: () => userRegistry.snapshot()
+  })
+});
+```
+
+The resolver matches the turn platform plus channel metadata such as
+`liveChatId`, `channelId`, or `streamChannelId` against `streamSessions`. When a
+session matches, it adds:
+
+```json
+{
+  "metadata": {
+    "streamSessionId": "youtube_stream_1",
+    "streamPlatform": "youtube",
+    "streamChannelId": "live_1"
+  }
+}
+```
+
+This enables scoped permission rules like `streamSession:youtube_stream_1` and
+keeps public stream behavior separate from private developer workflows.
+
 ## Discord
 
 Use `createDiscordMessageAdapter` for Discord message payloads.
@@ -192,6 +227,7 @@ const runtime = createYouTubeLiveChatPollingRuntime({
   apiKey: process.env.YOUTUBE_API_KEY,
   liveChatId: process.env.YOUTUBE_LIVE_CHAT_ID,
   harness,
+  turnEnricher: enrichTurn,
   onResult({ turn, result }) {
     console.log(turn.actor.displayName, turn.text, result.kind);
   }

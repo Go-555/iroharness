@@ -8,7 +8,11 @@ import {
   createIroHarness,
   createStubMicroHarness
 } from "../src/index.js";
-import { createYouTubeLiveChatPollingRuntime } from "../src/adapters/index.js";
+import {
+  createSnapshotStreamSessionResolver,
+  createStreamContextEnricher,
+  createYouTubeLiveChatPollingRuntime
+} from "../src/adapters/index.js";
 
 const apiKey = process.env.YOUTUBE_API_KEY;
 const liveChatId = process.env.YOUTUBE_LIVE_CHAT_ID;
@@ -23,6 +27,18 @@ const projectOs = createFileProjectOs({
 });
 const userRegistry = createFileUserRegistry({
   path: join(process.cwd(), ".iroharness", "users.json")
+});
+userRegistry.createStreamSession({
+  id: `youtube_${liveChatId}`,
+  platform: "youtube",
+  platformChannelId: liveChatId,
+  title: process.env.YOUTUBE_STREAM_TITLE || "IroHarness YouTube Live",
+  status: "live"
+});
+const enrichTurn = createStreamContextEnricher({
+  resolveStreamSession: createSnapshotStreamSessionResolver({
+    snapshot: () => userRegistry.snapshot()
+  })
 });
 
 const harness = createIroHarness({
@@ -48,11 +64,13 @@ const runtime = createYouTubeLiveChatPollingRuntime({
   apiKey,
   liveChatId,
   harness,
+  turnEnricher: enrichTurn,
   onResult({ turn, result }) {
     console.log(
       JSON.stringify({
         from: turn.actor.displayName,
         text: turn.text,
+        streamSessionId: turn.metadata.streamSessionId,
         resultKind: result.kind
       })
     );

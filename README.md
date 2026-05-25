@@ -231,6 +231,21 @@ const slack = createSlackMessageAdapter({ mentionOnly: true });
 const youtube = createYouTubeLiveChatAdapter();
 ```
 
+For stream-aware permissions, attach stream context after normalization:
+
+```js
+import {
+  createSnapshotStreamSessionResolver,
+  createStreamContextEnricher
+} from "iroharness/adapters";
+
+const enrichTurn = createStreamContextEnricher({
+  resolveStreamSession: createSnapshotStreamSessionResolver({
+    snapshot: () => userRegistry.snapshot()
+  })
+});
+```
+
 For real YouTube live chat polling:
 
 ```bash
