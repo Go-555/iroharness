@@ -2,6 +2,9 @@
 
 IroHarness is a character macro harness.
 
+The design rules are summarized in
+[design-principles.md](./design-principles.md).
+
 It is designed around three layers:
 
 ```text

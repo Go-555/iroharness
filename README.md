@@ -45,6 +45,9 @@ IroHarness aims at a different center:
   record, so fans, members, and developers get appropriate access without
   changing the character's personality
 
+See [docs/design-principles.md](./docs/design-principles.md) for the design
+rules behind these boundaries.
+
 ## Status
 
 This repository is an early OSS skeleton. It intentionally starts with a small
@@ -534,6 +537,7 @@ docs/
   cli.md
   codex.md
   ci.md
+  design-principles.md
   external-bridges.md
   platform-adapters.md
   obs.md

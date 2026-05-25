@@ -2,6 +2,9 @@
 
 IroHarness is built around stable contracts before broad feature work.
 
+Read [docs/design-principles.md](./docs/design-principles.md) before proposing
+large boundary changes.
+
 Good first contributions:
 
 - a new body adapter

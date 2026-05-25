@@ -124,3 +124,19 @@ test("realtime core JSONL command and message schemas cover golden fixtures", ()
   assert.equal(message.op, command.op);
   assert.equal(message.coreId, command.coreId);
 });
+
+test("design principles document locks the macro harness boundary", () => {
+  const design = readFileSync(join("docs", "design-principles.md"), "utf8");
+
+  [
+    "The Macro Harness Owns Identity",
+    "Interfaces Are Bodies",
+    "Micro Harnesses Are Delegated Workers",
+    "Project OS Is The Durable State Layer",
+    "Permissions Are Separate From Affection",
+    "Realtime Is A Replaceable Fast Path",
+    "Borrow Runtimes, Own The Boundary"
+  ].forEach((heading) => {
+    assert.match(design, new RegExp(heading));
+  });
+});
