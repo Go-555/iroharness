@@ -6,7 +6,8 @@
   "main": "src/index.js",
   "exports": {
     ".": "./src/index.js",
-    "./adapters": "./src/adapters/index.js"
+    "./adapters": "./src/adapters/index.js",
+    "./testing": "./src/testing/index.js"
   },
   "scripts": {
     "test": "node --test",
@@ -21,7 +22,7 @@
     "example:youtube": "node examples/youtube-live-poller.mjs",
     "example:obs": "node examples/obs-overlay-control.mjs",
     "demo:browser": "node examples/browser-server.mjs",
-    "check": "node --check src/index.js && node --check src/adapters/index.js && node --check examples/basic.mjs && node --check examples/audience-registry.mjs && node --check examples/body-mappers.mjs && node --check examples/brain-switching.mjs && node --check examples/external-bridges.mjs && node --check examples/file-pjos.mjs && node --check examples/browser-server.mjs && node --check examples/codex-app-server.mjs && node --check examples/youtube-live-poller.mjs && node --check examples/discord-bot.mjs && node --check examples/obs-overlay-control.mjs"
+    "check": "node --check src/index.js && node --check src/adapters/index.js && node --check src/testing/index.js && node --check examples/basic.mjs && node --check examples/audience-registry.mjs && node --check examples/body-mappers.mjs && node --check examples/brain-switching.mjs && node --check examples/external-bridges.mjs && node --check examples/file-pjos.mjs && node --check examples/browser-server.mjs && node --check examples/codex-app-server.mjs && node --check examples/youtube-live-poller.mjs && node --check examples/discord-bot.mjs && node --check examples/obs-overlay-control.mjs"
   },
   "keywords": [
     "ai-agent",
@@ -44,6 +45,7 @@
   },
   "files": [
     "src",
+    "fixtures",
     "protocols",
     "docs",
     "examples",

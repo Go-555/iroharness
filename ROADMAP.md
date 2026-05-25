@@ -56,8 +56,8 @@ micro harnesses.
 - [x] Hermes adapter
 - [ ] Claude Code adapter
 - [x] AIAvatarKit bridge
-- [ ] adapter contract tests
-- [ ] golden task fixtures
+- [x] adapter contract tests
+- [x] golden task fixtures
 
 ## Milestone 3: Multi-Body Character
 

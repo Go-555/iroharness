@@ -153,6 +153,19 @@ const avatar = createAIAvatarKitBridgeDevice({
 
 See [docs/external-bridges.md](./docs/external-bridges.md).
 
+Validate custom adapters before wiring them into a character:
+
+```js
+import { assertMicroHarnessContract } from "iroharness/testing";
+
+await assertMicroHarnessContract(adapter, {
+  task: fixture.task,
+  context: fixture.context
+});
+```
+
+See [docs/adapter-contract-testing.md](./docs/adapter-contract-testing.md).
+
 Connect a local JSONL worker process:
 
 ```js
@@ -364,12 +377,16 @@ v2: Rust realtime core for audio/device/event bus
 src/
   index.js              core macro harness, router, PJOS, adapters
   adapters/             built-in adapter helpers
+  testing/              contract testing helpers
+fixtures/
+  golden/               adapter contract fixtures
 protocols/
   audience-store.schema.json
   character-state.schema.json
   user.schema.json
   adapter-contracts.md
 docs/
+  adapter-contract-testing.md
   architecture.md
   audience-and-permissions.md
   audience-data-model.md

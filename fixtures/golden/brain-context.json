@@ -1,0 +1,36 @@
+{
+  "context": {
+    "character": {
+      "id": "iroha",
+      "name": "Iroha",
+      "soul": "Same identity across models."
+    },
+    "actor": {
+      "user": {
+        "id": "developer",
+        "displayName": "Developer",
+        "role": "developer"
+      }
+    },
+    "input": {
+      "source": "fixture",
+      "modality": "text",
+      "text": "このアーキテクチャ設計について深い議論をしたい"
+    },
+    "route": {
+      "kind": "deep",
+      "harnessId": null,
+      "reason": "Deep discussion signal detected"
+    },
+    "state": {
+      "characterId": "iroha",
+      "mode": "thinking",
+      "emotion": "focused"
+    },
+    "projectOs": {
+      "tickets": [],
+      "runs": [],
+      "artifacts": []
+    }
+  }
+}

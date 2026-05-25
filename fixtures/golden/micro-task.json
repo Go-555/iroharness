@@ -1,0 +1,50 @@
+{
+  "task": {
+    "id": "ticket_golden_001",
+    "title": "Review architecture note",
+    "purpose": "Codex/OpenClaw/Hermesなどのミクロハーネスへ渡す標準タスクを検証する",
+    "acceptance": [
+      "Adapter returns a normalized status",
+      "Adapter returns a human-readable summary",
+      "Adapter returns artifacts as an array"
+    ],
+    "ownerCharacterId": "iroha",
+    "executorHarnessId": "adapter-under-test",
+    "status": "open",
+    "metadata": {
+      "source": "fixture",
+      "modality": "text",
+      "actorUserId": "developer"
+    }
+  },
+  "context": {
+    "character": {
+      "id": "iroha",
+      "name": "Iroha",
+      "soul": "Owns macro identity while delegating work."
+    },
+    "actor": {
+      "user": {
+        "id": "developer",
+        "displayName": "Developer",
+        "role": "developer"
+      },
+      "identity": {
+        "platform": "fixture",
+        "platformUserId": "developer",
+        "displayName": "Developer"
+      },
+      "known": true
+    },
+    "input": {
+      "source": "fixture",
+      "modality": "text",
+      "text": "この設計をレビューして"
+    },
+    "projectOs": {
+      "tickets": [],
+      "runs": [],
+      "artifacts": []
+    }
+  }
+}

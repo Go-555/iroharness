@@ -1,0 +1,29 @@
+{
+  "events": [
+    {
+      "type": "state",
+      "state": {
+        "characterId": "iroha",
+        "mode": "thinking",
+        "emotion": "focused",
+        "speechText": null,
+        "taskRef": null,
+        "mouth": "closed",
+        "gaze": "user",
+        "motion": "thinking"
+      }
+    },
+    {
+      "type": "speech",
+      "text": "見てみるね。",
+      "modality": "voice",
+      "brainId": "voice-fast"
+    },
+    {
+      "type": "task",
+      "status": "started",
+      "ticketId": "ticket_golden_001",
+      "harnessId": "codex"
+    }
+  ]
+}
