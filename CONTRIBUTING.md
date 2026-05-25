@@ -21,9 +21,8 @@ Design rules:
 Before opening a PR:
 
 ```bash
-npm run check
-npm test
-npm pack --dry-run
+npm run verify
+npm run package:dry-run
 ```
 
 If Rust is installed:

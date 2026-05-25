@@ -9,9 +9,8 @@ examples, and packaging surface.
 
 ```bash
 npm install
-npm run check
-npm test
-npm pack --dry-run
+npm run verify
+npm run package:dry-run
 ```
 
 ## Rust

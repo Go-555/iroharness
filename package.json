@@ -14,6 +14,9 @@
   },
   "scripts": {
     "test": "node --test",
+    "verify": "npm run check && npm test",
+    "package:dry-run": "npm pack --dry-run",
+    "prepublishOnly": "npm run verify",
     "example": "node examples/basic.mjs",
     "example:audience": "node examples/audience-registry.mjs",
     "example:bodies": "node examples/body-mappers.mjs",
@@ -46,6 +49,14 @@
     "hermes"
   ],
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/iroharness/iroharness.git"
+  },
+  "bugs": {
+    "url": "https://github.com/iroharness/iroharness/issues"
+  },
+  "homepage": "https://github.com/iroharness/iroharness#readme",
   "engines": {
     "node": ">=20"
   },
@@ -60,6 +71,9 @@
     "Cargo.toml",
     "README.md",
     "ROADMAP.md",
+    "CHANGELOG.md",
+    "SECURITY.md",
+    "RELEASE.md",
     "LICENSE"
   ]
 }

@@ -25,14 +25,11 @@ jobs:
       - name: Install
         run: npm install
 
-      - name: Syntax check
-        run: npm run check
-
-      - name: Test
-        run: npm test
+      - name: Verify
+        run: npm run verify
 
       - name: Package dry run
-        run: npm pack --dry-run
+        run: npm run package:dry-run
 
   rust:
     name: Rust realtime core
