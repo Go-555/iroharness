@@ -1,0 +1,11 @@
+{
+  "type": "ack",
+  "op": "publish",
+  "coreId": "realtime-core-golden",
+  "sequence": 0,
+  "eventType": "realtime.speaking",
+  "state": {
+    "speaking": true,
+    "interrupted": false
+  }
+}

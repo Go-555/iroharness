@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://iroharness.dev/protocols/realtime-core-message.schema.json",
+  "title": "IroHarness Realtime Core JSONL Message",
+  "type": "object",
+  "required": ["type"],
+  "properties": {
+    "type": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Message kind emitted by the external realtime core, such as ack, telemetry, state, or error."
+    },
+    "op": {
+      "type": "string",
+      "description": "Operation being acknowledged, when applicable."
+    },
+    "coreId": {
+      "type": "string"
+    },
+    "sequence": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "eventType": {
+      "type": ["string", "null"]
+    },
+    "message": {
+      "type": "string"
+    },
+    "telemetry": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "state": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}

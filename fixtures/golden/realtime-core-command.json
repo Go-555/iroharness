@@ -1,0 +1,12 @@
+{
+  "op": "publish",
+  "coreId": "realtime-core-golden",
+  "sequence": 0,
+  "timestamp": "2026-05-25T00:00:00.000Z",
+  "event": {
+    "type": "realtime.speaking",
+    "sessionId": "session_golden_001",
+    "ttsId": "tts-golden",
+    "voice": "iroha"
+  }
+}

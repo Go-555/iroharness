@@ -499,6 +499,8 @@ fixtures/
 protocols/
   audience-store.schema.json
   character-state.schema.json
+  realtime-core-command.schema.json
+  realtime-core-message.schema.json
   sql/
     postgres-audience.sql
   user.schema.json

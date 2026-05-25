@@ -197,6 +197,11 @@ The adapter keeps local event, latency, and barge-in state so
 external process receives the same stream and can do lower-latency audio,
 device, WebSocket, or VAD work independently.
 
+The JSONL protocol is described by:
+
+- [`protocols/realtime-core-command.schema.json`](../protocols/realtime-core-command.schema.json)
+- [`protocols/realtime-core-message.schema.json`](../protocols/realtime-core-message.schema.json)
+
 ## Why This Is A Contract First
 
 Remote STT, LLM, and TTS providers dominate latency. Rust will not make a remote

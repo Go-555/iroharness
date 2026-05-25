@@ -266,6 +266,16 @@ may write JSONL telemetry back to stdout. IroHarness records those messages in
 the core snapshot, but the macro harness keeps identity, permissions, and PJOS
 ownership.
 
+Schemas:
+
+- [`protocols/realtime-core-command.schema.json`](../protocols/realtime-core-command.schema.json)
+- [`protocols/realtime-core-message.schema.json`](../protocols/realtime-core-message.schema.json)
+
+Golden fixtures:
+
+- [`fixtures/golden/realtime-core-command.json`](../fixtures/golden/realtime-core-command.json)
+- [`fixtures/golden/realtime-core-message.json`](../fixtures/golden/realtime-core-message.json)
+
 ## Named External Bridges
 
 OpenClaw and Hermes wrappers are small projections of the same micro-harness

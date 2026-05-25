@@ -17,6 +17,7 @@ import {
 
 const readFixture = (name) =>
   JSON.parse(readFileSync(join("fixtures", "golden", name), "utf8"));
+const readProtocol = (name) => JSON.parse(readFileSync(join("protocols", name), "utf8"));
 
 test("micro harness contract validates generic HTTP adapters with golden fixture", async () => {
   const { task, context } = readFixture("micro-task.json");
@@ -101,4 +102,25 @@ test("contract tester rejects malformed adapters", async () => {
     () => assertMicroHarnessContract({ id: "broken", capabilities: [] }, { task, context }),
     /microHarness.run/
   );
+});
+
+test("realtime core JSONL command and message schemas cover golden fixtures", () => {
+  const commandSchema = readProtocol("realtime-core-command.schema.json");
+  const messageSchema = readProtocol("realtime-core-message.schema.json");
+  const command = readFixture("realtime-core-command.json");
+  const message = readFixture("realtime-core-message.json");
+
+  commandSchema.required.forEach((field) => {
+    assert.notEqual(command[field], undefined);
+  });
+  messageSchema.required.forEach((field) => {
+    assert.notEqual(message[field], undefined);
+  });
+
+  assert.equal(commandSchema.properties.op.enum.includes(command.op), true);
+  assert.equal(commandSchema.properties.op.enum.includes("shouldInterrupt"), true);
+  assert.equal(command.event.type, "realtime.speaking");
+  assert.equal(message.type, "ack");
+  assert.equal(message.op, command.op);
+  assert.equal(message.coreId, command.coreId);
 });

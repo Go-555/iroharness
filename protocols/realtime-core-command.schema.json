@@ -1,0 +1,90 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://iroharness.dev/protocols/realtime-core-command.schema.json",
+  "title": "IroHarness Realtime Core JSONL Command",
+  "type": "object",
+  "required": ["op", "coreId", "sequence", "timestamp"],
+  "properties": {
+    "op": {
+      "type": "string",
+      "enum": [
+        "publish",
+        "mark",
+        "measure",
+        "startSpeaking",
+        "finishSpeaking",
+        "shouldInterrupt"
+      ]
+    },
+    "coreId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "sequence": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "event": {
+      "type": "object",
+      "description": "Realtime event payload for publish and shouldInterrupt operations.",
+      "additionalProperties": true
+    },
+    "mark": {
+      "type": "object",
+      "required": ["name", "at"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "at": {
+          "type": "number"
+        }
+      },
+      "additionalProperties": true
+    },
+    "measure": {
+      "type": "object",
+      "required": ["name", "startMark", "endMark", "durationMs"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "startMark": {
+          "type": "string",
+          "minLength": 1
+        },
+        "endMark": {
+          "type": "string",
+          "minLength": 1
+        },
+        "durationMs": {
+          "type": "number"
+        }
+      },
+      "additionalProperties": true
+    },
+    "state": {
+      "type": "object",
+      "properties": {
+        "speaking": {
+          "type": "boolean"
+        },
+        "interrupted": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": true
+    },
+    "result": {
+      "type": "boolean",
+      "description": "Synchronous interruption decision sent with shouldInterrupt."
+    }
+  },
+  "additionalProperties": true
+}
