@@ -1,4 +1,8 @@
 import { spawn } from "node:child_process";
+import { createServer } from "node:http";
+import { readFileSync, statSync } from "node:fs";
+import { extname, join, normalize } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const normalizeMicroHarnessOutput = (value, fallbackSummary) => {
   if (value && typeof value === "object") {
@@ -23,6 +27,179 @@ const createTimeoutSignal = (timeoutMs) => {
   return Object.freeze({
     signal: controller.signal,
     clear: () => clearTimeout(timeout)
+  });
+};
+
+const sendJson = (response, status, value) => {
+  response.writeHead(status, {
+    "content-type": "application/json; charset=utf-8",
+    "cache-control": "no-store"
+  });
+  response.end(`${JSON.stringify(value)}\n`);
+};
+
+const readRequestJson = (request) =>
+  new Promise((resolve, reject) => {
+    let body = "";
+    request.on("data", (chunk) => {
+      body += chunk.toString("utf8");
+    });
+    request.on("end", () => {
+      if (!body.trim()) {
+        resolve({});
+        return;
+      }
+      try {
+        resolve(JSON.parse(body));
+      } catch (error) {
+        reject(error);
+      }
+    });
+    request.on("error", reject);
+  });
+
+const mimeTypes = Object.freeze({
+  ".html": "text/html; charset=utf-8",
+  ".js": "text/javascript; charset=utf-8",
+  ".css": "text/css; charset=utf-8",
+  ".json": "application/json; charset=utf-8",
+  ".svg": "image/svg+xml; charset=utf-8"
+});
+
+const defaultPublicDir = () =>
+  fileURLToPath(new URL("../../examples/browser-avatar", import.meta.url));
+
+const serveStatic = (response, publicDir, pathname) => {
+  const requestPath = pathname === "/" ? "/index.html" : pathname;
+  const normalizedPath = normalize(requestPath).replace(/^(\.\.[/\\])+/, "");
+  const fullPath = join(publicDir, normalizedPath);
+  const publicRoot = normalize(publicDir);
+  if (!normalize(fullPath).startsWith(publicRoot)) {
+    response.writeHead(403);
+    response.end("Forbidden");
+    return;
+  }
+  try {
+    const stats = statSync(fullPath);
+    if (!stats.isFile()) {
+      response.writeHead(404);
+      response.end("Not found");
+      return;
+    }
+    response.writeHead(200, {
+      "content-type": mimeTypes[extname(fullPath)] || "application/octet-stream",
+      "cache-control": "no-store"
+    });
+    response.end(readFileSync(fullPath));
+  } catch {
+    response.writeHead(404);
+    response.end("Not found");
+  }
+};
+
+export const createEventStreamDevice = (id = "event-stream") => {
+  let clients = [];
+  let events = [];
+
+  const writeEvent = (response, event) => {
+    response.write(`event: ${event.type}\n`);
+    response.write(`data: ${JSON.stringify(event)}\n\n`);
+  };
+
+  return Object.freeze({
+    id,
+    kind: "event-stream",
+    capabilities: Object.freeze(["state", "speech", "task"]),
+    emit(event) {
+      const storedEvent = Object.freeze({ ...event });
+      events = Object.freeze([...events.slice(-199), storedEvent]);
+      clients.forEach((client) => writeEvent(client, storedEvent));
+    },
+    connect(request, response) {
+      response.writeHead(200, {
+        "content-type": "text/event-stream; charset=utf-8",
+        "cache-control": "no-cache, no-transform",
+        connection: "keep-alive",
+        "x-accel-buffering": "no"
+      });
+      response.write(": connected\n\n");
+      events.slice(-20).forEach((event) => writeEvent(response, event));
+      clients = Object.freeze([...clients, response]);
+      request.on("close", () => {
+        clients = Object.freeze(clients.filter((client) => client !== response));
+      });
+    },
+    events() {
+      return Object.freeze([...events]);
+    }
+  });
+};
+
+export const createIroHarnessDevServer = ({
+  harness,
+  eventStream,
+  publicDir = defaultPublicDir()
+}) => {
+  if (!harness || !eventStream) {
+    throw new Error("createIroHarnessDevServer requires harness and eventStream");
+  }
+
+  const server = createServer(async (request, response) => {
+    const url = new URL(request.url, "http://127.0.0.1");
+    try {
+      if (request.method === "GET" && url.pathname === "/events") {
+        eventStream.connect(request, response);
+        return;
+      }
+      if (request.method === "GET" && url.pathname === "/state") {
+        sendJson(response, 200, harness.state());
+        return;
+      }
+      if (request.method === "GET" && url.pathname === "/pjos") {
+        sendJson(response, 200, harness.projectOs());
+        return;
+      }
+      if (request.method === "POST" && url.pathname === "/turn") {
+        const payload = await readRequestJson(request);
+        const result = await harness.receive({
+          source: payload.source || "browser",
+          modality: payload.modality || "text",
+          text: payload.text || ""
+        });
+        sendJson(response, 200, result);
+        return;
+      }
+      if (request.method === "GET") {
+        serveStatic(response, publicDir, url.pathname);
+        return;
+      }
+      sendJson(response, 405, { error: "method_not_allowed" });
+    } catch (error) {
+      sendJson(response, 500, {
+        error: "internal_error",
+        message: error.message
+      });
+    }
+  });
+
+  return Object.freeze({
+    server,
+    listen({ port = 4178, host = "127.0.0.1" } = {}) {
+      return new Promise((resolve) => {
+        server.listen(port, host, () => {
+          resolve({
+            port: server.address().port,
+            host,
+            url: `http://${host}:${server.address().port}`
+          });
+        });
+      });
+    },
+    close() {
+      return new Promise((resolve, reject) => {
+        server.close((error) => (error ? reject(error) : resolve()));
+      });
+    }
   });
 };
 

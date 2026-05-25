@@ -5,6 +5,7 @@ import { join } from "node:path";
 import test from "node:test";
 
 import {
+  createEventStreamDevice,
   createHttpMicroHarness,
   createJsonlProcessMicroHarness
 } from "../src/adapters/index.js";
@@ -73,4 +74,20 @@ test("JSONL process micro harness sends one task and parses final JSON line", as
   const output = await harness.run({ id: "ticket_2" }, { character: { id: "iroha" } });
   assert.equal(output.status, "completed");
   assert.equal(output.summary, "processed ticket_2");
+});
+
+test("event stream device records emitted state events", () => {
+  const device = createEventStreamDevice("events");
+  device.emit({
+    type: "state",
+    state: {
+      characterId: "iroha",
+      mode: "speaking",
+      emotion: "attentive"
+    }
+  });
+
+  assert.equal(device.events().length, 1);
+  assert.equal(device.events()[0].type, "state");
+  assert.equal(device.events()[0].state.mode, "speaking");
 });

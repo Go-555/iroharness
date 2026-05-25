@@ -16,11 +16,13 @@ micro harnesses.
 - [x] file-backed PJOS
 - [x] HTTP micro-harness adapter
 - [x] JSONL process micro-harness adapter
+- [x] browser avatar demo
+- [x] streaming event endpoint
 
 ## Milestone 1: Useful Local Demo
 
-- [ ] browser avatar demo
-- [ ] streaming event endpoint
+- [x] browser avatar demo
+- [x] streaming event endpoint
 - [ ] voice/text model switch demo
 - [ ] Codex app-server adapter
 - [x] file-backed PJOS

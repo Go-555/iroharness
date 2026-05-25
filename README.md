@@ -62,6 +62,7 @@ There are no runtime dependencies today.
 npm run example
 npm run example:bodies
 npm run example:pjos
+npm run demo:browser
 ```
 
 Or import the core:
@@ -130,6 +131,25 @@ const hermes = createJsonlProcessMicroHarness({
   capabilities: ["learning", "skills"]
 });
 ```
+
+## Browser Avatar Demo
+
+Run:
+
+```bash
+npm run demo:browser
+```
+
+Then open the printed URL. The demo exposes:
+
+- `GET /events` for Server-Sent Events
+- `POST /turn` for text/voice-like input
+- `GET /state` for current character state
+- `GET /pjos` for Project OS state
+
+The browser avatar is intentionally simple: it proves that the same normalized
+character state can drive a visual body while PJOS and micro harness delegation
+continue to run behind it.
 
 ## Core Concepts
 
@@ -212,6 +232,8 @@ examples/
   basic.mjs
   body-mappers.mjs
   file-pjos.mjs
+  browser-server.mjs
+  browser-avatar/
 test/
   *.test.js
 ```

@@ -32,6 +32,21 @@ A device adapter renders state or sends output to a body.
 }
 ```
 
+## Event Stream Device
+
+The built-in dev server streams events as Server-Sent Events.
+
+```text
+event: state
+data: {"type":"state","state":{"mode":"speaking"}}
+
+event: speech
+data: {"type":"speech","text":"見てみるね。"}
+
+event: task
+data: {"type":"task","status":"started","ticketId":"ticket_abc123"}
+```
+
 ## Brain Adapter
 
 A brain adapter produces character speech. It may be a fast voice model, a deep

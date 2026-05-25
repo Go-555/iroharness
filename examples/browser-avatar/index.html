@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>IroHarness Browser Avatar</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <section class="avatar-stage" aria-label="Iroha avatar">
+        <div class="avatar" id="avatar" data-mode="idle">
+          <div class="halo"></div>
+          <div class="head">
+            <div class="hair hair-left"></div>
+            <div class="hair hair-right"></div>
+            <div class="face">
+              <div class="eyes">
+                <span class="eye"></span>
+                <span class="eye"></span>
+              </div>
+              <div class="mouth" id="mouth"></div>
+            </div>
+          </div>
+        </div>
+        <div class="speech" id="speech">IroHarness</div>
+      </section>
+
+      <section class="panel">
+        <header>
+          <p class="eyebrow">Character Macro Harness</p>
+          <h1>Iroha</h1>
+          <p id="mode">idle / neutral</p>
+        </header>
+
+        <form id="turn-form" class="composer">
+          <textarea id="text" rows="4" placeholder="Codexでこの設計をレビューして"></textarea>
+          <div class="controls">
+            <select id="modality">
+              <option value="text">Text</option>
+              <option value="voice">Voice</option>
+            </select>
+            <button type="submit">Send</button>
+          </div>
+        </form>
+
+        <div class="events" id="events"></div>
+      </section>
+    </main>
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

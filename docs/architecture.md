@@ -28,6 +28,17 @@ Human input
   -> device/body adapters
 ```
 
+The browser demo uses the same path:
+
+```text
+POST /turn
+  -> IroHarness.receive()
+  -> state/speech/task events
+  -> EventStreamDevice
+  -> GET /events
+  -> browser avatar renderer
+```
+
 ## Model Switching
 
 The macro harness can route across model classes:
@@ -56,6 +67,9 @@ Renderer adapters decide how that state appears:
 - Even G2 display text
 - Slack/Discord text response
 - VS Code sidebar companion
+
+The core never hardcodes a renderer. Bodies subscribe to state and translate it
+into their own display language.
 
 ## OpenClaw and Hermes
 
