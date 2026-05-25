@@ -9,3 +9,7 @@ repository = "https://github.com/iroharness/iroharness"
 [lib]
 name = "iroharness_realtime_core"
 path = "src/lib.rs"
+
+[[bin]]
+name = "iroharness-realtime-core-jsonl"
+path = "src/bin/jsonl.rs"

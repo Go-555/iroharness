@@ -81,6 +81,12 @@ process before a native addon or WASM module exists. This is the preferred
 bridge for early Rust or Go experiments because the macro harness can keep its
 stable JavaScript API while the fast path evolves independently.
 
+The Rust crate includes a dependency-free JSONL binary target:
+
+```bash
+cargo run -p iroharness-realtime-core --bin iroharness-realtime-core-jsonl
+```
+
 Run the demo:
 
 ```bash

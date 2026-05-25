@@ -86,6 +86,7 @@ micro harnesses.
 - [x] Rust event/audio/device core skeleton
 - [x] Rust event/audio/device runtime binding contract
 - [x] external realtime core JSONL process adapter
+- [x] Rust JSONL process binary scaffold
 - [ ] Rust native/WASM implementation
 
 ## Guiding Principle
