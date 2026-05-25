@@ -42,7 +42,8 @@ the persisted JSON contract.
 
 For production deployments, apply the PostgreSQL/Supabase schema in
 `protocols/sql/postgres-audience.sql`. It keeps YouTube, Discord, Slack,
-browser, M5Stack, and Even G2 identities as rows linked to one durable user.
+VS Code, browser, M5Stack, and Even G2 identities as rows linked to one durable
+user.
 
 ## Default Roles
 

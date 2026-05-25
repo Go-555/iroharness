@@ -73,7 +73,7 @@ micro harnesses.
 - [x] VRM/3D adapter
 - [x] M5Stack body adapter
 - [x] Even G2 display adapter
-- [ ] VS Code companion panel
+- [x] VS Code companion panel
 - [x] Slack/Discord adapters
 - [x] Discord bot runtime
 

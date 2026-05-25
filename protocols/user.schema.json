@@ -19,7 +19,7 @@
     },
     "identities": {
       "type": "object",
-      "description": "Platform user IDs keyed by platform name, such as youtube, discord, slack, browser.",
+      "description": "Platform user IDs keyed by platform name, such as youtube, discord, slack, vscode, browser.",
       "additionalProperties": {
         "type": "string"
       }

@@ -298,9 +298,9 @@ See [docs/platform-adapters.md](./docs/platform-adapters.md).
 
 ## Audience Registry
 
-YouTube, Discord, Slack, browser, M5Stack, and Even G2 identities can all point
-to the same durable user. Roles and permission overrides decide what the person
-can do without changing the character's personality.
+YouTube, Discord, Slack, VS Code, browser, M5Stack, and Even G2 identities can
+all point to the same durable user. Roles and permission overrides decide what
+the person can do without changing the character's personality.
 
 ```bash
 npm run example:audience
@@ -327,6 +327,14 @@ Then open the printed URL. The demo exposes:
   M5Stack, Even G2, Live2D, and VRM bridge state
 - `POST /platform/discord/message` and `/platform/youtube/message` for chat
   platform testing
+
+For the VS Code companion panel:
+
+```bash
+code examples/vscode-companion
+```
+
+See [docs/vscode.md](./docs/vscode.md).
 
 The browser avatar is intentionally simple: it proves that the same normalized
 character state can drive a visual body while PJOS and micro harness delegation
@@ -496,6 +504,7 @@ docs/
   obs.md
   realtime.md
   rust-core.md
+  vscode.md
   protocols.md
 examples/
   audience-registry.mjs
@@ -511,6 +520,7 @@ examples/
   obs-overlay-control.mjs
   browser-server.mjs
   browser-avatar/
+  vscode-companion/
 test/
   *.test.js
 ```

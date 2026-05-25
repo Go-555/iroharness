@@ -67,10 +67,10 @@ The registry persists audience identity as four collections:
 }
 ```
 
-Use `userIdentities` to link YouTube, Discord, Slack, browser, M5Stack, Even G2,
-and future device identities to one person. Use `permissionOverrides` for narrow
-or temporary powers such as stream operation. Use `streamSessions` to keep live
-chat state separate from the character identity.
+Use `userIdentities` to link YouTube, Discord, Slack, VS Code, browser, M5Stack,
+Even G2, and future device identities to one person. Use `permissionOverrides`
+for narrow or temporary powers such as stream operation. Use `streamSessions` to
+keep live chat state separate from the character identity.
 
 See `protocols/audience-store.schema.json`.
 

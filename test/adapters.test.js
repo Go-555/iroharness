@@ -30,7 +30,9 @@ import {
   createTextProcessMicroHarness,
   createVrmBodyBridge,
   createYouTubeLiveChatAdapter,
-  createYouTubeLiveChatPollingRuntime
+  createYouTubeLiveChatPollingRuntime,
+  createVsCodeCompanionAdapter,
+  createVsCodeCompanionWebviewHtml
 } from "../src/adapters/index.js";
 
 const createFakeObsWebSocket = ({ sent }) => {
@@ -767,6 +769,44 @@ test("platform adapter registry dispatches by platform", () => {
   });
 
   assert.equal(turn.actor.platformUserId, "U999");
+});
+
+test("VS Code companion adapter creates canonical vscode turns", () => {
+  const adapter = createVsCodeCompanionAdapter({
+    platformUserId: "machine-1",
+    displayName: "Local Developer",
+    metadata: {
+      trust: "developer"
+    }
+  });
+
+  const turn = adapter.createTurn({
+    text: "Codexでレビューして",
+    workspace: "/repo"
+  });
+
+  assert.equal(adapter.platform, "vscode");
+  assert.equal(turn.source, "vscode");
+  assert.equal(turn.actor.platformUserId, "machine-1");
+  assert.equal(turn.metadata.workspace, "/repo");
+  assert.equal(turn.metadata.trust, "developer");
+});
+
+test("VS Code companion webview posts to the IroHarness dev server", () => {
+  const html = createVsCodeCompanionWebviewHtml({
+    serverUrl: "http://127.0.0.1:4178/",
+    actor: {
+      platform: "vscode",
+      platformUserId: "machine-1",
+      displayName: "Local Developer"
+    }
+  });
+
+  assert.match(html, /EventSource\(config\.serverUrl \+ "\/events"\)/);
+  assert.match(html, /fetch\(config\.serverUrl \+ "\/turn"/);
+  assert.match(html, /source: "vscode"/);
+  assert.match(html, /"platformUserId":"machine-1"/);
+  assert.doesNotMatch(html, /4178\//);
 });
 
 test("stream context enricher attaches live stream session metadata", async () => {

@@ -14,7 +14,7 @@ users
 
 userIdentities
   userId
-  platform          youtube | discord | slack | browser | m5stack | even-g2
+  platform          youtube | discord | slack | vscode | browser | m5stack | even-g2
   platformUserId
   displayName
   metadata

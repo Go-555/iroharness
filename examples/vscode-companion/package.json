@@ -1,0 +1,40 @@
+{
+  "name": "iroharness-vscode-companion",
+  "displayName": "IroHarness Companion",
+  "description": "VS Code companion panel for a local IroHarness dev server.",
+  "version": "0.1.0",
+  "publisher": "iroharness",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onCommand:iroharness.openCompanion"
+  ],
+  "main": "./extension.cjs",
+  "contributes": {
+    "commands": [
+      {
+        "command": "iroharness.openCompanion",
+        "title": "IroHarness: Open Companion"
+      }
+    ],
+    "configuration": {
+      "title": "IroHarness",
+      "properties": {
+        "iroharness.serverUrl": {
+          "type": "string",
+          "default": "http://127.0.0.1:4178",
+          "description": "Local IroHarness dev server URL."
+        },
+        "iroharness.platformUserId": {
+          "type": "string",
+          "default": "vscode-local",
+          "description": "Stable platform user ID sent to IroHarness."
+        }
+      }
+    }
+  }
+}
