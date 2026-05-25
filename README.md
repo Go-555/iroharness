@@ -66,6 +66,7 @@ npm run example
 npm run example:bodies
 npm run example:pjos
 npm run example:youtube
+npm run example:obs
 npm run demo:browser
 ```
 
@@ -157,6 +158,12 @@ For real YouTube live chat polling:
 YOUTUBE_API_KEY=... YOUTUBE_LIVE_CHAT_ID=... npm run example:youtube
 ```
 
+For OBS Browser Source control:
+
+```bash
+OBS_WEBSOCKET_URL=ws://127.0.0.1:4455 OBS_OVERLAY_INPUT="IroHarness Overlay" npm run example:obs
+```
+
 The dev server also exposes:
 
 ```text
@@ -196,6 +203,9 @@ http://127.0.0.1:4178/?view=overlay
 
 Overlay mode hides the controls and uses a transparent background for OBS
 Browser Source composition.
+
+OBS WebSocket control is available through `createObsWebSocketAdapter`. See
+[docs/obs.md](./docs/obs.md).
 
 ## Core Concepts
 
@@ -298,12 +308,14 @@ docs/
   architecture.md
   audience-and-permissions.md
   platform-adapters.md
+  obs.md
   protocols.md
 examples/
   basic.mjs
   body-mappers.mjs
   file-pjos.mjs
   youtube-live-poller.mjs
+  obs-overlay-control.mjs
   browser-server.mjs
   browser-avatar/
 test/

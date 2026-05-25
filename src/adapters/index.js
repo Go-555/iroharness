@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { createHash } from "node:crypto";
 import { createServer } from "node:http";
 import { readFileSync, statSync } from "node:fs";
 import { extname, join, normalize } from "node:path";
@@ -115,6 +116,18 @@ const buildTurn = ({ source, text, actor, metadata = {}, raw }) =>
     metadata: Object.freeze(metadata),
     raw
   });
+
+const createObsRequestId = () =>
+  `obs_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+
+const createObsAuthentication = ({ password, salt, challenge }) => {
+  const secret = createHash("sha256")
+    .update(`${password}${salt}`)
+    .digest("base64");
+  return createHash("sha256")
+    .update(`${secret}${challenge}`)
+    .digest("base64");
+};
 
 export const createDiscordMessageAdapter = ({
   ignoreBots = true,
@@ -322,6 +335,184 @@ export const createYouTubeLiveChatPollingRuntime = ({
       });
     }
   });
+};
+
+export const createObsWebSocketAdapter = ({
+  url = "ws://127.0.0.1:4455",
+  password = null,
+  WebSocketImpl = globalThis.WebSocket,
+  timeoutMs = 10_000
+} = {}) => {
+  if (typeof WebSocketImpl !== "function") {
+    throw new Error("createObsWebSocketAdapter requires WebSocketImpl");
+  }
+
+  let socket = null;
+  let identified = false;
+  let connectPromise = null;
+  const pending = new Map();
+
+  const send = (payload) => {
+    if (!socket || socket.readyState !== 1) {
+      throw new Error("OBS WebSocket is not open");
+    }
+    socket.send(JSON.stringify(payload));
+  };
+
+  const resolvePending = (message) => {
+    const requestId = message.d?.requestId;
+    if (!requestId || !pending.has(requestId)) {
+      return;
+    }
+    const entry = pending.get(requestId);
+    pending.delete(requestId);
+    clearTimeout(entry.timer);
+    const requestStatus = message.d?.requestStatus || {};
+    if (requestStatus.result === false) {
+      entry.reject(
+        new Error(
+          requestStatus.comment || `OBS request failed: ${message.d?.requestType || requestId}`
+        )
+      );
+      return;
+    }
+    entry.resolve(Object.freeze(message.d || {}));
+  };
+
+  const handleMessage = (raw) => {
+    const text = typeof raw === "string" ? raw : raw?.data || raw?.toString("utf8");
+    const message = JSON.parse(text);
+    if (message.op === 0) {
+      const auth = message.d?.authentication;
+      const identify = {
+        op: 1,
+        d: {
+          rpcVersion: message.d?.rpcVersion || 1
+        }
+      };
+      if (password && auth?.salt && auth?.challenge) {
+        identify.d.authentication = createObsAuthentication({
+          password,
+          salt: auth.salt,
+          challenge: auth.challenge
+        });
+      }
+      send(identify);
+      return;
+    }
+    if (message.op === 2) {
+      identified = true;
+      return;
+    }
+    if (message.op === 7) {
+      resolvePending(message);
+    }
+  };
+
+  const connect = () => {
+    if (connectPromise) {
+      return connectPromise;
+    }
+    connectPromise = new Promise((resolve, reject) => {
+      socket = new WebSocketImpl(url);
+      const timer = setTimeout(() => {
+        reject(new Error(`OBS WebSocket connection timed out after ${timeoutMs}ms`));
+      }, timeoutMs);
+      const cleanup = () => clearTimeout(timer);
+      socket.addEventListener?.("message", (event) => {
+        handleMessage(event);
+        if (identified) {
+          cleanup();
+          resolve(api);
+        }
+      });
+      socket.addEventListener?.("error", () => {
+        cleanup();
+        reject(new Error("OBS WebSocket connection error"));
+      });
+      socket.addEventListener?.("close", () => {
+        identified = false;
+        connectPromise = null;
+      });
+      socket.onmessage = (event) => {
+        handleMessage(event);
+        if (identified) {
+          cleanup();
+          resolve(api);
+        }
+      };
+      socket.onerror = () => {
+        cleanup();
+        reject(new Error("OBS WebSocket connection error"));
+      };
+      socket.onclose = () => {
+        identified = false;
+        connectPromise = null;
+      };
+    });
+    return connectPromise;
+  };
+
+  const request = async (requestType, requestData = {}) => {
+    await connect();
+    const requestId = createObsRequestId();
+    const response = new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        pending.delete(requestId);
+        reject(new Error(`OBS request timed out: ${requestType}`));
+      }, timeoutMs);
+      pending.set(requestId, { resolve, reject, timer });
+    });
+    send({
+      op: 6,
+      d: {
+        requestType,
+        requestId,
+        requestData
+      }
+    });
+    return response;
+  };
+
+  const close = () => {
+    if (socket) {
+      socket.close?.();
+    }
+    socket = null;
+    identified = false;
+    connectPromise = null;
+  };
+
+  const api = Object.freeze({
+    connect,
+    request,
+    setCurrentProgramScene(sceneName) {
+      return request("SetCurrentProgramScene", { sceneName });
+    },
+    setInputSettings(inputName, inputSettings, overlay = true) {
+      return request("SetInputSettings", {
+        inputName,
+        inputSettings,
+        overlay
+      });
+    },
+    setInputMute(inputName, inputMuted) {
+      return request("SetInputMute", {
+        inputName,
+        inputMuted
+      });
+    },
+    close,
+    state() {
+      return Object.freeze({
+        url,
+        identified,
+        pending: pending.size
+      });
+    }
+  });
+
+  return api;
 };
 
 export const createEventStreamDevice = (id = "event-stream") => {

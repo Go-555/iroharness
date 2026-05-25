@@ -9,10 +9,68 @@ import {
   createEventStreamDevice,
   createHttpMicroHarness,
   createJsonlProcessMicroHarness,
+  createObsWebSocketAdapter,
   createPlatformAdapterRegistry,
   createYouTubeLiveChatAdapter,
   createYouTubeLiveChatPollingRuntime
 } from "../src/adapters/index.js";
+
+const createFakeObsWebSocket = ({ sent }) => {
+  return class FakeObsWebSocket {
+    static instances = [];
+
+    constructor() {
+      this.readyState = 1;
+      this.listeners = new Map();
+      FakeObsWebSocket.instances.push(this);
+      setTimeout(() => {
+        this.emit({
+          op: 0,
+          d: {
+            rpcVersion: 1
+          }
+        });
+      }, 0);
+    }
+
+    addEventListener(type, callback) {
+      const callbacks = this.listeners.get(type) || [];
+      this.listeners.set(type, [...callbacks, callback]);
+    }
+
+    emit(message) {
+      const event = { data: JSON.stringify(message) };
+      (this.listeners.get("message") || []).forEach((callback) => callback(event));
+    }
+
+    send(raw) {
+      const message = JSON.parse(raw);
+      sent.push(message);
+      if (message.op === 1) {
+        setTimeout(() => this.emit({ op: 2, d: {} }), 0);
+      }
+      if (message.op === 6) {
+        setTimeout(
+          () =>
+            this.emit({
+              op: 7,
+              d: {
+                requestType: message.d.requestType,
+                requestId: message.d.requestId,
+                requestStatus: { result: true, code: 100 },
+                responseData: { ok: true }
+              }
+            }),
+          0
+        );
+      }
+    }
+
+    close() {
+      this.readyState = 3;
+    }
+  };
+};
 
 test("HTTP micro harness posts task context and normalizes response", async () => {
   const originalFetch = globalThis.fetch;
@@ -256,4 +314,44 @@ test("YouTube live chat polling runtime skips duplicate message IDs", async () =
 
   assert.equal(receivedTurns.length, 1);
   assert.equal(runtime.state().seenCount, 1);
+});
+
+test("OBS WebSocket adapter identifies and sends scene requests", async () => {
+  const sent = [];
+  const adapter = createObsWebSocketAdapter({
+    WebSocketImpl: createFakeObsWebSocket({ sent })
+  });
+
+  await adapter.connect();
+  const response = await adapter.setCurrentProgramScene("Iroha Stream");
+
+  assert.equal(adapter.state().identified, true);
+  assert.equal(sent[0].op, 1);
+  assert.equal(sent[1].op, 6);
+  assert.equal(sent[1].d.requestType, "SetCurrentProgramScene");
+  assert.equal(sent[1].d.requestData.sceneName, "Iroha Stream");
+  assert.deepEqual(response.responseData, { ok: true });
+  adapter.close();
+});
+
+test("OBS WebSocket adapter sends browser source input settings", async () => {
+  const sent = [];
+  const adapter = createObsWebSocketAdapter({
+    WebSocketImpl: createFakeObsWebSocket({ sent })
+  });
+
+  await adapter.setInputSettings("IroHarness Overlay", {
+    url: "http://127.0.0.1:4178/?view=overlay",
+    width: 1280,
+    height: 720
+  });
+
+  const request = sent.find((message) => message.op === 6);
+  assert.equal(request.d.requestType, "SetInputSettings");
+  assert.equal(request.d.requestData.inputName, "IroHarness Overlay");
+  assert.equal(
+    request.d.requestData.inputSettings.url,
+    "http://127.0.0.1:4178/?view=overlay"
+  );
+  adapter.close();
 });

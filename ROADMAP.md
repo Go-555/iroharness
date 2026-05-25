@@ -21,6 +21,7 @@ micro harnesses.
 - [x] audience user registry
 - [x] role-based permission policy
 - [x] OBS browser overlay mode
+- [x] OBS WebSocket control adapter
 - [x] Discord message normalization adapter
 - [x] YouTube live chat normalization adapter
 - [x] platform webhook endpoints
@@ -37,7 +38,7 @@ micro harnesses.
 - [x] Discord message normalization adapter
 - [x] YouTube live chat normalization adapter
 - [x] YouTube Live Chat API polling runtime
-- [ ] OBS control/websocket adapter
+- [x] OBS control/websocket adapter
 
 ## Milestone 2: Harness Interop
 
