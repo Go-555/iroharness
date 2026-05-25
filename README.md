@@ -70,6 +70,9 @@ npm install
 
 There are no runtime dependencies today.
 
+The package ships TypeScript declarations for the core, adapters, and testing
+contracts.
+
 ## Quick Start
 
 Create a local companion app:

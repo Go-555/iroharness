@@ -163,3 +163,23 @@ test("OSS contribution metadata is present and aligned with harness boundaries",
   assert.match(prTemplate, /Character identity remains owned by the macro harness/);
   assert.match(prTemplate, /Permissions are checked/);
 });
+
+test("package exposes TypeScript declarations for public entrypoints", () => {
+  const pkg = JSON.parse(readFileSync("package.json", "utf8"));
+
+  assert.equal(pkg.types, "src/index.d.ts");
+  assert.equal(pkg.exports["."].types, "./src/index.d.ts");
+  assert.equal(pkg.exports["./adapters"].types, "./src/adapters/index.d.ts");
+  assert.equal(pkg.exports["./testing"].types, "./src/testing/index.d.ts");
+
+  [
+    "src/index.d.ts",
+    join("src", "adapters", "index.d.ts"),
+    join("src", "testing", "index.d.ts")
+  ].forEach((file) => {
+    const content = readFileSync(file, "utf8");
+    assert.doesNotMatch(content, /\bany\b/);
+    assert.doesNotMatch(content, /\bunknown\b/);
+    assert.match(content, /export /);
+  });
+});

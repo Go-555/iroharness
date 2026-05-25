@@ -4,13 +4,23 @@
   "description": "Character macro harness for multi-body AI companions, PJOS state, and micro-harness delegation.",
   "type": "module",
   "main": "src/index.js",
+  "types": "src/index.d.ts",
   "bin": {
     "iroharness": "./bin/iroharness.mjs"
   },
   "exports": {
-    ".": "./src/index.js",
-    "./adapters": "./src/adapters/index.js",
-    "./testing": "./src/testing/index.js"
+    ".": {
+      "types": "./src/index.d.ts",
+      "default": "./src/index.js"
+    },
+    "./adapters": {
+      "types": "./src/adapters/index.d.ts",
+      "default": "./src/adapters/index.js"
+    },
+    "./testing": {
+      "types": "./src/testing/index.d.ts",
+      "default": "./src/testing/index.js"
+    }
   },
   "scripts": {
     "test": "node --test",
