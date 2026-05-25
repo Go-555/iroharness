@@ -21,6 +21,9 @@ micro harnesses.
 - [x] audience user registry
 - [x] role-based permission policy
 - [x] OBS browser overlay mode
+- [x] Discord message normalization adapter
+- [x] YouTube live chat normalization adapter
+- [x] platform webhook endpoints
 
 ## Milestone 1: Useful Local Demo
 
@@ -30,8 +33,8 @@ micro harnesses.
 - [ ] Codex app-server adapter
 - [x] file-backed PJOS
 - [ ] MotionPNGTuber renderer bridge
-- [ ] Discord adapter
-- [ ] YouTube live chat adapter
+- [x] Discord message normalization adapter
+- [x] YouTube live chat normalization adapter
 - [ ] OBS control/websocket adapter
 
 ## Milestone 2: Harness Interop
@@ -51,6 +54,8 @@ micro harnesses.
 - [ ] Even G2 display adapter
 - [ ] VS Code companion panel
 - [ ] Slack/Discord adapters
+- [ ] Discord bot runtime
+- [ ] YouTube Live Chat API polling runtime
 
 ## Milestone 4: Realtime Core
 

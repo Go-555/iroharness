@@ -97,6 +97,112 @@ const serveStatic = (response, publicDir, pathname) => {
   }
 };
 
+const normalizeText = (value) => String(value || "").trim();
+
+const normalizeActor = ({ platform, platformUserId, displayName }) =>
+  Object.freeze({
+    platform,
+    platformUserId: String(platformUserId || "unknown"),
+    displayName: normalizeText(displayName) || "Anonymous"
+  });
+
+const buildTurn = ({ source, text, actor, metadata = {}, raw }) =>
+  Object.freeze({
+    source,
+    modality: "text",
+    text: normalizeText(text),
+    actor,
+    metadata: Object.freeze(metadata),
+    raw
+  });
+
+export const createDiscordMessageAdapter = ({
+  ignoreBots = true,
+  mentionOnly = false,
+  botUserId = null
+} = {}) =>
+  Object.freeze({
+    id: "discord-message-adapter",
+    platform: "discord",
+    normalize(payload) {
+      const author = payload.author || payload.member?.user || {};
+      if (ignoreBots && author.bot) {
+        return null;
+      }
+      const content = normalizeText(payload.content);
+      const mentions = Array.isArray(payload.mentions) ? payload.mentions : [];
+      const mentionsBot =
+        botUserId && mentions.some((mention) => String(mention.id) === String(botUserId));
+      if (mentionOnly && !mentionsBot) {
+        return null;
+      }
+      return buildTurn({
+        source: "discord",
+        text: content,
+        actor: normalizeActor({
+          platform: "discord",
+          platformUserId: author.id || payload.userId,
+          displayName: author.global_name || author.username || payload.displayName
+        }),
+        metadata: {
+          channelId: payload.channel_id || payload.channelId || null,
+          guildId: payload.guild_id || payload.guildId || null,
+          messageId: payload.id || payload.messageId || null,
+          mentionOnly,
+          mentionsBot
+        },
+        raw: payload
+      });
+    }
+  });
+
+export const createYouTubeLiveChatAdapter = () =>
+  Object.freeze({
+    id: "youtube-live-chat-adapter",
+    platform: "youtube",
+    normalize(payload) {
+      const snippet = payload.snippet || {};
+      const author = payload.authorDetails || payload.author || {};
+      return buildTurn({
+        source: "youtube",
+        text:
+          snippet.displayMessage ||
+          snippet.textMessageDetails?.messageText ||
+          payload.message ||
+          payload.text,
+        actor: normalizeActor({
+          platform: "youtube",
+          platformUserId: author.channelId || payload.authorChannelId || payload.userId,
+          displayName: author.displayName || payload.displayName
+        }),
+        metadata: {
+          liveChatId: snippet.liveChatId || payload.liveChatId || null,
+          messageId: payload.id || payload.messageId || null,
+          isChatOwner: Boolean(author.isChatOwner),
+          isChatModerator: Boolean(author.isChatModerator),
+          isChatSponsor: Boolean(author.isChatSponsor)
+        },
+        raw: payload
+      });
+    }
+  });
+
+export const createPlatformAdapterRegistry = (adapters = []) => {
+  const byPlatform = new Map(adapters.map((adapter) => [adapter.platform, adapter]));
+  return Object.freeze({
+    normalize(platform, payload) {
+      const adapter = byPlatform.get(platform);
+      if (!adapter) {
+        throw new Error(`Platform adapter not found: ${platform}`);
+      }
+      return adapter.normalize(payload);
+    },
+    platforms() {
+      return Object.freeze([...byPlatform.keys()]);
+    }
+  });
+};
+
 export const createEventStreamDevice = (id = "event-stream") => {
   let clients = [];
   let events = [];
@@ -138,6 +244,10 @@ export const createEventStreamDevice = (id = "event-stream") => {
 export const createIroHarnessDevServer = ({
   harness,
   eventStream,
+  platformAdapters = createPlatformAdapterRegistry([
+    createDiscordMessageAdapter(),
+    createYouTubeLiveChatAdapter()
+  ]),
   publicDir = defaultPublicDir()
 }) => {
   if (!harness || !eventStream) {
@@ -172,6 +282,25 @@ export const createIroHarnessDevServer = ({
           }
         });
         sendJson(response, 200, result);
+        return;
+      }
+      const platformMatch = url.pathname.match(/^\/platform\/([^/]+)\/message$/);
+      if (request.method === "POST" && platformMatch) {
+        const payload = await readRequestJson(request);
+        const turn = platformAdapters.normalize(platformMatch[1], payload);
+        if (!turn) {
+          sendJson(response, 202, { ignored: true });
+          return;
+        }
+        const result = await harness.receive(turn);
+        sendJson(response, 200, {
+          turn,
+          result
+        });
+        return;
+      }
+      if (request.method === "GET" && url.pathname === "/platforms") {
+        sendJson(response, 200, { platforms: platformAdapters.platforms() });
         return;
       }
       if (request.method === "GET") {

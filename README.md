@@ -135,6 +135,31 @@ const hermes = createJsonlProcessMicroHarness({
 });
 ```
 
+## Platform Adapters
+
+Discord and YouTube inputs are normalized before they reach personality,
+permissions, or micro harness delegation.
+
+```js
+import {
+  createDiscordMessageAdapter,
+  createYouTubeLiveChatAdapter
+} from "iroharness/adapters";
+
+const discord = createDiscordMessageAdapter({ mentionOnly: true });
+const youtube = createYouTubeLiveChatAdapter();
+```
+
+The dev server also exposes:
+
+```text
+POST /platform/discord/message
+POST /platform/youtube/message
+GET  /platforms
+```
+
+See [docs/platform-adapters.md](./docs/platform-adapters.md).
+
 ## Browser Avatar Demo
 
 Run:
@@ -149,6 +174,8 @@ Then open the printed URL. The demo exposes:
 - `POST /turn` for text/voice-like input
 - `GET /state` for current character state
 - `GET /pjos` for Project OS state
+- `POST /platform/discord/message` and `/platform/youtube/message` for chat
+  platform testing
 
 The browser avatar is intentionally simple: it proves that the same normalized
 character state can drive a visual body while PJOS and micro harness delegation
@@ -263,6 +290,7 @@ protocols/
 docs/
   architecture.md
   audience-and-permissions.md
+  platform-adapters.md
   protocols.md
 examples/
   basic.mjs

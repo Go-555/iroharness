@@ -54,6 +54,19 @@ The macro harness resolves the actor through the user registry before routing.
 That means permissions and relationship can change while the character identity
 remains stable.
 
+## Platform Message Endpoint
+
+The dev server exposes platform-normalized webhook endpoints:
+
+```text
+POST /platform/discord/message
+POST /platform/youtube/message
+GET  /platforms
+```
+
+Platform adapters convert each payload into the same IroHarness turn shape. From
+there, user registry lookup and permission policy are identical.
+
 ## Event Stream Device
 
 The built-in dev server streams events as Server-Sent Events.

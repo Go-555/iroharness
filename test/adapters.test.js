@@ -5,9 +5,12 @@ import { join } from "node:path";
 import test from "node:test";
 
 import {
+  createDiscordMessageAdapter,
   createEventStreamDevice,
   createHttpMicroHarness,
-  createJsonlProcessMicroHarness
+  createJsonlProcessMicroHarness,
+  createPlatformAdapterRegistry,
+  createYouTubeLiveChatAdapter
 } from "../src/adapters/index.js";
 
 test("HTTP micro harness posts task context and normalizes response", async () => {
@@ -90,4 +93,77 @@ test("event stream device records emitted state events", () => {
   assert.equal(device.events().length, 1);
   assert.equal(device.events()[0].type, "state");
   assert.equal(device.events()[0].state.mode, "speaking");
+});
+
+test("Discord message adapter normalizes multi-person chat payloads", () => {
+  const adapter = createDiscordMessageAdapter();
+  const turn = adapter.normalize({
+    id: "message_1",
+    channel_id: "channel_1",
+    guild_id: "guild_1",
+    content: "Codexでこの設計をレビューして",
+    author: {
+      id: "discord-user-1",
+      username: "Fan One"
+    }
+  });
+
+  assert.equal(turn.source, "discord");
+  assert.equal(turn.text, "Codexでこの設計をレビューして");
+  assert.equal(turn.actor.platform, "discord");
+  assert.equal(turn.actor.platformUserId, "discord-user-1");
+  assert.equal(turn.metadata.channelId, "channel_1");
+});
+
+test("Discord message adapter can ignore bots and non-mentions", () => {
+  assert.equal(
+    createDiscordMessageAdapter().normalize({
+      content: "hello",
+      author: { id: "bot", username: "Bot", bot: true }
+    }),
+    null
+  );
+
+  assert.equal(
+    createDiscordMessageAdapter({ mentionOnly: true, botUserId: "iroha" }).normalize({
+      content: "hello",
+      author: { id: "user", username: "Fan" },
+      mentions: []
+    }),
+    null
+  );
+});
+
+test("YouTube live chat adapter normalizes author identity", () => {
+  const adapter = createYouTubeLiveChatAdapter();
+  const turn = adapter.normalize({
+    id: "chat_1",
+    snippet: {
+      liveChatId: "live_1",
+      displayMessage: "こんにちは"
+    },
+    authorDetails: {
+      channelId: "UC123",
+      displayName: "Viewer",
+      isChatSponsor: true
+    }
+  });
+
+  assert.equal(turn.source, "youtube");
+  assert.equal(turn.text, "こんにちは");
+  assert.equal(turn.actor.platform, "youtube");
+  assert.equal(turn.actor.platformUserId, "UC123");
+  assert.equal(turn.metadata.isChatSponsor, true);
+});
+
+test("platform adapter registry dispatches by platform", () => {
+  const registry = createPlatformAdapterRegistry([createYouTubeLiveChatAdapter()]);
+  assert.deepEqual(registry.platforms(), ["youtube"]);
+  const turn = registry.normalize("youtube", {
+    message: "hello",
+    authorChannelId: "UC999",
+    displayName: "Viewer"
+  });
+
+  assert.equal(turn.actor.platformUserId, "UC999");
 });
