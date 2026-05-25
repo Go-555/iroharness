@@ -18,4 +18,19 @@ Design rules:
 - every long-running work item should create or update PJOS state
 - prefer streaming interfaces for voice and expression work
 
+Before opening a PR:
+
+```bash
+npm run check
+npm test
+npm pack --dry-run
+```
+
+If Rust is installed:
+
+```bash
+cargo test -p iroharness-realtime-core
+cargo build -p iroharness-realtime-core --bin iroharness-realtime-core-jsonl
+```
+
 Please open issues or discussions for protocol changes before large patches.

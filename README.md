@@ -51,6 +51,9 @@ This repository is an early OSS skeleton. It intentionally starts with a small
 dependency-free Node.js core so the protocols can stabilize before a Rust
 realtime core is introduced.
 
+CI validates Node checks, Node tests, package contents, and the Rust realtime
+core crate. See [docs/ci.md](./docs/ci.md).
+
 ## Install
 
 ```bash
@@ -508,6 +511,7 @@ docs/
   brains.md
   body-bridges.md
   codex.md
+  ci.md
   external-bridges.md
   platform-adapters.md
   obs.md
