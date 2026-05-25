@@ -64,6 +64,17 @@ There are no runtime dependencies today.
 
 ## Quick Start
 
+Create a local companion app:
+
+```bash
+npx iroharness init ./my-companion --character Iroha
+cd my-companion
+npm install
+npm start
+```
+
+Or run the repository examples:
+
 ```bash
 npm run example
 npm run example:audience
@@ -77,8 +88,11 @@ npm run example:bridges
 npm run example:slack
 npm run example:youtube
 npm run example:obs
+npm run example:realtime-core
 npm run demo:browser
 ```
+
+See [docs/cli.md](./docs/cli.md) for the `iroharness init` command.
 
 Or import the core:
 
@@ -512,6 +526,7 @@ docs/
   audience-data-model.md
   brains.md
   body-bridges.md
+  cli.md
   codex.md
   ci.md
   external-bridges.md

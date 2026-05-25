@@ -4,6 +4,9 @@
   "description": "Character macro harness for multi-body AI companions, PJOS state, and micro-harness delegation.",
   "type": "module",
   "main": "src/index.js",
+  "bin": {
+    "iroharness": "./bin/iroharness.mjs"
+  },
   "exports": {
     ".": "./src/index.js",
     "./adapters": "./src/adapters/index.js",
@@ -25,7 +28,7 @@
     "example:obs": "node examples/obs-overlay-control.mjs",
     "example:realtime-core": "node examples/realtime-core-process.mjs",
     "demo:browser": "node examples/browser-server.mjs",
-    "check": "node --check src/index.js && node --check src/adapters/index.js && node --check src/testing/index.js && node --check examples/basic.mjs && node --check examples/audience-registry.mjs && node --check examples/body-mappers.mjs && node --check examples/brain-switching.mjs && node --check examples/external-bridges.mjs && node --check examples/file-pjos.mjs && node --check examples/browser-server.mjs && node --check examples/codex-app-server.mjs && node --check examples/claude-code-cli.mjs && node --check examples/youtube-live-poller.mjs && node --check examples/discord-bot.mjs && node --check examples/slack-events.mjs && node --check examples/obs-overlay-control.mjs && node --check examples/realtime-core-process.mjs && node --check examples/realtime-core-worker.mjs && node --check examples/vscode-companion/extension.cjs"
+    "check": "node --check bin/iroharness.mjs && node --check src/index.js && node --check src/adapters/index.js && node --check src/testing/index.js && node --check examples/basic.mjs && node --check examples/audience-registry.mjs && node --check examples/body-mappers.mjs && node --check examples/brain-switching.mjs && node --check examples/external-bridges.mjs && node --check examples/file-pjos.mjs && node --check examples/browser-server.mjs && node --check examples/codex-app-server.mjs && node --check examples/claude-code-cli.mjs && node --check examples/youtube-live-poller.mjs && node --check examples/discord-bot.mjs && node --check examples/slack-events.mjs && node --check examples/obs-overlay-control.mjs && node --check examples/realtime-core-process.mjs && node --check examples/realtime-core-worker.mjs && node --check examples/vscode-companion/extension.cjs"
   },
   "keywords": [
     "ai-agent",
@@ -47,6 +50,7 @@
     "node": ">=20"
   },
   "files": [
+    "bin",
     "src",
     "crates",
     "fixtures",
