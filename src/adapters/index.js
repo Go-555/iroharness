@@ -136,6 +136,7 @@ const createObsRequestId = () =>
   `obs_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 
 const truncateDiscordMessage = (value) => String(value || "").slice(0, 2000);
+const truncateSlackMessage = (value) => String(value || "").slice(0, 40000);
 
 const createObsAuthentication = ({ password, salt, challenge }) => {
   const secret = createHash("sha256")
@@ -455,6 +456,60 @@ export const createYouTubeLiveChatAdapter = () =>
     }
   });
 
+export const createSlackMessageAdapter = ({
+  ignoreBots = true,
+  mentionOnly = false,
+  botUserId = null,
+  stripMention = true
+} = {}) =>
+  Object.freeze({
+    id: "slack-message-adapter",
+    platform: "slack",
+    normalize(payload) {
+      const event = payload.event || payload;
+      if (!event || !["message", "app_mention"].includes(event.type)) {
+        return null;
+      }
+      if (ignoreBots && (event.bot_id || event.subtype === "bot_message")) {
+        return null;
+      }
+      const rawText = normalizeText(event.text);
+      const mentionsBot = botUserId ? rawText.includes(`<@${botUserId}>`) : false;
+      if (mentionOnly && event.type !== "app_mention" && !mentionsBot) {
+        return null;
+      }
+      const text =
+        stripMention && botUserId
+          ? rawText.replace(new RegExp(`<@${botUserId}>`, "g"), "").trim()
+          : rawText;
+      const profile = event.user_profile || event.message?.user_profile || {};
+      return buildTurn({
+        source: "slack",
+        text,
+        actor: normalizeActor({
+          platform: "slack",
+          platformUserId: event.user || payload.userId,
+          displayName:
+            profile.display_name ||
+            profile.real_name ||
+            event.username ||
+            payload.displayName ||
+            event.user
+        }),
+        metadata: {
+          teamId: payload.team_id || event.team || null,
+          channelId: event.channel || payload.channelId || null,
+          messageTs: event.ts || payload.ts || null,
+          threadTs: event.thread_ts || event.ts || payload.threadTs || null,
+          eventType: event.type,
+          mentionOnly,
+          mentionsBot
+        },
+        raw: payload
+      });
+    }
+  });
+
 export const createPlatformAdapterRegistry = (adapters = []) => {
   const byPlatform = new Map(adapters.map((adapter) => [adapter.platform, adapter]));
   return Object.freeze({
@@ -673,6 +728,97 @@ export const createDiscordBotRuntime = ({
         sequence
       });
     }
+  });
+};
+
+export const createSlackEventsRuntime = ({
+  botToken,
+  harness,
+  adapter = createSlackMessageAdapter(),
+  fetchImpl = globalThis.fetch,
+  apiBaseUrl = "https://slack.com/api",
+  respond = true,
+  responseFormatter = ({ result }) => result.text || result.output?.summary || null,
+  onResult = () => {},
+  onError = () => {}
+}) => {
+  if (!botToken) {
+    throw new Error("createSlackEventsRuntime requires botToken");
+  }
+  if (!harness || typeof harness.receive !== "function") {
+    throw new Error("createSlackEventsRuntime requires harness.receive");
+  }
+  if (typeof fetchImpl !== "function") {
+    throw new Error("createSlackEventsRuntime requires fetchImpl");
+  }
+
+  const postMessage = async ({ channelId, text, threadTs = null }) => {
+    const response = await fetchImpl(`${apiBaseUrl}/chat.postMessage`, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${botToken}`,
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        channel: channelId,
+        text: truncateSlackMessage(text),
+        ...(threadTs ? { thread_ts: threadTs } : {})
+      })
+    });
+    const responseText = await response.text();
+    const payload = responseText.trim() ? JSON.parse(responseText) : {};
+    if (!response.ok || payload.ok === false) {
+      throw new Error(`Slack chat.postMessage failed: ${response.status} ${responseText}`);
+    }
+    return payload;
+  };
+
+  const handlePayload = async (payload) => {
+    if (payload?.type === "url_verification") {
+      return Object.freeze({
+        kind: "challenge",
+        challenge: payload.challenge || ""
+      });
+    }
+    if (payload?.type && payload.type !== "event_callback") {
+      return Object.freeze({
+        kind: "ignored",
+        reason: `unsupported Slack payload type: ${payload.type}`
+      });
+    }
+    const turn = adapter.normalize(payload);
+    if (!turn || !turn.text) {
+      return Object.freeze({
+        kind: "ignored",
+        reason: "adapter ignored payload"
+      });
+    }
+    try {
+      const result = await harness.receive(turn);
+      let reply = null;
+      let posted = null;
+      if (respond) {
+        reply = responseFormatter({ turn, result });
+        if (reply) {
+          posted = await postMessage({
+            channelId: turn.metadata.channelId,
+            text: reply,
+            threadTs: turn.metadata.threadTs
+          });
+        }
+      }
+      const event = Object.freeze({ turn, result, reply, posted });
+      onResult(event);
+      return event;
+    } catch (error) {
+      onError(error);
+      throw error;
+    }
+  };
+
+  return Object.freeze({
+    handlePayload,
+    postMessage
   });
 };
 
@@ -1103,6 +1249,7 @@ export const createIroHarnessDevServerHandler = ({
   bodyDevices = [],
   platformAdapters = createPlatformAdapterRegistry([
     createDiscordMessageAdapter(),
+    createSlackMessageAdapter(),
     createYouTubeLiveChatAdapter()
   ]),
   publicDir = defaultPublicDir()

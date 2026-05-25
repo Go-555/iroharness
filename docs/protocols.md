@@ -80,6 +80,7 @@ The dev server exposes platform-normalized webhook endpoints:
 
 ```text
 POST /platform/discord/message
+POST /platform/slack/message
 POST /platform/youtube/message
 GET  /platforms
 ```

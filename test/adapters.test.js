@@ -21,6 +21,8 @@ import {
   createObsWebSocketAdapter,
   createOpenClawMicroHarness,
   createPlatformAdapterRegistry,
+  createSlackEventsRuntime,
+  createSlackMessageAdapter,
   createVrmBodyBridge,
   createYouTubeLiveChatAdapter,
   createYouTubeLiveChatPollingRuntime
@@ -617,16 +619,132 @@ test("YouTube live chat adapter normalizes author identity", () => {
   assert.equal(turn.metadata.isChatSponsor, true);
 });
 
-test("platform adapter registry dispatches by platform", () => {
-  const registry = createPlatformAdapterRegistry([createYouTubeLiveChatAdapter()]);
-  assert.deepEqual(registry.platforms(), ["youtube"]);
-  const turn = registry.normalize("youtube", {
-    message: "hello",
-    authorChannelId: "UC999",
-    displayName: "Viewer"
+test("Slack message adapter normalizes app mention payloads", () => {
+  const adapter = createSlackMessageAdapter({
+    mentionOnly: true,
+    botUserId: "UIROHA"
+  });
+  const turn = adapter.normalize({
+    team_id: "T123",
+    event: {
+      type: "app_mention",
+      user: "U123",
+      channel: "C123",
+      ts: "1710000000.000100",
+      text: "<@UIROHA> Codexで設計をレビューして",
+      user_profile: {
+        display_name: "Developer"
+      }
+    }
   });
 
-  assert.equal(turn.actor.platformUserId, "UC999");
+  assert.equal(turn.source, "slack");
+  assert.equal(turn.text, "Codexで設計をレビューして");
+  assert.equal(turn.actor.platform, "slack");
+  assert.equal(turn.actor.platformUserId, "U123");
+  assert.equal(turn.actor.displayName, "Developer");
+  assert.equal(turn.metadata.channelId, "C123");
+  assert.equal(turn.metadata.threadTs, "1710000000.000100");
+});
+
+test("Slack message adapter ignores bot messages and non-mentions", () => {
+  assert.equal(
+    createSlackMessageAdapter().normalize({
+      event: {
+        type: "message",
+        bot_id: "B123",
+        text: "hello"
+      }
+    }),
+    null
+  );
+
+  assert.equal(
+    createSlackMessageAdapter({ mentionOnly: true, botUserId: "UIROHA" }).normalize({
+      event: {
+        type: "message",
+        user: "U123",
+        channel: "C123",
+        text: "hello"
+      }
+    }),
+    null
+  );
+});
+
+test("platform adapter registry dispatches by platform", () => {
+  const registry = createPlatformAdapterRegistry([
+    createSlackMessageAdapter(),
+    createYouTubeLiveChatAdapter()
+  ]);
+  assert.deepEqual(registry.platforms(), ["slack", "youtube"]);
+  const turn = registry.normalize("slack", {
+    event: {
+      type: "message",
+      user: "U999",
+      channel: "C999",
+      text: "hello"
+    }
+  });
+
+  assert.equal(turn.actor.platformUserId, "U999");
+});
+
+test("Slack events runtime handles challenge, receives events, and replies in thread", async () => {
+  const receivedTurns = [];
+  const restCalls = [];
+  const runtime = createSlackEventsRuntime({
+    botToken: "xoxb-test",
+    adapter: createSlackMessageAdapter({
+      mentionOnly: true,
+      botUserId: "UIROHA"
+    }),
+    harness: {
+      async receive(turn) {
+        receivedTurns.push(turn);
+        return { kind: "response", text: `reply to ${turn.actor.displayName}` };
+      }
+    },
+    fetchImpl: async (url, options) => {
+      restCalls.push({ url, options, body: JSON.parse(options.body) });
+      return {
+        ok: true,
+        status: 200,
+        async text() {
+          return JSON.stringify({ ok: true, ts: "1710000000.000200" });
+        }
+      };
+    }
+  });
+
+  const challenge = await runtime.handlePayload({
+    type: "url_verification",
+    challenge: "challenge-token"
+  });
+  const result = await runtime.handlePayload({
+    type: "event_callback",
+    team_id: "T123",
+    event: {
+      type: "app_mention",
+      user: "U123",
+      channel: "C123",
+      ts: "1710000000.000100",
+      text: "<@UIROHA> こんにちは",
+      user_profile: {
+        display_name: "Developer"
+      }
+    }
+  });
+
+  assert.equal(challenge.kind, "challenge");
+  assert.equal(challenge.challenge, "challenge-token");
+  assert.equal(receivedTurns.length, 1);
+  assert.equal(receivedTurns[0].actor.platformUserId, "U123");
+  assert.equal(result.reply, "reply to Developer");
+  assert.equal(restCalls.length, 1);
+  assert.equal(restCalls[0].url, "https://slack.com/api/chat.postMessage");
+  assert.equal(restCalls[0].body.channel, "C123");
+  assert.equal(restCalls[0].body.thread_ts, "1710000000.000100");
 });
 
 test("YouTube live chat polling runtime fetches messages and sends turns to harness", async () => {

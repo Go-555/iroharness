@@ -32,9 +32,11 @@ micro harnesses.
 - [x] OBS browser overlay mode
 - [x] OBS WebSocket control adapter
 - [x] Discord message normalization adapter
+- [x] Slack message normalization adapter
 - [x] YouTube live chat normalization adapter
 - [x] platform webhook endpoints
 - [x] Discord bot runtime
+- [x] Slack Events runtime
 - [x] YouTube Live Chat polling runtime
 
 ## Milestone 1: Useful Local Demo
@@ -67,7 +69,7 @@ micro harnesses.
 - [x] M5Stack body adapter
 - [x] Even G2 display adapter
 - [ ] VS Code companion panel
-- [ ] Slack/Discord adapters
+- [x] Slack/Discord adapters
 - [x] Discord bot runtime
 
 ## Milestone 4: Realtime Core

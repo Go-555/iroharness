@@ -70,6 +70,7 @@ npm run example:pjos
 npm run example:codex
 npm run example:discord
 npm run example:bridges
+npm run example:slack
 npm run example:youtube
 npm run example:obs
 npm run demo:browser
@@ -203,10 +204,12 @@ permissions, or micro harness delegation.
 ```js
 import {
   createDiscordMessageAdapter,
+  createSlackMessageAdapter,
   createYouTubeLiveChatAdapter
 } from "iroharness/adapters";
 
 const discord = createDiscordMessageAdapter({ mentionOnly: true });
+const slack = createSlackMessageAdapter({ mentionOnly: true });
 const youtube = createYouTubeLiveChatAdapter();
 ```
 
@@ -222,6 +225,12 @@ For a Discord Gateway bot:
 DISCORD_BOT_TOKEN=... DISCORD_BOT_USER_ID=... npm run example:discord
 ```
 
+For Slack Events API handling:
+
+```bash
+SLACK_BOT_TOKEN=... SLACK_BOT_USER_ID=... npm run example:slack
+```
+
 For OBS Browser Source control:
 
 ```bash
@@ -232,6 +241,7 @@ The dev server also exposes:
 
 ```text
 POST /platform/discord/message
+POST /platform/slack/message
 POST /platform/youtube/message
 GET  /platforms
 ```
@@ -410,6 +420,7 @@ examples/
   file-pjos.mjs
   codex-app-server.mjs
   discord-bot.mjs
+  slack-events.mjs
   external-bridges.mjs
   youtube-live-poller.mjs
   obs-overlay-control.mjs

@@ -93,6 +93,75 @@ curl -X POST http://127.0.0.1:4178/platform/discord/message \
   }'
 ```
 
+## Slack
+
+Use `createSlackMessageAdapter` for Slack Events API payloads.
+
+```js
+import { createSlackMessageAdapter } from "iroharness/adapters";
+
+const slack = createSlackMessageAdapter({
+  mentionOnly: true,
+  botUserId: "UIROHA"
+});
+
+const turn = slack.normalize({
+  team_id: "T123",
+  event: {
+    type: "app_mention",
+    user: "U123",
+    channel: "C123",
+    ts: "1710000000.000100",
+    text: "<@UIROHA> こんにちは",
+    user_profile: {
+      display_name: "Developer"
+    }
+  }
+});
+```
+
+For Slack Events API handling plus thread replies, use
+`createSlackEventsRuntime`:
+
+```js
+import {
+  createSlackEventsRuntime,
+  createSlackMessageAdapter
+} from "iroharness/adapters";
+
+const runtime = createSlackEventsRuntime({
+  botToken: process.env.SLACK_BOT_TOKEN,
+  harness,
+  adapter: createSlackMessageAdapter({
+    mentionOnly: true,
+    botUserId: process.env.SLACK_BOT_USER_ID
+  })
+});
+
+await runtime.handlePayload(slackEventsPayload);
+```
+
+Or run the example:
+
+```bash
+SLACK_BOT_TOKEN=... SLACK_BOT_USER_ID=... npm run example:slack
+```
+
+The built-in dev server accepts Slack Events-like payloads:
+
+```bash
+curl -X POST http://127.0.0.1:4178/platform/slack/message \
+  -H 'content-type: application/json' \
+  -d '{
+    "event": {
+      "type": "app_mention",
+      "user": "U123",
+      "channel": "C123",
+      "text": "<@UIROHA> こんにちは"
+    }
+  }'
+```
+
 ## YouTube Live Chat
 
 Use `createYouTubeLiveChatAdapter` for YouTube live chat message resources.
