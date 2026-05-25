@@ -1,0 +1,45 @@
+name: Adapter request
+description: Request support for a platform, body, model, or micro harness.
+title: "[Adapter]: "
+labels:
+  - adapter
+  - enhancement
+body:
+  - type: input
+    id: target
+    attributes:
+      label: Target system
+      description: Name and link for the platform, body, model, or harness.
+      placeholder: "Example: Discord, OBS, Live2D, Codex, OpenClaw"
+    validations:
+      required: true
+  - type: dropdown
+    id: adapter_type
+    attributes:
+      label: Adapter type
+      options:
+        - platform input
+        - body/output
+        - micro harness
+        - realtime core
+        - brain/model
+        - storage/export
+    validations:
+      required: true
+  - type: textarea
+    id: shape
+    attributes:
+      label: Desired input/output shape
+      description: What should be normalized into or out of IroHarness?
+    validations:
+      required: true
+  - type: textarea
+    id: auth
+    attributes:
+      label: Auth and permission notes
+      description: What credentials, scopes, roles, or safety gates are needed?
+  - type: textarea
+    id: references
+    attributes:
+      label: References
+      description: Docs, APIs, SDKs, examples, or existing implementations.

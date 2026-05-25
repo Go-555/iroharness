@@ -5,6 +5,9 @@ IroHarness is built around stable contracts before broad feature work.
 Read [docs/design-principles.md](./docs/design-principles.md) before proposing
 large boundary changes.
 
+Read [CODE_OF_CONDUCT.md](./CODE_OF_CONDUCT.md) before participating in issues,
+discussions, or pull requests.
+
 Good first contributions:
 
 - a new body adapter
@@ -36,3 +39,5 @@ cargo build -p iroharness-realtime-core --bin iroharness-realtime-core-jsonl
 ```
 
 Please open issues or discussions for protocol changes before large patches.
+Use the issue templates for bugs, features, and adapter requests so maintainers
+can quickly identify the affected boundary.

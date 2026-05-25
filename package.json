@@ -71,6 +71,8 @@
     "Cargo.toml",
     "README.md",
     "ROADMAP.md",
+    "CONTRIBUTING.md",
+    "CODE_OF_CONDUCT.md",
     "CHANGELOG.md",
     "SECURITY.md",
     "RELEASE.md",

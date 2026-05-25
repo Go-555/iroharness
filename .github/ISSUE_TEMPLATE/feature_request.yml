@@ -1,0 +1,51 @@
+name: Feature request
+description: Propose a feature, adapter, body, or protocol change.
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please read docs/design-principles.md first. The macro harness owns
+        identity; adapters and micro harnesses should stay replaceable.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What user, stream, device, or developer workflow does this unlock?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: What should IroHarness add or change?
+    validations:
+      required: true
+  - type: dropdown
+    id: boundary
+    attributes:
+      label: Primary boundary
+      options:
+        - macro harness identity
+        - audience/permissions
+        - Project OS
+        - micro harness adapter
+        - platform adapter
+        - body adapter
+        - realtime core
+        - CLI
+        - docs
+    validations:
+      required: true
+  - type: textarea
+    id: compatibility
+    attributes:
+      label: Compatibility and risks
+      description: Any protocol, permission, privacy, or migration concerns?
+  - type: textarea
+    id: tests
+    attributes:
+      label: Suggested validation
+      description: What contract tests or examples should prove this works?

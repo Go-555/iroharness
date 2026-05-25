@@ -1,0 +1,70 @@
+name: Bug report
+description: Report a reproducible IroHarness bug.
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug. Please include enough context for maintainers
+        to reproduce it without access to private character memory or user data.
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What happened?
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What should have happened?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction
+      description: Steps, commands, minimal code, or fixture data.
+      placeholder: |
+        1. Run ...
+        2. Send ...
+        3. See ...
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - macro harness
+        - audience/permissions
+        - Project OS
+        - micro harness adapter
+        - platform adapter
+        - body adapter
+        - realtime core
+        - CLI
+        - docs
+        - other
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Node version, OS, package version or commit.
+      placeholder: |
+        Node:
+        OS:
+        IroHarness version/commit:
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Remove credentials, private memory, and user data before posting.
+      render: text

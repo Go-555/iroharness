@@ -140,3 +140,26 @@ test("design principles document locks the macro harness boundary", () => {
     assert.match(design, new RegExp(heading));
   });
 });
+
+test("OSS contribution metadata is present and aligned with harness boundaries", () => {
+  const pkg = JSON.parse(readFileSync("package.json", "utf8"));
+  const contributing = readFileSync("CONTRIBUTING.md", "utf8");
+  const codeOfConduct = readFileSync("CODE_OF_CONDUCT.md", "utf8");
+  const prTemplate = readFileSync(join(".github", "pull_request_template.md"), "utf8");
+
+  ["CONTRIBUTING.md", "CODE_OF_CONDUCT.md"].forEach((file) => {
+    assert.equal(pkg.files.includes(file), true);
+  });
+  [
+    join(".github", "ISSUE_TEMPLATE", "bug_report.yml"),
+    join(".github", "ISSUE_TEMPLATE", "feature_request.yml"),
+    join(".github", "ISSUE_TEMPLATE", "adapter_request.yml")
+  ].forEach((file) => {
+    assert.match(readFileSync(file, "utf8"), /IroHarness|Adapter|Feature|Bug/);
+  });
+  assert.match(contributing, /design-principles/);
+  assert.match(contributing, /CODE_OF_CONDUCT/);
+  assert.match(codeOfConduct, /private character prompts/);
+  assert.match(prTemplate, /Character identity remains owned by the macro harness/);
+  assert.match(prTemplate, /Permissions are checked/);
+});

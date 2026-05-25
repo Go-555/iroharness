@@ -58,7 +58,9 @@ CI validates Node checks, Node tests, package contents, and the Rust realtime
 core crate. See [docs/ci.md](./docs/ci.md).
 
 See [RELEASE.md](./RELEASE.md), [CHANGELOG.md](./CHANGELOG.md), and
-[SECURITY.md](./SECURITY.md) for OSS operation notes.
+[SECURITY.md](./SECURITY.md) for OSS operation notes. See
+[CONTRIBUTING.md](./CONTRIBUTING.md) and
+[CODE_OF_CONDUCT.md](./CODE_OF_CONDUCT.md) before contributing.
 
 ## Install
 
