@@ -71,6 +71,34 @@ const hermes = createHermesGatewayMicroHarness({
 The bridge sends task text plus macro metadata, then accepts `summary`, `text`,
 `reply`, or `message` in the response.
 
+## Claude Code
+
+Use `createClaudeCodeCliMicroHarness` when Claude Code should execute a local
+development task while IroHarness keeps ownership of identity, permissions, and
+PJOS.
+
+```js
+import { createClaudeCodeCliMicroHarness } from "iroharness/adapters";
+
+const claudeCode = createClaudeCodeCliMicroHarness({
+  cwd: "/path/to/project",
+  command: "claude",
+  args: ["-p"]
+});
+```
+
+The adapter writes an IroHarness prompt to stdin. The prompt includes the task,
+character, actor, and PJOS context, and explicitly frames Claude Code as a
+delegated micro harness rather than the character itself.
+
+Claude Code can return plain text. If the final stdout line is JSON with
+`status`, `summary`, and `artifacts`, IroHarness will normalize that structured
+result.
+
+```bash
+IROHARNESS_RUN_CLAUDE=1 CLAUDE_WORKSPACE=/path/to/project npm run example:claude -- "Claude Codeで実装方針をレビューして"
+```
+
 ## AIAvatarKit
 
 AIAvatarKit is treated as a body/speech bridge, not as the owner of Iroha's

@@ -6,6 +6,7 @@ import test from "node:test";
 
 import {
   createAIAvatarKitBridgeDevice,
+  createClaudeCodeCliMicroHarness,
   createCodexAppServerMicroHarness,
   createDiscordBotRuntime,
   createDiscordMessageAdapter,
@@ -23,6 +24,7 @@ import {
   createPlatformAdapterRegistry,
   createSlackEventsRuntime,
   createSlackMessageAdapter,
+  createTextProcessMicroHarness,
   createVrmBodyBridge,
   createYouTubeLiveChatAdapter,
   createYouTubeLiveChatPollingRuntime
@@ -415,6 +417,80 @@ test("JSONL process micro harness sends one task and parses final JSON line", as
   const output = await harness.run({ id: "ticket_2" }, { character: { id: "iroha" } });
   assert.equal(output.status, "completed");
   assert.equal(output.summary, "processed ticket_2");
+});
+
+test("text process micro harness sends a prompt and accepts plain text output", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "iroharness-text-process-"));
+  const scriptPath = join(dir, "worker.mjs");
+  writeFileSync(
+    scriptPath,
+    [
+      "let input = '';",
+      "process.stdin.on('data', (chunk) => { input += chunk.toString('utf8'); });",
+      "process.stdin.on('end', () => {",
+      "  console.log(`plain reply ${input.includes('IroHarness')}`);",
+      "});"
+    ].join("\n"),
+    "utf8"
+  );
+
+  const harness = createTextProcessMicroHarness({
+    id: "plain-worker",
+    command: process.execPath,
+    args: [scriptPath],
+    capabilities: ["text"],
+    timeoutMs: 1000
+  });
+
+  const output = await harness.run(
+    { id: "ticket_3", title: "Explain" },
+    { character: { id: "iroha" } }
+  );
+
+  assert.equal(output.status, "completed");
+  assert.equal(output.summary, "plain reply true");
+});
+
+test("Claude Code CLI micro harness builds an IroHarness prompt and parses JSON output", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "iroharness-claude-code-"));
+  const scriptPath = join(dir, "claude-worker.mjs");
+  writeFileSync(
+    scriptPath,
+    [
+      "let input = '';",
+      "process.stdin.on('data', (chunk) => { input += chunk.toString('utf8'); });",
+      "process.stdin.on('end', () => {",
+      "  console.error(input.includes('Project OS') ? 'pj-os-present' : 'missing');",
+      "  console.log(JSON.stringify({",
+      "    status: 'completed',",
+      "    summary: `claude saw ${input.includes('Claude Code task from IroHarness.')}`,",
+      "    artifacts: [{ kind: 'patch', uri: 'memory://claude-code/ticket_4', title: 'Patch' }]",
+      "  }));",
+      "});"
+    ].join("\n"),
+    "utf8"
+  );
+
+  const harness = createClaudeCodeCliMicroHarness({
+    command: process.execPath,
+    args: [scriptPath],
+    timeoutMs: 1000
+  });
+
+  const output = await harness.run(
+    { id: "ticket_4", title: "Review README", purpose: "READMEをレビューして" },
+    {
+      character: { id: "iroha", name: "Iroha" },
+      actor: { user: { id: "dev", displayName: "Developer" } },
+      projectOs: { tickets: [{ id: "ticket_4" }] }
+    }
+  );
+
+  assert.equal(harness.id, "claude-code");
+  assert.equal(harness.capabilities.includes("claude-code"), true);
+  assert.equal(output.status, "completed");
+  assert.equal(output.summary, "claude saw true");
+  assert.equal(output.artifacts[0].kind, "patch");
 });
 
 test("event stream device records emitted state events", () => {

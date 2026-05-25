@@ -57,7 +57,7 @@ micro harnesses.
 
 - [x] OpenClaw adapter
 - [x] Hermes adapter
-- [ ] Claude Code adapter
+- [x] Claude Code adapter
 - [x] AIAvatarKit bridge
 - [x] adapter contract tests
 - [x] golden task fixtures

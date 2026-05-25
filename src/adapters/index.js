@@ -23,6 +23,44 @@ const normalizeMicroHarnessOutput = (value, fallbackSummary) => {
   });
 };
 
+const tryParseJsonLine = (stdout) => {
+  const lines = stdout.trim().split(/\r?\n/).filter(Boolean);
+  const lastLine = lines.at(-1);
+  if (!lastLine) {
+    return null;
+  }
+  try {
+    return JSON.parse(lastLine);
+  } catch {
+    return null;
+  }
+};
+
+const truncateForPrompt = (value, maxLength = 8000) => {
+  const text = typeof value === "string" ? value : JSON.stringify(value, null, 2);
+  if (text.length <= maxLength) {
+    return text;
+  }
+  return `${text.slice(0, maxLength)}\n[truncated]`;
+};
+
+const buildDefaultMicroHarnessPrompt = ({ task, context = {}, label }) =>
+  [
+    `${label} task from IroHarness.`,
+    "IroHarness owns the character identity, user permissions, and PJOS state. Treat yourself as a delegated micro harness.",
+    `Task ID: ${task.id || "task"}`,
+    task.title ? `Title: ${task.title}` : "",
+    task.purpose ? `Purpose: ${task.purpose}` : "",
+    context.character
+      ? `Character:\n${truncateForPrompt(context.character, 2000)}`
+      : "",
+    context.actor ? `Actor:\n${truncateForPrompt(context.actor, 2000)}` : "",
+    context.projectOs ? `Project OS:\n${truncateForPrompt(context.projectOs)}` : "",
+    "Return either natural language or a final JSON line with status, summary, and artifacts."
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+
 const withTimeout = (promise, timeoutMs, message) =>
   new Promise((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error(message)), timeoutMs);
@@ -1676,6 +1714,116 @@ export const createJsonlProcessMicroHarness = ({
     }
   });
 };
+
+export const createTextProcessMicroHarness = ({
+  id,
+  command,
+  args = [],
+  cwd,
+  env = {},
+  capabilities = [],
+  timeoutMs = 120_000,
+  buildInput = ({ task, context }) =>
+    buildDefaultMicroHarnessPrompt({ task, context, label: id }),
+  parseOutput = ({ stdout, stderr, code }) => {
+    const parsed = tryParseJsonLine(stdout);
+    if (parsed) {
+      return parsed;
+    }
+    return {
+      status: code === 0 ? "completed" : "failed",
+      summary: stdout.trim() || stderr.trim() || `${id} exited with ${code}`,
+      artifacts: [],
+      raw: { stdout, stderr, code }
+    };
+  }
+}) => {
+  if (!id || !command) {
+    throw new Error("createTextProcessMicroHarness requires id and command");
+  }
+
+  return Object.freeze({
+    id,
+    capabilities: Object.freeze([...capabilities]),
+    run(task, context) {
+      return new Promise((resolve) => {
+        const child = spawn(command, args, {
+          cwd,
+          env: {
+            ...process.env,
+            ...env
+          },
+          stdio: ["pipe", "pipe", "pipe"]
+        });
+        let stdout = "";
+        let stderr = "";
+        let settled = false;
+
+        const finish = (output) => {
+          if (settled) {
+            return;
+          }
+          settled = true;
+          clearTimeout(timer);
+          resolve(normalizeMicroHarnessOutput(output, `${id} completed`));
+        };
+
+        const timer = setTimeout(() => {
+          child.kill("SIGTERM");
+          finish({
+            status: "failed",
+            summary: `${id} timed out after ${timeoutMs}ms`,
+            artifacts: [],
+            raw: { stdout, stderr }
+          });
+        }, timeoutMs);
+
+        child.stdout.on("data", (chunk) => {
+          stdout += chunk.toString("utf8");
+        });
+        child.stderr.on("data", (chunk) => {
+          stderr += chunk.toString("utf8");
+        });
+        child.on("error", (error) => {
+          finish({
+            status: "failed",
+            summary: `${id} process error: ${error.message}`,
+            artifacts: [],
+            raw: { stdout, stderr }
+          });
+        });
+        child.on("close", (code) => {
+          finish(parseOutput({ stdout, stderr, code, task, context }));
+        });
+        child.stdin.end(buildInput({ task, context }));
+      });
+    }
+  });
+};
+
+export const createClaudeCodeCliMicroHarness = ({
+  id = "claude-code",
+  command = "claude",
+  args = ["-p"],
+  cwd,
+  env = {},
+  capabilities = ["code", "files", "review", "claude-code"],
+  timeoutMs = 10 * 60_000,
+  buildPrompt = ({ task, context }) =>
+    buildDefaultMicroHarnessPrompt({ task, context, label: "Claude Code" }),
+  parseOutput
+} = {}) =>
+  createTextProcessMicroHarness({
+    id,
+    command,
+    args,
+    cwd,
+    env,
+    capabilities,
+    timeoutMs,
+    buildInput: ({ task, context }) => buildPrompt({ task, context }),
+    ...(parseOutput ? { parseOutput } : {})
+  });
 
 export const createMotionPngTuberMapper = () =>
   Object.freeze({

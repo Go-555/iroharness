@@ -68,6 +68,7 @@ npm run example:bodies
 npm run example:brains
 npm run example:pjos
 npm run example:codex
+npm run example:claude
 npm run example:discord
 npm run example:bridges
 npm run example:slack
@@ -178,6 +179,23 @@ const hermes = createJsonlProcessMicroHarness({
   args: ["./workers/hermes-bridge.mjs"],
   capabilities: ["learning", "skills"]
 });
+```
+
+Connect Claude Code as a delegated coding micro harness:
+
+```js
+import { createClaudeCodeCliMicroHarness } from "iroharness/adapters";
+
+const claudeCode = createClaudeCodeCliMicroHarness({
+  cwd: "/path/to/project",
+  args: ["-p"]
+});
+```
+
+Run the guarded example:
+
+```bash
+IROHARNESS_RUN_CLAUDE=1 CLAUDE_WORKSPACE=/path/to/project npm run example:claude -- "Claude Codeで設計レビューして"
 ```
 
 For Codex app-server delegation:
