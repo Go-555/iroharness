@@ -5,13 +5,16 @@ import { join } from "node:path";
 import test from "node:test";
 
 import {
+  createAIAvatarKitBridgeDevice,
   createCodexAppServerMicroHarness,
   createDiscordBotRuntime,
   createDiscordMessageAdapter,
   createEventStreamDevice,
+  createHermesGatewayMicroHarness,
   createHttpMicroHarness,
   createJsonlProcessMicroHarness,
   createObsWebSocketAdapter,
+  createOpenClawMicroHarness,
   createPlatformAdapterRegistry,
   createYouTubeLiveChatAdapter,
   createYouTubeLiveChatPollingRuntime
@@ -170,8 +173,7 @@ const createFakeCodexTransport = () => {
 };
 
 test("HTTP micro harness posts task context and normalizes response", async () => {
-  const originalFetch = globalThis.fetch;
-  globalThis.fetch = async (_endpoint, options) => {
+  const fetchImpl = async (_endpoint, options) => {
     const payload = JSON.parse(options.body);
     return {
       ok: true,
@@ -189,17 +191,128 @@ test("HTTP micro harness posts task context and normalizes response", async () =
   const harness = createHttpMicroHarness({
     id: "openclaw",
     endpoint: "http://127.0.0.1:8787/run",
-    capabilities: ["assistant"]
+    capabilities: ["assistant"],
+    fetchImpl
   });
 
-  try {
-    const output = await harness.run({ id: "ticket_1" }, { character: { id: "iroha" } });
-    assert.equal(output.status, "completed");
-    assert.equal(output.summary, "received ticket_1");
-    assert.equal(output.artifacts.length, 1);
-  } finally {
-    globalThis.fetch = originalFetch;
-  }
+  const output = await harness.run({ id: "ticket_1" }, { character: { id: "iroha" } });
+  assert.equal(output.status, "completed");
+  assert.equal(output.summary, "received ticket_1");
+  assert.equal(output.artifacts.length, 1);
+});
+
+test("OpenClaw micro harness sends an IroHarness task envelope", async () => {
+  const calls = [];
+  const harness = createOpenClawMicroHarness({
+    endpoint: "http://127.0.0.1:8787/agent/run",
+    apiKey: "test-key",
+    agentId: "iroha-openclaw",
+    sessionId: "session_1",
+    fetchImpl: async (endpoint, options) => {
+      calls.push({ endpoint, options, body: JSON.parse(options.body) });
+      return {
+        ok: true,
+        status: 200,
+        async text() {
+          return JSON.stringify({
+            reply: "OpenClaw finished",
+            artifacts: [{ kind: "note", uri: "memory://openclaw", title: "run" }]
+          });
+        }
+      };
+    }
+  });
+
+  const output = await harness.run(
+    { id: "ticket_1", title: "Review", purpose: "レビューして" },
+    {
+      character: { id: "iroha" },
+      actor: { user: { id: "dev" } },
+      projectOs: { tickets: [] }
+    }
+  );
+
+  assert.equal(calls[0].endpoint, "http://127.0.0.1:8787/agent/run");
+  assert.equal(calls[0].options.headers.authorization, "Bearer test-key");
+  assert.equal(calls[0].body.agentId, "iroha-openclaw");
+  assert.equal(calls[0].body.message, "レビューして");
+  assert.equal(calls[0].body.context.character.id, "iroha");
+  assert.equal(output.summary, "OpenClaw finished");
+  assert.equal(output.artifacts.length, 1);
+});
+
+test("Hermes gateway micro harness sends text and macro metadata", async () => {
+  const calls = [];
+  const harness = createHermesGatewayMicroHarness({
+    endpoint: "http://127.0.0.1:8765/message",
+    conversationId: "conversation_1",
+    fetchImpl: async (_endpoint, options) => {
+      calls.push(JSON.parse(options.body));
+      return {
+        ok: true,
+        status: 200,
+        async text() {
+          return JSON.stringify({
+            text: "Hermes learned this"
+          });
+        }
+      };
+    }
+  });
+
+  const output = await harness.run(
+    { id: "ticket_2", title: "Remember", purpose: "この判断を覚えて" },
+    {
+      character: { id: "iroha" },
+      actor: { user: { id: "dev" } },
+      projectOs: { tickets: [] }
+    }
+  );
+
+  assert.equal(calls[0].text, "この判断を覚えて");
+  assert.equal(calls[0].conversationId, "conversation_1");
+  assert.equal(calls[0].metadata.character.id, "iroha");
+  assert.equal(output.summary, "Hermes learned this");
+});
+
+test("AIAvatarKit bridge device posts speech and state events", async () => {
+  const calls = [];
+  const device = createAIAvatarKitBridgeDevice({
+    eventEndpoint: "http://127.0.0.1:8000/iroharness/events",
+    stateEndpoint: "http://127.0.0.1:8000/iroharness/state",
+    speechEndpoint: "http://127.0.0.1:8000/iroharness/speech",
+    fetchImpl: async (endpoint, options) => {
+      calls.push({ endpoint, body: JSON.parse(options.body) });
+      return {
+        ok: true,
+        status: 200,
+        async text() {
+          return "{}";
+        }
+      };
+    }
+  });
+
+  device.emit({
+    type: "state",
+    state: {
+      characterId: "iroha",
+      mode: "speaking",
+      speechText: "こんにちは"
+    }
+  });
+  device.emit({
+    type: "speech",
+    text: "こんにちは"
+  });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  assert.equal(calls.length, 4);
+  assert.equal(calls[0].endpoint, "http://127.0.0.1:8000/iroharness/events");
+  assert.equal(calls[1].endpoint, "http://127.0.0.1:8000/iroharness/state");
+  assert.equal(calls[2].endpoint, "http://127.0.0.1:8000/iroharness/events");
+  assert.equal(calls[3].endpoint, "http://127.0.0.1:8000/iroharness/speech");
+  assert.equal(calls[3].body.speechText, "こんにちは");
 });
 
 test("Codex app-server micro harness starts thread and returns assistant deltas", async () => {

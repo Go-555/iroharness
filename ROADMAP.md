@@ -17,6 +17,9 @@ micro harnesses.
 - [x] HTTP micro-harness adapter
 - [x] JSONL process micro-harness adapter
 - [x] Codex app-server micro-harness adapter
+- [x] OpenClaw HTTP bridge adapter
+- [x] Hermes gateway bridge adapter
+- [x] AIAvatarKit body bridge adapter
 - [x] voice/text/deep brain switching
 - [x] browser avatar demo
 - [x] streaming event endpoint
@@ -49,10 +52,10 @@ micro harnesses.
 
 ## Milestone 2: Harness Interop
 
-- [ ] OpenClaw adapter
-- [ ] Hermes adapter
+- [x] OpenClaw adapter
+- [x] Hermes adapter
 - [ ] Claude Code adapter
-- [ ] AIAvatarKit bridge
+- [x] AIAvatarKit bridge
 - [ ] adapter contract tests
 - [ ] golden task fixtures
 

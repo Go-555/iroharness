@@ -216,3 +216,27 @@ The bridge should return:
 The process adapter writes one JSON line to stdin and reads the final JSON line
 from stdout. This is useful for local wrappers around Codex CLI, Hermes Agent,
 OpenClaw tools, or custom workers.
+
+## Named External Bridges
+
+OpenClaw and Hermes wrappers are small projections of the same micro-harness
+contract:
+
+```js
+createOpenClawMicroHarness({ endpoint, agentId, sessionId })
+createHermesGatewayMicroHarness({ endpoint, conversationId })
+```
+
+AIAvatarKit is a body bridge instead:
+
+```js
+createAIAvatarKitBridgeDevice({
+  eventEndpoint,
+  stateEndpoint,
+  speechEndpoint
+})
+```
+
+The named bridges are intentionally thin. They normalize IroHarness task,
+character, actor, and PJOS context into shapes that local bridge servers can
+adapt to each upstream runtime.

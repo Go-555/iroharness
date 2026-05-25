@@ -1114,10 +1114,16 @@ export const createHttpMicroHarness = ({
   endpoint,
   capabilities = [],
   headers = {},
+  fetchImpl = globalThis.fetch,
+  buildRequest = ({ task, context }) => ({ task, context }),
+  parseResponse = (payload) => payload,
   timeoutMs = 60_000
 }) => {
   if (!id || !endpoint) {
     throw new Error("createHttpMicroHarness requires id and endpoint");
+  }
+  if (typeof fetchImpl !== "function") {
+    throw new Error("createHttpMicroHarness requires fetchImpl");
   }
 
   return Object.freeze({
@@ -1126,13 +1132,13 @@ export const createHttpMicroHarness = ({
     async run(task, context) {
       const timeout = createTimeoutSignal(timeoutMs);
       try {
-        const response = await fetch(endpoint, {
+        const response = await fetchImpl(endpoint, {
           method: "POST",
           headers: {
             "content-type": "application/json",
             ...headers
           },
-          body: JSON.stringify({ task, context }),
+          body: JSON.stringify(buildRequest({ task, context })),
           signal: timeout.signal
         });
         const responseText = await response.text();
@@ -1148,9 +1154,169 @@ export const createHttpMicroHarness = ({
           );
         }
         const parsed = responseText.trim() ? JSON.parse(responseText) : {};
-        return normalizeMicroHarnessOutput(parsed, `${id} completed`);
+        return normalizeMicroHarnessOutput(parseResponse(parsed), `${id} completed`);
       } finally {
         timeout.clear();
+      }
+    }
+  });
+};
+
+export const createOpenClawMicroHarness = ({
+  id = "openclaw",
+  endpoint,
+  apiKey = null,
+  agentId = null,
+  sessionId = null,
+  capabilities = ["assistant", "tools", "memory", "automation"],
+  fetchImpl = globalThis.fetch,
+  timeoutMs = 120_000
+}) =>
+  createHttpMicroHarness({
+    id,
+    endpoint,
+    capabilities,
+    fetchImpl,
+    timeoutMs,
+    headers: {
+      ...(apiKey ? { authorization: `Bearer ${apiKey}` } : {})
+    },
+    buildRequest({ task, context }) {
+      return {
+        message: task.purpose || task.title,
+        agentId,
+        sessionId,
+        source: "iroharness",
+        task,
+        context: {
+          character: context.character,
+          actor: context.actor,
+          projectOs: context.projectOs
+        }
+      };
+    },
+    parseResponse(payload) {
+      return {
+        status: payload.status || payload.result?.status || "completed",
+        summary:
+          payload.summary ||
+          payload.reply ||
+          payload.message ||
+          payload.result?.summary ||
+          payload.result?.reply ||
+          "OpenClaw completed.",
+        artifacts: payload.artifacts || payload.result?.artifacts || [],
+        raw: payload
+      };
+    }
+  });
+
+export const createHermesGatewayMicroHarness = ({
+  id = "hermes",
+  endpoint,
+  apiKey = null,
+  conversationId = null,
+  capabilities = ["learning", "skills", "memory", "messaging"],
+  fetchImpl = globalThis.fetch,
+  timeoutMs = 120_000
+}) =>
+  createHttpMicroHarness({
+    id,
+    endpoint,
+    capabilities,
+    fetchImpl,
+    timeoutMs,
+    headers: {
+      ...(apiKey ? { authorization: `Bearer ${apiKey}` } : {})
+    },
+    buildRequest({ task, context }) {
+      return {
+        text: task.purpose || task.title,
+        conversationId,
+        source: "iroharness",
+        metadata: {
+          task,
+          character: context.character,
+          actor: context.actor,
+          projectOs: context.projectOs
+        }
+      };
+    },
+    parseResponse(payload) {
+      return {
+        status: payload.status || payload.result?.status || "completed",
+        summary:
+          payload.summary ||
+          payload.text ||
+          payload.reply ||
+          payload.message ||
+          payload.result?.summary ||
+          payload.result?.text ||
+          "Hermes completed.",
+        artifacts: payload.artifacts || payload.result?.artifacts || [],
+        raw: payload
+      };
+    }
+  });
+
+export const createAIAvatarKitBridgeDevice = ({
+  id = "aiavatarkit",
+  eventEndpoint = null,
+  stateEndpoint = null,
+  speechEndpoint = null,
+  headers = {},
+  fetchImpl = globalThis.fetch,
+  timeoutMs = 15_000
+} = {}) => {
+  if (!eventEndpoint && !stateEndpoint && !speechEndpoint) {
+    throw new Error("createAIAvatarKitBridgeDevice requires at least one endpoint");
+  }
+  if (typeof fetchImpl !== "function") {
+    throw new Error("createAIAvatarKitBridgeDevice requires fetchImpl");
+  }
+
+  const post = async (endpoint, payload) => {
+    if (!endpoint) {
+      return null;
+    }
+    const timeout = createTimeoutSignal(timeoutMs);
+    try {
+      const response = await fetchImpl(endpoint, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          ...headers
+        },
+        body: JSON.stringify(payload),
+        signal: timeout.signal
+      });
+      const responseText = await response.text();
+      if (!response.ok) {
+        throw new Error(`AIAvatarKit bridge ${response.status}: ${responseText}`);
+      }
+      return responseText.trim() ? JSON.parse(responseText) : {};
+    } finally {
+      timeout.clear();
+    }
+  };
+
+  return Object.freeze({
+    id,
+    kind: "body",
+    capabilities: Object.freeze(["state", "speech", "task", "avatar"]),
+    emit(event) {
+      const payload = {
+        source: "iroharness",
+        event,
+        state: event.state || null,
+        speechText: event.text || event.state?.speechText || null
+      };
+      post(eventEndpoint, payload).catch(() => {});
+      if (event.type === "state") {
+        post(stateEndpoint, payload).catch(() => {});
+      }
+      if (event.type === "speech") {
+        post(speechEndpoint, payload).catch(() => {});
       }
     }
   });

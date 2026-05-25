@@ -69,6 +69,7 @@ npm run example:brains
 npm run example:pjos
 npm run example:codex
 npm run example:discord
+npm run example:bridges
 npm run example:youtube
 npm run example:obs
 npm run demo:browser
@@ -127,6 +128,30 @@ const openclaw = createHttpMicroHarness({
   capabilities: ["assistant", "tools", "memory"]
 });
 ```
+
+Connect named external bridges:
+
+```js
+import {
+  createOpenClawMicroHarness,
+  createHermesGatewayMicroHarness,
+  createAIAvatarKitBridgeDevice
+} from "iroharness/adapters";
+
+const openclaw = createOpenClawMicroHarness({
+  endpoint: "http://127.0.0.1:8787/agent/run"
+});
+
+const hermes = createHermesGatewayMicroHarness({
+  endpoint: "http://127.0.0.1:8765/message"
+});
+
+const avatar = createAIAvatarKitBridgeDevice({
+  eventEndpoint: "http://127.0.0.1:8000/iroharness/events"
+});
+```
+
+See [docs/external-bridges.md](./docs/external-bridges.md).
 
 Connect a local JSONL worker process:
 
@@ -350,6 +375,7 @@ docs/
   audience-data-model.md
   brains.md
   codex.md
+  external-bridges.md
   platform-adapters.md
   obs.md
   protocols.md
@@ -361,6 +387,7 @@ examples/
   file-pjos.mjs
   codex-app-server.mjs
   discord-bot.mjs
+  external-bridges.mjs
   youtube-live-poller.mjs
   obs-overlay-control.mjs
   browser-server.mjs
