@@ -47,6 +47,33 @@ machines:
 It intentionally has no external dependencies yet. That keeps it portable while
 the Node.js layer and protocol tests settle.
 
+## Node Binding Contract
+
+Node runtime bindings start in `src/index.js`:
+
+- `createJavascriptRealtimeCore`: dependency-free fallback implementation
+- `createRustRealtimeCoreBinding`: optional Rust native/WASM/process binding
+- `createRealtimeVoiceSession({ realtimeCore })`: publishes voice events and
+  latency marks through the runtime core
+
+The binding expects the native side to expose some or all of this shape:
+
+```js
+{
+  publish(event) {},
+  mark(name, at) {},
+  measure(name, startMark, endMark) {},
+  startSpeaking() {},
+  finishSpeaking() {},
+  shouldInterrupt(event) {},
+  snapshot() {}
+}
+```
+
+Missing optional methods degrade gracefully. If no Rust implementation is
+available, `createRustRealtimeCoreBinding` can fall back to
+`createJavascriptRealtimeCore` so app code does not fork.
+
 ## Validation
 
 When Rust is installed:

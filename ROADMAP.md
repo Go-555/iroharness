@@ -84,7 +84,8 @@ micro harnesses.
 - [x] interruption and barge-in
 - [x] realtime latency metrics
 - [x] Rust event/audio/device core skeleton
-- [ ] Rust event/audio/device runtime bindings
+- [x] Rust event/audio/device runtime binding contract
+- [ ] Rust native/WASM/process implementation
 
 ## Guiding Principle
 

@@ -47,10 +47,12 @@
   },
   "files": [
     "src",
+    "crates",
     "fixtures",
     "protocols",
     "docs",
     "examples",
+    "Cargo.toml",
     "README.md",
     "ROADMAP.md",
     "LICENSE"

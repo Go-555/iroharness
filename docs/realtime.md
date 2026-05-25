@@ -121,6 +121,39 @@ latency.measure("first_audio_ms", "audio.received", "tts.first_audio");
 console.log(latency.snapshot());
 ```
 
+## Realtime Core Binding
+
+`createRealtimeVoiceSession` can publish the same event stream into a realtime
+core. The core can be the dependency-free JavaScript implementation today, or a
+Rust native/WASM/process implementation later.
+
+```js
+import {
+  createJavascriptRealtimeCore,
+  createRealtimeVoiceSession,
+  createRustRealtimeCoreBinding
+} from "iroharness";
+
+const realtimeCore = createRustRealtimeCoreBinding({
+  fallbackCore: createJavascriptRealtimeCore({ id: "iroha-realtime-core" })
+});
+
+const session = createRealtimeVoiceSession({
+  realtimeCore
+});
+```
+
+Core contract:
+
+- `publish(event)` records or fans out realtime events
+- `mark(name, at)` records latency marks
+- `startSpeaking()` / `finishSpeaking()` update speech state
+- `shouldInterrupt(event)` decides barge-in from STT events
+- `snapshot()` returns events, latency, and core state
+
+This keeps the macro harness API stable while the fast path underneath can move
+to Rust incrementally.
+
 ## Why This Is A Contract First
 
 Remote STT, LLM, and TTS providers dominate latency. Rust will not make a remote

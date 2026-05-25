@@ -218,8 +218,10 @@ For realtime voice contracts:
 
 ```js
 import {
+  createJavascriptRealtimeCore,
   createRealtimeLatencyTracker,
   createRealtimeVoiceSession,
+  createRustRealtimeCoreBinding,
   createTextStreamingStt,
   createTextStreamingTts
 } from "iroharness";

@@ -1283,6 +1283,261 @@ export const createRealtimeLatencyTracker = ({ clock = () => Date.now() } = {}) 
   });
 };
 
+export const createRealtimeEventBus = ({
+  id = "realtime-event-bus",
+  capacity = 256,
+  clock = nowIso
+} = {}) => {
+  if (!Number.isInteger(capacity) || capacity < 1) {
+    throw new Error("createRealtimeEventBus requires a positive integer capacity");
+  }
+  let events = Object.freeze([]);
+
+  const publish = (event) => {
+    const nextEvent = freezeCopy({
+      ...event,
+      busId: id,
+      timestamp: event?.timestamp || clock()
+    });
+    events = Object.freeze([...events, nextEvent].slice(-capacity));
+    return nextEvent;
+  };
+
+  const snapshot = () =>
+    freezeCopy({
+      id,
+      capacity,
+      events: Object.freeze([...events])
+    });
+
+  const drain = () => {
+    const drained = Object.freeze([...events]);
+    events = Object.freeze([]);
+    return drained;
+  };
+
+  return Object.freeze({
+    id,
+    kind: "realtime-event-bus",
+    capacity,
+    publish,
+    push: publish,
+    snapshot,
+    drain
+  });
+};
+
+export const createRealtimeBargeInGate = () => {
+  let speaking = false;
+  let interrupted = false;
+
+  const startSpeaking = () => {
+    speaking = true;
+    interrupted = false;
+    return state();
+  };
+
+  const finishSpeaking = () => {
+    speaking = false;
+    return state();
+  };
+
+  const observeSttPartial = (text) => {
+    const shouldInterrupt = speaking && String(text || "").trim().length > 0;
+    if (shouldInterrupt) {
+      interrupted = true;
+    }
+    return shouldInterrupt;
+  };
+
+  const observeSttEvent = (event) =>
+    event?.type === "stt.partial" ? observeSttPartial(event.delta || event.text || "") : false;
+
+  const state = () =>
+    freezeCopy({
+      speaking,
+      interrupted
+    });
+
+  return Object.freeze({
+    startSpeaking,
+    finishSpeaking,
+    observeSttEvent,
+    observeSttPartial,
+    state
+  });
+};
+
+export const createJavascriptRealtimeCore = ({
+  id = "javascript-realtime-core",
+  eventCapacity = 256,
+  clock = () => Date.now(),
+  timestamp = nowIso
+} = {}) => {
+  const eventBus = createRealtimeEventBus({
+    id: `${id}:events`,
+    capacity: eventCapacity,
+    clock: timestamp
+  });
+  const latency = createRealtimeLatencyTracker({ clock });
+  const bargeIn = createRealtimeBargeInGate();
+
+  return Object.freeze({
+    id,
+    kind: "realtime-core",
+    implementation: "javascript",
+    capabilities: Object.freeze(["event-bus", "latency", "barge-in", "device-command-contract"]),
+    publish: eventBus.publish,
+    push: eventBus.publish,
+    drain: eventBus.drain,
+    mark: latency.mark,
+    measure: latency.measure,
+    startSpeaking: bargeIn.startSpeaking,
+    finishSpeaking: bargeIn.finishSpeaking,
+    shouldInterrupt: bargeIn.observeSttEvent,
+    snapshot() {
+      return freezeCopy({
+        id,
+        implementation: "javascript",
+        events: eventBus.snapshot().events,
+        latency: latency.snapshot(),
+        bargeIn: bargeIn.state()
+      });
+    }
+  });
+};
+
+const createNativeRealtimeCoreFacade = ({ core, id, implementation }) =>
+  Object.freeze({
+    id: core.id || id,
+    kind: "realtime-core",
+    implementation: core.implementation || implementation,
+    capabilities: freezeArray(core.capabilities || []),
+    publish(event) {
+      if (typeof core.publish === "function") {
+        return core.publish(event);
+      }
+      if (typeof core.push === "function") {
+        return core.push(event);
+      }
+      return event;
+    },
+    push(event) {
+      if (typeof core.publish === "function") {
+        return core.publish(event);
+      }
+      if (typeof core.push === "function") {
+        return core.push(event);
+      }
+      return event;
+    },
+    drain() {
+      return typeof core.drain === "function" ? core.drain() : Object.freeze([]);
+    },
+    mark(name, at) {
+      return typeof core.mark === "function" ? core.mark(name, at) : null;
+    },
+    measure(name, startMark, endMark) {
+      return typeof core.measure === "function" ? core.measure(name, startMark, endMark) : null;
+    },
+    startSpeaking() {
+      return typeof core.startSpeaking === "function" ? core.startSpeaking() : null;
+    },
+    finishSpeaking() {
+      return typeof core.finishSpeaking === "function" ? core.finishSpeaking() : null;
+    },
+    shouldInterrupt(event) {
+      if (typeof core.shouldInterrupt === "function") {
+        return core.shouldInterrupt(event);
+      }
+      if (typeof core.observeSttEvent === "function") {
+        return core.observeSttEvent(event);
+      }
+      if (event?.type === "stt.partial" && typeof core.observeSttPartial === "function") {
+        return core.observeSttPartial(event.delta || event.text || "");
+      }
+      return false;
+    },
+    snapshot() {
+      return typeof core.snapshot === "function"
+        ? core.snapshot()
+        : freezeCopy({
+            id: core.id || id,
+            implementation: core.implementation || implementation
+          });
+    }
+  });
+
+export const createRustRealtimeCoreBinding = ({
+  id = "rust-realtime-core",
+  native = null,
+  loadNative = null,
+  fallback = true,
+  fallbackCore = null
+} = {}) => {
+  let resolved = null;
+
+  const resolve = () => {
+    if (resolved) {
+      return resolved;
+    }
+    const loaded = native || (typeof loadNative === "function" ? loadNative() : null);
+    const core =
+      typeof loaded?.createRealtimeCore === "function" ? loaded.createRealtimeCore({ id }) : loaded;
+    if (core) {
+      resolved = createNativeRealtimeCoreFacade({
+        core,
+        id,
+        implementation: "rust"
+      });
+      return resolved;
+    }
+    if (!fallback) {
+      throw new Error(`Rust realtime core is not available: ${id}`);
+    }
+    resolved =
+      fallbackCore ||
+      createJavascriptRealtimeCore({
+        id: `${id}:javascript-fallback`
+      });
+    return resolved;
+  };
+
+  return Object.freeze({
+    id,
+    kind: "realtime-core-binding",
+    implementation: "rust-optional",
+    resolve,
+    publish(event) {
+      return resolve().publish(event);
+    },
+    push(event) {
+      return resolve().publish(event);
+    },
+    drain() {
+      return resolve().drain();
+    },
+    mark(name, at) {
+      return resolve().mark(name, at);
+    },
+    measure(name, startMark, endMark) {
+      return resolve().measure(name, startMark, endMark);
+    },
+    startSpeaking() {
+      return resolve().startSpeaking();
+    },
+    finishSpeaking() {
+      return resolve().finishSpeaking();
+    },
+    shouldInterrupt(event) {
+      return resolve().shouldInterrupt(event);
+    },
+    snapshot() {
+      return resolve().snapshot();
+    }
+  });
+};
+
 export const createTextStreamingStt = ({ id = "text-streaming-stt" } = {}) =>
   Object.freeze({
     id,
@@ -1408,6 +1663,7 @@ export const createRealtimeVoiceSession = ({
   stt = createTextStreamingStt(),
   tts = createTextStreamingTts(),
   latency = createRealtimeLatencyTracker(),
+  realtimeCore = null,
   onEvent = () => {}
 } = {}) => {
   let activeTts = null;
@@ -1421,8 +1677,15 @@ export const createRealtimeVoiceSession = ({
       sessionId: id,
       timestamp: nowIso()
     });
+    realtimeCore?.publish?.(nextEvent);
     onEvent(nextEvent);
     return nextEvent;
+  };
+
+  const markLatency = (name) => {
+    const mark = latency.mark(name);
+    realtimeCore?.mark?.(name, mark.at);
+    return mark;
   };
 
   const interrupt = (reason = "barge-in") => {
@@ -1441,20 +1704,20 @@ export const createRealtimeVoiceSession = ({
   const handleSttEvent = (event) => {
     const nextEvent = emit(event);
     if (
-      event.type === "stt.partial" &&
       speaking &&
-      String(event.delta || event.text || "").trim()
+      (realtimeCore?.shouldInterrupt?.(event) ||
+        (event.type === "stt.partial" && String(event.delta || event.text || "").trim()))
     ) {
       interrupt("barge-in");
     }
     if (event.type === "stt.final") {
-      latency.mark("stt.final");
+      markLatency("stt.final");
     }
     return nextEvent;
   };
 
   const listen = () => {
-    latency.mark("audio.received");
+    markLatency("audio.received");
     sttSession = stt.start({
       onEvent: handleSttEvent
     });
@@ -1472,7 +1735,8 @@ export const createRealtimeVoiceSession = ({
     const controller = new AbortController();
     activeTts = controller;
     speaking = true;
-    latency.mark("tts.start");
+    realtimeCore?.startSpeaking?.();
+    markLatency("tts.start");
     emit({
       type: "realtime.speaking",
       ttsId: tts.id,
@@ -1484,12 +1748,13 @@ export const createRealtimeVoiceSession = ({
       signal: controller.signal,
       onEvent(event) {
         if (event.type === "tts.audio" && !latency.snapshot().marks["tts.first_audio"]) {
-          latency.mark("tts.first_audio");
+          markLatency("tts.first_audio");
         }
         emit(event);
       }
     });
     speaking = false;
+    realtimeCore?.finishSpeaking?.();
     if (activeTts === controller) {
       activeTts = null;
     }

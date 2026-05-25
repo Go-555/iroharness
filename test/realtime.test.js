@@ -2,8 +2,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  createJavascriptRealtimeCore,
+  createRealtimeEventBus,
   createRealtimeLatencyTracker,
   createRealtimeVoiceSession,
+  createRustRealtimeCoreBinding,
   createTextStreamingStt,
   createTextStreamingTts
 } from "../src/index.js";
@@ -93,6 +96,112 @@ test("realtime latency tracker records turn timing metrics", () => {
   assert.equal(stt.durationMs, 15);
   assert.equal(firstAudio.durationMs, 130);
   assert.equal(snapshot.measures.length, 2);
+});
+
+test("realtime event bus keeps a bounded event snapshot", () => {
+  const bus = createRealtimeEventBus({
+    id: "bus-test",
+    capacity: 2,
+    clock: () => "2026-05-25T00:00:00.000Z"
+  });
+
+  bus.publish({ type: "one" });
+  bus.publish({ type: "two" });
+  bus.publish({ type: "three" });
+
+  const snapshot = bus.snapshot();
+  assert.deepEqual(
+    snapshot.events.map((event) => event.type),
+    ["two", "three"]
+  );
+  assert.equal(snapshot.events.at(-1).busId, "bus-test");
+});
+
+test("JavaScript realtime core exposes the Rust core runtime contract", () => {
+  const core = createJavascriptRealtimeCore({
+    id: "js-core-test",
+    eventCapacity: 1,
+    clock: () => 100
+  });
+
+  core.publish({ type: "realtime.listening" });
+  core.mark("audio.received");
+  core.startSpeaking();
+  const interrupted = core.shouldInterrupt({
+    type: "stt.partial",
+    delta: "待って"
+  });
+
+  const snapshot = core.snapshot();
+  assert.equal(core.kind, "realtime-core");
+  assert.equal(interrupted, true);
+  assert.equal(snapshot.events.length, 1);
+  assert.equal(snapshot.latency.marks["audio.received"], 100);
+  assert.equal(snapshot.bargeIn.interrupted, true);
+});
+
+test("Rust realtime core binding delegates to native core when available", () => {
+  const calls = [];
+  const binding = createRustRealtimeCoreBinding({
+    native: {
+      id: "native-core",
+      implementation: "rust-napi-test",
+      capabilities: ["event-bus"],
+      publish(event) {
+        calls.push(["publish", event.type]);
+        return event;
+      },
+      mark(name, at) {
+        calls.push(["mark", name, at]);
+        return { name, at };
+      },
+      startSpeaking() {
+        calls.push(["startSpeaking"]);
+      },
+      finishSpeaking() {
+        calls.push(["finishSpeaking"]);
+      },
+      shouldInterrupt(event) {
+        calls.push(["shouldInterrupt", event.type]);
+        return event.type === "stt.partial";
+      },
+      snapshot() {
+        return { implementation: "rust-napi-test", calls };
+      }
+    }
+  });
+
+  binding.publish({ type: "realtime.speaking" });
+  binding.mark("tts.start", 42);
+  binding.startSpeaking();
+  const interrupted = binding.shouldInterrupt({ type: "stt.partial", delta: "待って" });
+  binding.finishSpeaking();
+
+  assert.equal(binding.resolve().implementation, "rust-napi-test");
+  assert.equal(interrupted, true);
+  assert.deepEqual(calls[0], ["publish", "realtime.speaking"]);
+  assert.deepEqual(calls[1], ["mark", "tts.start", 42]);
+});
+
+test("realtime voice session can publish through a Rust core binding", async () => {
+  const core = createRustRealtimeCoreBinding({
+    fallbackCore: createJavascriptRealtimeCore({ id: "fallback-core" })
+  });
+  const session = createRealtimeVoiceSession({
+    stt: createTextStreamingStt({ id: "stt-test" }),
+    tts: createTextStreamingTts({ id: "tts-test", chunkSize: 2 }),
+    realtimeCore: core
+  });
+
+  const listening = session.listen();
+  listening.push("あ");
+  await session.speak({ text: "hello", voice: "iroha" });
+
+  const snapshot = core.snapshot();
+  assert.equal(snapshot.implementation, "javascript");
+  assert.equal(snapshot.events.some((event) => event.type === "realtime.listening"), true);
+  assert.equal(snapshot.events.some((event) => event.type === "tts.audio"), true);
+  assert.equal(typeof snapshot.latency.marks["audio.received"], "number");
 });
 
 test("realtime voice session interrupts TTS when STT detects barge-in", async () => {
