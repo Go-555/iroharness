@@ -5,6 +5,7 @@ import { join } from "node:path";
 import test from "node:test";
 
 import {
+  createCodexAppServerMicroHarness,
   createDiscordBotRuntime,
   createDiscordMessageAdapter,
   createEventStreamDevice,
@@ -127,6 +128,47 @@ const createFakeDiscordGatewayWebSocket = ({ sent }) => {
   };
 };
 
+const createFakeCodexTransport = () => {
+  let listeners = [];
+  const requests = [];
+  const emit = (event) => {
+    listeners.forEach((listener) => listener(event));
+  };
+  return {
+    requests,
+    async initialize() {
+      requests.push({ method: "initialize" });
+    },
+    async sendRequest(method, params) {
+      requests.push({ method, params });
+      if (method === "thread/start") {
+        return { thread: { id: "thread_1" } };
+      }
+      if (method === "turn/start") {
+        setTimeout(() => {
+          emit({
+            method: "item/agentMessage/delta",
+            params: { delta: "実装を確認しました。" }
+          });
+          emit({
+            method: "turn/completed",
+            params: { turn: { id: "turn_1" } }
+          });
+        }, 0);
+        return { turn: { id: "turn_1" } };
+      }
+      return {};
+    },
+    subscribe(listener) {
+      listeners = [...listeners, listener];
+      return () => {
+        listeners = listeners.filter((candidate) => candidate !== listener);
+      };
+    },
+    close() {}
+  };
+};
+
 test("HTTP micro harness posts task context and normalizes response", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async (_endpoint, options) => {
@@ -158,6 +200,38 @@ test("HTTP micro harness posts task context and normalizes response", async () =
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+test("Codex app-server micro harness starts thread and returns assistant deltas", async () => {
+  const transport = createFakeCodexTransport();
+  const harness = createCodexAppServerMicroHarness({
+    cwd: "/tmp/project",
+    model: "gpt-test",
+    transport,
+    timeoutMs: 1000
+  });
+
+  const output = await harness.run(
+    {
+      id: "ticket_1",
+      title: "Review README",
+      purpose: "CodexでREADMEをレビューして"
+    },
+    {
+      actor: {
+        user: { displayName: "Developer" }
+      }
+    }
+  );
+
+  assert.equal(output.status, "completed");
+  assert.equal(output.summary, "実装を確認しました。");
+  assert.equal(output.artifacts[0].kind, "codex-events");
+  assert.equal(transport.requests[0].method, "initialize");
+  assert.equal(transport.requests[1].method, "thread/start");
+  assert.equal(transport.requests[1].params.model, "gpt-test");
+  assert.equal(transport.requests[2].method, "turn/start");
+  assert.equal(transport.requests[2].params.threadId, "thread_1");
 });
 
 test("JSONL process micro harness sends one task and parses final JSON line", async () => {

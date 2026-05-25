@@ -13,11 +13,12 @@
     "example": "node examples/basic.mjs",
     "example:bodies": "node examples/body-mappers.mjs",
     "example:pjos": "node examples/file-pjos.mjs",
+    "example:codex": "node examples/codex-app-server.mjs",
     "example:discord": "node examples/discord-bot.mjs",
     "example:youtube": "node examples/youtube-live-poller.mjs",
     "example:obs": "node examples/obs-overlay-control.mjs",
     "demo:browser": "node examples/browser-server.mjs",
-    "check": "node --check src/index.js && node --check src/adapters/index.js && node --check examples/basic.mjs && node --check examples/body-mappers.mjs && node --check examples/file-pjos.mjs && node --check examples/browser-server.mjs && node --check examples/youtube-live-poller.mjs && node --check examples/discord-bot.mjs && node --check examples/obs-overlay-control.mjs"
+    "check": "node --check src/index.js && node --check src/adapters/index.js && node --check examples/basic.mjs && node --check examples/body-mappers.mjs && node --check examples/file-pjos.mjs && node --check examples/browser-server.mjs && node --check examples/codex-app-server.mjs && node --check examples/youtube-live-poller.mjs && node --check examples/discord-bot.mjs && node --check examples/obs-overlay-control.mjs"
   },
   "keywords": [
     "ai-agent",

@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { createServer } from "node:http";
 import { readFileSync, statSync } from "node:fs";
 import { extname, join, normalize } from "node:path";
+import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 
 const normalizeMicroHarnessOutput = (value, fallbackSummary) => {
@@ -21,6 +22,20 @@ const normalizeMicroHarnessOutput = (value, fallbackSummary) => {
     raw: value
   });
 };
+
+const withTimeout = (promise, timeoutMs, message) =>
+  new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(message)), timeoutMs);
+    promise
+      .then((value) => {
+        clearTimeout(timer);
+        resolve(value);
+      })
+      .catch((error) => {
+        clearTimeout(timer);
+        reject(error);
+      });
+  });
 
 const createTimeoutSignal = (timeoutMs) => {
   const controller = new AbortController();
@@ -129,6 +144,244 @@ const createObsAuthentication = ({ password, salt, challenge }) => {
   return createHash("sha256")
     .update(`${secret}${challenge}`)
     .digest("base64");
+};
+
+export const createCodexAppServerTransport = ({
+  command = "codex",
+  args = ["app-server"],
+  cwd = process.cwd(),
+  clientInfo = {
+    name: "iroharness",
+    title: "IroHarness",
+    version: "0.1.0"
+  },
+  onStderr = () => {},
+  onExit = () => {}
+} = {}) => {
+  let processRef = null;
+  let nextId = 1;
+  let initialized = false;
+  let listeners = [];
+  const pending = new Map();
+
+  const emit = (event) => {
+    listeners.forEach((listener) => listener(event));
+  };
+
+  const start = () => {
+    if (processRef) {
+      return processRef;
+    }
+    processRef = spawn(command, args, {
+      cwd,
+      stdio: ["pipe", "pipe", "pipe"]
+    });
+    const lines = createInterface({ input: processRef.stdout });
+    lines.on("line", (line) => {
+      try {
+        const message = JSON.parse(line);
+        if (typeof message.id === "number" && pending.has(message.id)) {
+          const entry = pending.get(message.id);
+          pending.delete(message.id);
+          if (message.error) {
+            entry.reject(new Error(message.error.message || "Codex app-server request failed"));
+          } else {
+            entry.resolve(message.result);
+          }
+        }
+        emit(message);
+      } catch (error) {
+        emit({
+          method: "transport/error",
+          params: {
+            message: error.message,
+            line
+          }
+        });
+      }
+    });
+    processRef.stderr.on("data", (chunk) => onStderr(chunk.toString("utf8")));
+    processRef.on("exit", (code, signal) => {
+      processRef = null;
+      initialized = false;
+      onExit({ code, signal });
+    });
+    return processRef;
+  };
+
+  const sendNotification = (method, params = {}) => {
+    const child = start();
+    child.stdin.write(`${JSON.stringify({ method, params })}\n`);
+  };
+
+  const sendRequest = (method, params = {}) => {
+    const child = start();
+    const id = nextId;
+    nextId += 1;
+    const promise = new Promise((resolve, reject) => {
+      pending.set(id, { resolve, reject });
+    });
+    child.stdin.write(`${JSON.stringify({ method, id, params })}\n`);
+    return promise;
+  };
+
+  const initialize = async () => {
+    if (initialized) {
+      return;
+    }
+    await sendRequest("initialize", { clientInfo });
+    sendNotification("initialized", {});
+    initialized = true;
+  };
+
+  const subscribe = (listener) => {
+    listeners = [...listeners, listener];
+    return () => {
+      listeners = listeners.filter((candidate) => candidate !== listener);
+    };
+  };
+
+  const close = () => {
+    if (processRef) {
+      processRef.kill("SIGTERM");
+    }
+    processRef = null;
+    initialized = false;
+    pending.clear();
+  };
+
+  return Object.freeze({
+    initialize,
+    sendRequest,
+    sendNotification,
+    subscribe,
+    close
+  });
+};
+
+const extractCodexText = (events) =>
+  events
+    .filter((event) => event.method === "item/agentMessage/delta")
+    .map((event) => event.params?.delta || event.params?.text || "")
+    .join("")
+    .trim();
+
+export const createCodexAppServerMicroHarness = ({
+  id = "codex",
+  cwd = process.cwd(),
+  model = "gpt-5.4",
+  approvalPolicy = "on-request",
+  sandboxPolicy = {
+    type: "workspaceWrite",
+    writableRoots: [cwd],
+    networkAccess: false
+  },
+  threadSandbox = "workspace-write",
+  serviceName = "iroharness",
+  timeoutMs = 10 * 60_000,
+  capabilities = ["code", "files", "review"],
+  transport = createCodexAppServerTransport({ cwd })
+} = {}) => {
+  let threadId = null;
+
+  const ensureThread = async () => {
+    await transport.initialize?.();
+    if (threadId) {
+      return threadId;
+    }
+    const result = await transport.sendRequest("thread/start", {
+      model,
+      cwd,
+      approvalPolicy,
+      sandbox: threadSandbox,
+      serviceName
+    });
+    const nextThreadId = result?.thread?.id;
+    if (!nextThreadId) {
+      throw new Error("Codex app-server did not return a thread id");
+    }
+    threadId = nextThreadId;
+    return threadId;
+  };
+
+  const run = async (task, context = {}) => {
+    const nextThreadId = await ensureThread();
+    const inputText = [
+      task.purpose || task.title,
+      "",
+      context.actor
+        ? `Actor: ${context.actor.user?.displayName || context.actor.identity?.displayName || "unknown"}`
+        : "",
+      `Ticket: ${task.id}`
+    ]
+      .filter(Boolean)
+      .join("\n");
+    const events = [];
+    const unsubscribe = transport.subscribe?.((event) => {
+      events.push(event);
+    });
+    try {
+      const waitForCompletion = new Promise((resolve) => {
+        const stop = transport.subscribe?.((event) => {
+          if (event.method === "turn/completed") {
+            stop?.();
+            resolve(event);
+          }
+        });
+      });
+      const turn = await transport.sendRequest("turn/start", {
+        threadId: nextThreadId,
+        input: [{ type: "text", text: inputText }],
+        cwd,
+        approvalPolicy,
+        sandboxPolicy
+      });
+      await withTimeout(
+        waitForCompletion,
+        timeoutMs,
+        `Codex app-server turn timed out after ${timeoutMs}ms`
+      );
+      const summary = extractCodexText(events) || "Codex turn completed.";
+      return Object.freeze({
+        status: "completed",
+        summary,
+        artifacts: Object.freeze([
+          {
+            kind: "codex-events",
+            uri: `memory://codex/${task.id}`,
+            title: "Codex app-server events"
+          }
+        ]),
+        raw: Object.freeze({
+          threadId: nextThreadId,
+          turn,
+          events
+        })
+      });
+    } catch (error) {
+      return Object.freeze({
+        status: "failed",
+        summary: error.message,
+        artifacts: Object.freeze([]),
+        raw: Object.freeze({
+          threadId: nextThreadId,
+          events
+        })
+      });
+    } finally {
+      unsubscribe?.();
+    }
+  };
+
+  return Object.freeze({
+    id,
+    capabilities: Object.freeze([...capabilities]),
+    run,
+    close() {
+      transport.close?.();
+      threadId = null;
+    }
+  });
 };
 
 export const createDiscordMessageAdapter = ({

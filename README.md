@@ -65,6 +65,7 @@ There are no runtime dependencies today.
 npm run example
 npm run example:bodies
 npm run example:pjos
+npm run example:codex
 npm run example:discord
 npm run example:youtube
 npm run example:obs
@@ -137,6 +138,14 @@ const hermes = createJsonlProcessMicroHarness({
   capabilities: ["learning", "skills"]
 });
 ```
+
+For Codex app-server delegation:
+
+```bash
+IROHARNESS_RUN_CODEX=1 CODEX_WORKSPACE=/path/to/project npm run example:codex -- "CodexでREADMEをレビューして"
+```
+
+See [docs/codex.md](./docs/codex.md).
 
 ## Platform Adapters
 
@@ -314,6 +323,7 @@ protocols/
 docs/
   architecture.md
   audience-and-permissions.md
+  codex.md
   platform-adapters.md
   obs.md
   protocols.md
@@ -321,6 +331,7 @@ examples/
   basic.mjs
   body-mappers.mjs
   file-pjos.mjs
+  codex-app-server.mjs
   discord-bot.mjs
   youtube-live-poller.mjs
   obs-overlay-control.mjs

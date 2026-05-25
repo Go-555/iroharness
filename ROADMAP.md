@@ -16,6 +16,7 @@ micro harnesses.
 - [x] file-backed PJOS
 - [x] HTTP micro-harness adapter
 - [x] JSONL process micro-harness adapter
+- [x] Codex app-server micro-harness adapter
 - [x] browser avatar demo
 - [x] streaming event endpoint
 - [x] audience user registry
@@ -33,7 +34,7 @@ micro harnesses.
 - [x] browser avatar demo
 - [x] streaming event endpoint
 - [ ] voice/text model switch demo
-- [ ] Codex app-server adapter
+- [x] Codex app-server adapter
 - [x] file-backed PJOS
 - [ ] MotionPNGTuber renderer bridge
 - [x] Discord message normalization adapter
