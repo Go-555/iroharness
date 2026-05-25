@@ -9,10 +9,14 @@ import {
   createCodexAppServerMicroHarness,
   createDiscordBotRuntime,
   createDiscordMessageAdapter,
+  createEvenG2DisplayBridge,
   createEventStreamDevice,
   createHermesGatewayMicroHarness,
   createHttpMicroHarness,
+  createIroHarnessDevServerHandler,
   createJsonlProcessMicroHarness,
+  createM5StackBodyBridge,
+  createMotionPngTuberRendererBridge,
   createObsWebSocketAdapter,
   createOpenClawMicroHarness,
   createPlatformAdapterRegistry,
@@ -169,6 +173,35 @@ const createFakeCodexTransport = () => {
       };
     },
     close() {}
+  };
+};
+
+const callHandler = async (handler, { method = "GET", url = "/" } = {}) => {
+  let statusCode = null;
+  let body = "";
+  const response = {
+    writeHead(status) {
+      statusCode = status;
+    },
+    write(chunk) {
+      body += chunk;
+    },
+    end(chunk = "") {
+      body += chunk;
+    }
+  };
+  await handler(
+    {
+      method,
+      url,
+      on() {}
+    },
+    response
+  );
+  return {
+    statusCode,
+    body,
+    json: body.trim() ? JSON.parse(body) : null
   };
 };
 
@@ -394,6 +427,89 @@ test("event stream device records emitted state events", () => {
   assert.equal(device.events().length, 1);
   assert.equal(device.events()[0].type, "state");
   assert.equal(device.events()[0].state.mode, "speaking");
+});
+
+test("MotionPNGTuber renderer bridge maps character state to PNG state", () => {
+  const body = createMotionPngTuberRendererBridge({
+    assets: {
+      mouth_on_eye_on: "/assets/talking.png",
+      mouth_off_eye_on: "/assets/idle.png",
+      mouth_off_eye_off: "/assets/error.png"
+    }
+  });
+
+  body.emit({
+    type: "state",
+    state: {
+      characterId: "iroha",
+      mode: "speaking",
+      emotion: "attentive",
+      speechText: "こんにちは"
+    }
+  });
+
+  const snapshot = body.snapshot();
+  assert.equal(snapshot.kind, "motionpngtuber");
+  assert.equal(snapshot.mapped, "mouth_on_eye_on");
+  assert.equal(snapshot.payload.asset, "/assets/talking.png");
+  assert.equal(snapshot.payload.speechText, "こんにちは");
+});
+
+test("M5Stack and Even G2 bridges map the same state into device payloads", () => {
+  const state = {
+    characterId: "iroha",
+    mode: "working",
+    emotion: "focused",
+    speechText: "作業中だよ"
+  };
+  const m5 = createM5StackBodyBridge();
+  const even = createEvenG2DisplayBridge();
+
+  m5.emit({ type: "state", state });
+  even.emit({ type: "state", state });
+
+  assert.equal(m5.snapshot().payload.face, ">_>");
+  assert.equal(m5.snapshot().payload.text, "作業中だよ");
+  assert.equal(even.snapshot().payload.text, "作業中だよ");
+});
+
+test("dev server exposes body bridge snapshots", async () => {
+  const eventStream = createEventStreamDevice("events");
+  const body = createMotionPngTuberRendererBridge();
+  body.emit({
+    type: "state",
+    state: {
+      characterId: "iroha",
+      mode: "speaking",
+      emotion: "attentive",
+      speechText: "こんにちは"
+    }
+  });
+  const handler = createIroHarnessDevServerHandler({
+    eventStream,
+    bodyDevices: [body],
+    harness: {
+      state() {
+        return { characterId: "iroha", mode: "idle" };
+      },
+      projectOs() {
+        return { tickets: [], runs: [], artifacts: [] };
+      },
+      async receive() {
+        return { kind: "response", text: "ok" };
+      }
+    },
+    publicDir: process.cwd()
+  });
+
+  const bodies = await callHandler(handler, { url: "/bodies" });
+  const snapshot = await callHandler(handler, { url: "/body/motionpngtuber" });
+
+  assert.equal(bodies.statusCode, 200);
+  assert.equal(bodies.json.bodies.length, 1);
+  assert.equal(bodies.json.bodies[0].id, "motionpngtuber");
+  assert.equal(snapshot.statusCode, 200);
+  assert.equal(snapshot.json.state.payload.stateKey, "mouth_on_eye_on");
 });
 
 test("Discord message adapter normalizes multi-person chat payloads", () => {

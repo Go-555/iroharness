@@ -1013,9 +1013,94 @@ export const createEventStreamDevice = (id = "event-stream") => {
   });
 };
 
-export const createIroHarnessDevServer = ({
+const createBodyPayload = ({ id, kind, event, latestState, mapper, mapPayload }) => {
+  const state = event.state || latestState || null;
+  const mapped = state ? mapper.mapState(state) : null;
+  const speechText = event.text || event.state?.speechText || state?.speechText || null;
+  return Object.freeze({
+    id,
+    kind,
+    eventType: event.type,
+    state,
+    mapped,
+    speechText,
+    payload: mapPayload({
+      event,
+      state,
+      mapped,
+      speechText
+    })
+  });
+};
+
+export const createMappedBodyBridgeDevice = ({
+  id,
+  kind = "body",
+  mapper,
+  capabilities = ["state", "speech", "task", "body-state"],
+  mapPayload = ({ mapped }) => mapped
+}) => {
+  if (!id || !mapper || typeof mapper.mapState !== "function") {
+    throw new Error("createMappedBodyBridgeDevice requires id and mapper.mapState");
+  }
+
+  let latestState = null;
+  let latestPayload = null;
+  let payloads = [];
+  let clients = [];
+
+  const writePayload = (response, payload) => {
+    response.write(`event: body\n`);
+    response.write(`data: ${JSON.stringify(payload)}\n\n`);
+  };
+
+  return Object.freeze({
+    id,
+    kind,
+    capabilities: Object.freeze([...capabilities]),
+    emit(event) {
+      if (event.state) {
+        latestState = event.state;
+      }
+      const payload = createBodyPayload({
+        id,
+        kind,
+        event,
+        latestState,
+        mapper,
+        mapPayload
+      });
+      latestPayload = payload;
+      payloads = Object.freeze([...payloads.slice(-199), payload]);
+      clients.forEach((client) => writePayload(client, payload));
+    },
+    snapshot() {
+      return latestPayload;
+    },
+    payloads() {
+      return Object.freeze([...payloads]);
+    },
+    connect(request, response) {
+      response.writeHead(200, {
+        "content-type": "text/event-stream; charset=utf-8",
+        "cache-control": "no-cache, no-transform",
+        connection: "keep-alive",
+        "x-accel-buffering": "no"
+      });
+      response.write(": connected\n\n");
+      payloads.slice(-20).forEach((payload) => writePayload(response, payload));
+      clients = Object.freeze([...clients, response]);
+      request.on("close", () => {
+        clients = Object.freeze(clients.filter((client) => client !== response));
+      });
+    }
+  });
+};
+
+export const createIroHarnessDevServerHandler = ({
   harness,
   eventStream,
+  bodyDevices = [],
   platformAdapters = createPlatformAdapterRegistry([
     createDiscordMessageAdapter(),
     createYouTubeLiveChatAdapter()
@@ -1026,7 +1111,7 @@ export const createIroHarnessDevServer = ({
     throw new Error("createIroHarnessDevServer requires harness and eventStream");
   }
 
-  const server = createServer(async (request, response) => {
+  return async (request, response) => {
     const url = new URL(request.url, "http://127.0.0.1");
     try {
       if (request.method === "GET" && url.pathname === "/events") {
@@ -1039,6 +1124,38 @@ export const createIroHarnessDevServer = ({
       }
       if (request.method === "GET" && url.pathname === "/pjos") {
         sendJson(response, 200, harness.projectOs());
+        return;
+      }
+      if (request.method === "GET" && url.pathname === "/bodies") {
+        sendJson(response, 200, {
+          bodies: bodyDevices.map((body) => ({
+            id: body.id,
+            kind: body.kind,
+            capabilities: body.capabilities || []
+          }))
+        });
+        return;
+      }
+      const bodyMatch = url.pathname.match(/^\/body\/([^/]+)(\/events)?$/);
+      if (request.method === "GET" && bodyMatch) {
+        const body = bodyDevices.find((candidate) => candidate.id === bodyMatch[1]);
+        if (!body) {
+          sendJson(response, 404, { error: "body_not_found" });
+          return;
+        }
+        if (bodyMatch[2]) {
+          if (typeof body.connect !== "function") {
+            sendJson(response, 400, { error: "body_stream_not_supported" });
+            return;
+          }
+          body.connect(request, response);
+          return;
+        }
+        sendJson(response, 200, {
+          id: body.id,
+          kind: body.kind,
+          state: typeof body.snapshot === "function" ? body.snapshot() : null
+        });
         return;
       }
       if (request.method === "POST" && url.pathname === "/turn") {
@@ -1086,7 +1203,11 @@ export const createIroHarnessDevServer = ({
         message: error.message
       });
     }
-  });
+  };
+};
+
+export const createIroHarnessDevServer = (options) => {
+  const server = createServer(createIroHarnessDevServerHandler(options));
 
   return Object.freeze({
     server,
@@ -1426,6 +1547,32 @@ export const createMotionPngTuberMapper = () =>
     }
   });
 
+export const createMotionPngTuberRendererBridge = ({
+  id = "motionpngtuber",
+  assets = {
+    mouth_on_eye_on: "mouth_on_eye_on.png",
+    mouth_off_eye_on: "mouth_off_eye_on.png",
+    mouth_off_eye_off: "mouth_off_eye_off.png"
+  }
+} = {}) => {
+  const mapper = createMotionPngTuberMapper();
+  return createMappedBodyBridgeDevice({
+    id,
+    kind: "motionpngtuber",
+    mapper,
+    capabilities: ["state", "speech", "task", "png-state", "sse"],
+    mapPayload({ state, mapped, speechText }) {
+      return Object.freeze({
+        stateKey: mapped,
+        asset: assets[mapped] || null,
+        mode: state?.mode || null,
+        emotion: state?.emotion || null,
+        speechText
+      });
+    }
+  });
+};
+
 export const createM5StackFaceMapper = () =>
   Object.freeze({
     id: "m5stack-face-mapper",
@@ -1441,6 +1588,23 @@ export const createM5StackFaceMapper = () =>
       return faces[state.mode] || faces.idle;
     }
   });
+
+export const createM5StackBodyBridge = ({ id = "m5stack-face" } = {}) => {
+  const mapper = createM5StackFaceMapper();
+  return createMappedBodyBridgeDevice({
+    id,
+    kind: "m5stack",
+    mapper,
+    capabilities: ["state", "speech", "task", "face", "sse"],
+    mapPayload({ state, mapped, speechText }) {
+      return Object.freeze({
+        face: mapped,
+        mode: state?.mode || null,
+        text: speechText ? speechText.slice(0, 40) : ""
+      });
+    }
+  });
+};
 
 export const createEvenG2DisplayMapper = () =>
   Object.freeze({
@@ -1458,3 +1622,19 @@ export const createEvenG2DisplayMapper = () =>
       return "";
     }
   });
+
+export const createEvenG2DisplayBridge = ({ id = "even-g2-display" } = {}) => {
+  const mapper = createEvenG2DisplayMapper();
+  return createMappedBodyBridgeDevice({
+    id,
+    kind: "even-g2",
+    mapper,
+    capabilities: ["state", "speech", "task", "display", "sse"],
+    mapPayload({ state, mapped, speechText }) {
+      return Object.freeze({
+        text: speechText ? speechText.slice(0, 80) : mapped,
+        mode: state?.mode || null
+      });
+    }
+  });
+};

@@ -10,10 +10,18 @@ import {
 } from "../src/index.js";
 import {
   createEventStreamDevice,
-  createIroHarnessDevServer
+  createEvenG2DisplayBridge,
+  createIroHarnessDevServer,
+  createM5StackBodyBridge,
+  createMotionPngTuberRendererBridge
 } from "../src/adapters/index.js";
 
 const eventStream = createEventStreamDevice("browser-events");
+const bodyDevices = [
+  createMotionPngTuberRendererBridge(),
+  createM5StackBodyBridge(),
+  createEvenG2DisplayBridge()
+];
 const projectOs = createFileProjectOs({
   path: join(process.cwd(), ".iroharness", "browser-pjos.json")
 });
@@ -47,7 +55,7 @@ const harness = createIroHarness({
     voice: createEchoBrain("voice-fast"),
     text: createEchoBrain("text-deep")
   },
-  devices: [eventStream],
+  devices: [eventStream, ...bodyDevices],
   microHarnesses: [
     createStubMicroHarness("codex", ["code", "files", "review"]),
     createStubMicroHarness("openclaw", ["assistant", "tools"]),
@@ -57,7 +65,8 @@ const harness = createIroHarness({
 
 const app = createIroHarnessDevServer({
   harness,
-  eventStream
+  eventStream,
+  bodyDevices
 });
 
 const { url } = await app.listen({

@@ -121,6 +121,31 @@ event: task
 data: {"type":"task","status":"started","ticketId":"ticket_abc123"}
 ```
 
+## Body Bridge Endpoints
+
+When body devices are registered with the dev server, renderers and hardware
+relays can read mapped body state:
+
+```text
+GET /bodies
+GET /body/:id
+GET /body/:id/events
+```
+
+`/body/motionpngtuber` returns payloads such as:
+
+```json
+{
+  "payload": {
+    "stateKey": "mouth_on_eye_on",
+    "asset": "mouth_on_eye_on.png",
+    "mode": "speaking",
+    "emotion": "attentive",
+    "speechText": "こんにちは"
+  }
+}
+```
+
 ## Brain Adapter
 
 A brain adapter produces character speech. It may be a fast voice model, a deep

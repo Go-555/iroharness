@@ -23,6 +23,7 @@ micro harnesses.
 - [x] voice/text/deep brain switching
 - [x] browser avatar demo
 - [x] streaming event endpoint
+- [x] body bridge snapshots and SSE endpoints
 - [x] audience user registry
 - [x] normalized user identity registry
 - [x] permission overrides
@@ -43,7 +44,7 @@ micro harnesses.
 - [x] voice/text model switch demo
 - [x] Codex app-server adapter
 - [x] file-backed PJOS
-- [ ] MotionPNGTuber renderer bridge
+- [x] MotionPNGTuber renderer bridge
 - [x] Discord message normalization adapter
 - [x] YouTube live chat normalization adapter
 - [x] YouTube Live Chat API polling runtime
@@ -63,8 +64,8 @@ micro harnesses.
 
 - [ ] Live2D adapter
 - [ ] VRM/3D adapter
-- [ ] M5Stack body adapter
-- [ ] Even G2 display adapter
+- [x] M5Stack body adapter
+- [x] Even G2 display adapter
 - [ ] VS Code companion panel
 - [ ] Slack/Discord adapters
 - [x] Discord bot runtime

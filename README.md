@@ -265,6 +265,8 @@ Then open the printed URL. The demo exposes:
 - `POST /turn` for text/voice-like input
 - `GET /state` for current character state
 - `GET /pjos` for Project OS state
+- `GET /bodies`, `/body/:id`, and `/body/:id/events` for MotionPNGTuber,
+  M5Stack, and Even G2 bridge state
 - `POST /platform/discord/message` and `/platform/youtube/message` for chat
   platform testing
 
@@ -323,6 +325,9 @@ A body is a device or renderer adapter:
 - Slack/Discord text
 
 All bodies receive the same normalized character state.
+
+Body bridges expose mapped snapshots and SSE streams for renderers and devices.
+See [docs/body-bridges.md](./docs/body-bridges.md).
 
 ### Project OS
 
@@ -391,6 +396,7 @@ docs/
   audience-and-permissions.md
   audience-data-model.md
   brains.md
+  body-bridges.md
   codex.md
   external-bridges.md
   platform-adapters.md
