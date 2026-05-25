@@ -26,6 +26,7 @@ micro harnesses.
 - [x] body bridge snapshots and SSE endpoints
 - [x] audience user registry
 - [x] normalized user identity registry
+- [x] PostgreSQL/Supabase audience schema
 - [x] permission overrides
 - [x] stream session registry
 - [x] role-based permission policy

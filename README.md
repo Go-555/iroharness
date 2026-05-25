@@ -384,6 +384,19 @@ Role permissions decide whether a user can only chat, have deep architecture
 discussion, or delegate work to micro harnesses. The personality stays owned by
 the character macro harness.
 
+For long-running deployments, use the PostgreSQL/Supabase schema in
+`protocols/sql/postgres-audience.sql`:
+
+```text
+iroharness_users
+iroharness_user_identities
+iroharness_permission_overrides
+iroharness_stream_sessions
+```
+
+This is the table layer for OBS/YouTube streams, Discord fan chats, and
+developer-only work delegation.
+
 ## Why Rust Later
 
 Rust will not make remote LLMs think faster. It can reduce the overhead around
@@ -416,6 +429,8 @@ fixtures/
 protocols/
   audience-store.schema.json
   character-state.schema.json
+  sql/
+    postgres-audience.sql
   user.schema.json
   adapter-contracts.md
 docs/

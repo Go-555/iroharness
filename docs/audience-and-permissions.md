@@ -40,6 +40,10 @@ streamSessions
 See [audience-data-model.md](./audience-data-model.md) for the table shape and
 the persisted JSON contract.
 
+For production deployments, apply the PostgreSQL/Supabase schema in
+`protocols/sql/postgres-audience.sql`. It keeps YouTube, Discord, Slack,
+browser, M5Stack, and Even G2 identities as rows linked to one durable user.
+
 ## Default Roles
 
 | Role | Default Permissions |
@@ -117,3 +121,15 @@ character relationship model while supporting real operations.
 Scoped overrides apply only to matching input contexts. A `stream:youtube`
 override affects YouTube stream turns but does not change Discord or Slack
 developer conversations.
+
+## Operational Pattern
+
+In an OBS / YouTube / Discord setup:
+
+1. Every incoming message is normalized by the platform adapter.
+2. The actor is resolved through `iroharness_user_identities`.
+3. The same character responds with the same personality.
+4. Role permissions and scoped overrides decide whether the request can trigger
+   private actions such as deep discussion or micro-harness delegation.
+5. Public bodies such as OBS overlays, Live2D, MotionPNGTuber, M5Stack, or Even
+   G2 receive expression state only; they do not own user authority.
