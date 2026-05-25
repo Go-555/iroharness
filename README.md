@@ -65,6 +65,7 @@ There are no runtime dependencies today.
 npm run example
 npm run example:bodies
 npm run example:pjos
+npm run example:youtube
 npm run demo:browser
 ```
 
@@ -148,6 +149,12 @@ import {
 
 const discord = createDiscordMessageAdapter({ mentionOnly: true });
 const youtube = createYouTubeLiveChatAdapter();
+```
+
+For real YouTube live chat polling:
+
+```bash
+YOUTUBE_API_KEY=... YOUTUBE_LIVE_CHAT_ID=... npm run example:youtube
 ```
 
 The dev server also exposes:
@@ -296,6 +303,7 @@ examples/
   basic.mjs
   body-mappers.mjs
   file-pjos.mjs
+  youtube-live-poller.mjs
   browser-server.mjs
   browser-avatar/
 test/

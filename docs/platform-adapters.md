@@ -83,6 +83,29 @@ const turn = youtube.normalize({
 });
 ```
 
+For a real live chat polling loop, use `createYouTubeLiveChatPollingRuntime`:
+
+```js
+import { createYouTubeLiveChatPollingRuntime } from "iroharness/adapters";
+
+const runtime = createYouTubeLiveChatPollingRuntime({
+  apiKey: process.env.YOUTUBE_API_KEY,
+  liveChatId: process.env.YOUTUBE_LIVE_CHAT_ID,
+  harness,
+  onResult({ turn, result }) {
+    console.log(turn.actor.displayName, turn.text, result.kind);
+  }
+});
+
+runtime.start();
+```
+
+Or run the example:
+
+```bash
+YOUTUBE_API_KEY=... YOUTUBE_LIVE_CHAT_ID=... npm run example:youtube
+```
+
 The built-in dev server accepts YouTube-like payloads:
 
 ```bash

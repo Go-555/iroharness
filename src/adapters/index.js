@@ -203,6 +203,127 @@ export const createPlatformAdapterRegistry = (adapters = []) => {
   });
 };
 
+export const createYouTubeLiveChatPollingRuntime = ({
+  apiKey,
+  liveChatId,
+  harness,
+  adapter = createYouTubeLiveChatAdapter(),
+  fetchImpl = globalThis.fetch,
+  intervalMs = 5_000,
+  maxResults = 50,
+  pageToken = null,
+  onResult = () => {},
+  onError = () => {}
+}) => {
+  if (!apiKey || !liveChatId) {
+    throw new Error("createYouTubeLiveChatPollingRuntime requires apiKey and liveChatId");
+  }
+  if (!harness || typeof harness.receive !== "function") {
+    throw new Error("createYouTubeLiveChatPollingRuntime requires harness.receive");
+  }
+  if (typeof fetchImpl !== "function") {
+    throw new Error("createYouTubeLiveChatPollingRuntime requires fetchImpl");
+  }
+
+  let active = false;
+  let nextPageToken = pageToken;
+  let nextIntervalMs = intervalMs;
+  let timer = null;
+  const seenIds = new Set();
+
+  const buildUrl = () => {
+    const url = new URL("https://www.googleapis.com/youtube/v3/liveChat/messages");
+    url.searchParams.set("liveChatId", liveChatId);
+    url.searchParams.set("part", "snippet,authorDetails");
+    url.searchParams.set("key", apiKey);
+    url.searchParams.set("maxResults", String(maxResults));
+    if (nextPageToken) {
+      url.searchParams.set("pageToken", nextPageToken);
+    }
+    return url.toString();
+  };
+
+  const pollOnce = async () => {
+    const response = await fetchImpl(buildUrl());
+    const responseText = await response.text();
+    if (!response.ok) {
+      throw new Error(`YouTube Live Chat API ${response.status}: ${responseText}`);
+    }
+    const payload = responseText.trim() ? JSON.parse(responseText) : {};
+    nextPageToken = payload.nextPageToken || nextPageToken;
+    nextIntervalMs = Number(payload.pollingIntervalMillis || intervalMs);
+
+    const items = Array.isArray(payload.items) ? payload.items : [];
+    const results = [];
+    for (const item of items) {
+      if (item.id && seenIds.has(item.id)) {
+        continue;
+      }
+      if (item.id) {
+        seenIds.add(item.id);
+      }
+      const turn = adapter.normalize(item);
+      if (!turn || !turn.text) {
+        continue;
+      }
+      const result = await harness.receive(turn);
+      const event = Object.freeze({ item, turn, result });
+      results.push(event);
+      onResult(event);
+    }
+    return Object.freeze({
+      nextPageToken,
+      pollingIntervalMillis: nextIntervalMs,
+      results: Object.freeze(results)
+    });
+  };
+
+  const scheduleNext = () => {
+    if (!active) {
+      return;
+    }
+    timer = setTimeout(async () => {
+      try {
+        await pollOnce();
+      } catch (error) {
+        onError(error);
+      } finally {
+        scheduleNext();
+      }
+    }, nextIntervalMs);
+  };
+
+  const start = () => {
+    if (active) {
+      return;
+    }
+    active = true;
+    scheduleNext();
+  };
+
+  const stop = () => {
+    active = false;
+    if (timer) {
+      clearTimeout(timer);
+      timer = null;
+    }
+  };
+
+  return Object.freeze({
+    pollOnce,
+    start,
+    stop,
+    state() {
+      return Object.freeze({
+        active,
+        nextPageToken,
+        nextIntervalMs,
+        seenCount: seenIds.size
+      });
+    }
+  });
+};
+
 export const createEventStreamDevice = (id = "event-stream") => {
   let clients = [];
   let events = [];

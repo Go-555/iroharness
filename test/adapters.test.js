@@ -10,7 +10,8 @@ import {
   createHttpMicroHarness,
   createJsonlProcessMicroHarness,
   createPlatformAdapterRegistry,
-  createYouTubeLiveChatAdapter
+  createYouTubeLiveChatAdapter,
+  createYouTubeLiveChatPollingRuntime
 } from "../src/adapters/index.js";
 
 test("HTTP micro harness posts task context and normalizes response", async () => {
@@ -166,4 +167,93 @@ test("platform adapter registry dispatches by platform", () => {
   });
 
   assert.equal(turn.actor.platformUserId, "UC999");
+});
+
+test("YouTube live chat polling runtime fetches messages and sends turns to harness", async () => {
+  const receivedTurns = [];
+  const harness = {
+    async receive(turn) {
+      receivedTurns.push(turn);
+      return { kind: "response", text: "ok" };
+    }
+  };
+  const fetchCalls = [];
+  const fetchImpl = async (url) => {
+    fetchCalls.push(url);
+    return {
+      ok: true,
+      status: 200,
+      async text() {
+        return JSON.stringify({
+          nextPageToken: "next-token",
+          pollingIntervalMillis: 9000,
+          items: [
+            {
+              id: "chat_1",
+              snippet: {
+                liveChatId: "live_1",
+                displayMessage: "こんにちは"
+              },
+              authorDetails: {
+                channelId: "UC123",
+                displayName: "Viewer"
+              }
+            }
+          ]
+        });
+      }
+    };
+  };
+
+  const runtime = createYouTubeLiveChatPollingRuntime({
+    apiKey: "test-key",
+    liveChatId: "live_1",
+    harness,
+    fetchImpl
+  });
+  const result = await runtime.pollOnce();
+
+  assert.equal(receivedTurns.length, 1);
+  assert.equal(receivedTurns[0].source, "youtube");
+  assert.equal(receivedTurns[0].actor.platformUserId, "UC123");
+  assert.equal(result.nextPageToken, "next-token");
+  assert.equal(runtime.state().nextIntervalMs, 9000);
+  assert.equal(new URL(fetchCalls[0]).searchParams.get("liveChatId"), "live_1");
+});
+
+test("YouTube live chat polling runtime skips duplicate message IDs", async () => {
+  const receivedTurns = [];
+  const harness = {
+    async receive(turn) {
+      receivedTurns.push(turn);
+      return { kind: "response", text: "ok" };
+    }
+  };
+  const fetchImpl = async () => ({
+    ok: true,
+    status: 200,
+    async text() {
+      return JSON.stringify({
+        items: [
+          {
+            id: "chat_1",
+            snippet: { displayMessage: "hello" },
+            authorDetails: { channelId: "UC123", displayName: "Viewer" }
+          }
+        ]
+      });
+    }
+  });
+
+  const runtime = createYouTubeLiveChatPollingRuntime({
+    apiKey: "test-key",
+    liveChatId: "live_1",
+    harness,
+    fetchImpl
+  });
+  await runtime.pollOnce();
+  await runtime.pollOnce();
+
+  assert.equal(receivedTurns.length, 1);
+  assert.equal(runtime.state().seenCount, 1);
 });

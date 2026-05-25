@@ -13,8 +13,9 @@
     "example": "node examples/basic.mjs",
     "example:bodies": "node examples/body-mappers.mjs",
     "example:pjos": "node examples/file-pjos.mjs",
+    "example:youtube": "node examples/youtube-live-poller.mjs",
     "demo:browser": "node examples/browser-server.mjs",
-    "check": "node --check src/index.js && node --check src/adapters/index.js && node --check examples/basic.mjs && node --check examples/body-mappers.mjs && node --check examples/file-pjos.mjs && node --check examples/browser-server.mjs"
+    "check": "node --check src/index.js && node --check src/adapters/index.js && node --check examples/basic.mjs && node --check examples/body-mappers.mjs && node --check examples/file-pjos.mjs && node --check examples/browser-server.mjs && node --check examples/youtube-live-poller.mjs"
   },
   "keywords": [
     "ai-agent",

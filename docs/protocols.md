@@ -67,6 +67,15 @@ GET  /platforms
 Platform adapters convert each payload into the same IroHarness turn shape. From
 there, user registry lookup and permission policy are identical.
 
+## YouTube Polling Runtime
+
+`createYouTubeLiveChatPollingRuntime` calls YouTube Data API
+`liveChat/messages`, normalizes each item through the YouTube adapter, skips
+duplicate message IDs, and forwards each turn to `harness.receive`.
+
+The runtime owns API polling only. The macro harness still owns personality,
+permissions, PJOS, and micro-harness delegation.
+
 ## Event Stream Device
 
 The built-in dev server streams events as Server-Sent Events.
