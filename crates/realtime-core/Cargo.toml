@@ -1,0 +1,11 @@
+[package]
+name = "iroharness-realtime-core"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "Realtime event/audio/device core contracts for IroHarness."
+repository = "https://github.com/iroharness/iroharness"
+
+[lib]
+name = "iroharness_realtime_core"
+path = "src/lib.rs"

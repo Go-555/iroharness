@@ -462,6 +462,9 @@ v1: adapters for Codex, OpenClaw, Hermes, AIAvatarKit, M5Stack, Live2D
 v2: Rust realtime core for audio/device/event bus
 ```
 
+The Rust core crate starts at `crates/realtime-core`. See
+[docs/rust-core.md](./docs/rust-core.md).
+
 ## Repository Layout
 
 ```text
@@ -490,6 +493,7 @@ docs/
   platform-adapters.md
   obs.md
   realtime.md
+  rust-core.md
   protocols.md
 examples/
   audience-registry.mjs

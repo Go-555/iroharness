@@ -83,7 +83,8 @@ micro harnesses.
 - [x] streaming TTS interface
 - [x] interruption and barge-in
 - [x] realtime latency metrics
-- [ ] Rust event/audio/device core
+- [x] Rust event/audio/device core skeleton
+- [ ] Rust event/audio/device runtime bindings
 
 ## Guiding Principle
 
