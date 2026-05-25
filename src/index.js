@@ -1,4 +1,4 @@
-import { dirname } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 
 const MODES = Object.freeze({
@@ -588,6 +588,51 @@ export const createCharacterState = ({
     motion,
     metadata: freezeCopy(metadata)
   });
+
+const readOptionalMarkdown = (path) => {
+  if (!path || !existsSync(path)) {
+    return null;
+  }
+  const text = readFileSync(path, "utf8").trim();
+  return text || null;
+};
+
+export const createFileCharacterProfile = ({
+  dir = ".",
+  id = null,
+  name = null,
+  soulFile = "SOUL.md",
+  identityFile = "IDENTITY.md",
+  memoryFile = "MEMORY.md",
+  voiceFile = "VOICE.md",
+  metadata = {}
+} = {}) => {
+  const characterId = id || basename(dir) || "character";
+  const characterName = name || characterId;
+  const paths = freezeCopy({
+    soul: join(dir, soulFile),
+    identity: join(dir, identityFile),
+    memory: join(dir, memoryFile),
+    voice: join(dir, voiceFile)
+  });
+  const soul = readOptionalMarkdown(paths.soul);
+  const identity = readOptionalMarkdown(paths.identity);
+  const memory = readOptionalMarkdown(paths.memory);
+  const voice = readOptionalMarkdown(paths.voice);
+
+  return freezeCopy({
+    id: characterId,
+    name: characterName,
+    soul: soul || identity || `${characterName} owns identity inside the macro harness.`,
+    voiceStyle: voice || "natural, responsive",
+    identity,
+    memory,
+    metadata: freezeCopy({
+      ...metadata,
+      sourceFiles: paths
+    })
+  });
+};
 
 export const createInMemoryProjectOs = () => {
   return createProjectOsStore();

@@ -526,6 +526,7 @@ docs/
   audience-data-model.md
   brains.md
   body-bridges.md
+  character-profile.md
   cli.md
   codex.md
   ci.md

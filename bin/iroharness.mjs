@@ -82,9 +82,10 @@ const characterId = (name) =>
 
 const appSource = ({ character }) => {
   const id = characterId(character);
-  return `import {
+return `import {
   createConsoleDevice,
   createEchoBrain,
+  createFileCharacterProfile,
   createFileProjectOs,
   createHeuristicRouter,
   createIroHarness,
@@ -95,13 +96,14 @@ const projectOs = createFileProjectOs({
   path: ".iroharness/pjos.json"
 });
 
+const character = createFileCharacterProfile({
+  dir: ".",
+  id: "${id}",
+  name: "${character}"
+});
+
 const companion = createIroHarness({
-  character: {
-    id: "${id}",
-    name: "${character}",
-    soul: "A character macro harness that owns identity, PJOS, permissions, and expression.",
-    voiceStyle: "short, responsive, natural"
-  },
+  character,
   projectOs,
   router: createHeuristicRouter(),
   brains: {
@@ -144,6 +146,8 @@ npm start
 
 ${character} is the macro harness identity. Models, micro harnesses, and body
 adapters are engines or interfaces. They do not replace the character.
+
+Edit SOUL.md, IDENTITY.md, and MEMORY.md to change the character profile.
 `;
 
 const init = ({ dir, name, character, force }) => {
@@ -166,6 +170,21 @@ const init = ({ dir, name, character, force }) => {
     path: join(targetDir, "README.md"),
     force,
     content: readme({ name: packageName, character })
+  });
+  writeFile({
+    path: join(targetDir, "SOUL.md"),
+    force,
+    content: `# ${character}\n\nA character macro harness that owns identity, PJOS, permissions, and expression.\n`
+  });
+  writeFile({
+    path: join(targetDir, "IDENTITY.md"),
+    force,
+    content: `# Identity\n\nName: ${character}\n\nThis file is the stable identity layer for the character.\n`
+  });
+  writeFile({
+    path: join(targetDir, "MEMORY.md"),
+    force,
+    content: "# Memory\n\nDurable facts and relationship context go here.\n"
   });
   writeFile({
     path: join(targetDir, ".gitignore"),

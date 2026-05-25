@@ -16,8 +16,14 @@ Generated files:
 
 - `package.json`
 - `src/app.mjs`
+- `SOUL.md`
+- `IDENTITY.md`
+- `MEMORY.md`
 - `.iroharness/`
 - `.gitignore`
 - `README.md`
 
 Use `--force` only when you want to overwrite generated files.
+
+`src/app.mjs` loads the character through `createFileCharacterProfile`, so the
+generated markdown files are the local identity and memory source of truth.

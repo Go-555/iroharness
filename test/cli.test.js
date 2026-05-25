@@ -21,12 +21,16 @@ test("CLI init creates a minimal IroHarness app", () => {
   assert.match(result.stdout, /Created companion-app/);
   assert.equal(existsSync(join(appDir, "package.json")), true);
   assert.equal(existsSync(join(appDir, "src", "app.mjs")), true);
+  assert.equal(existsSync(join(appDir, "SOUL.md")), true);
+  assert.equal(existsSync(join(appDir, "IDENTITY.md")), true);
+  assert.equal(existsSync(join(appDir, "MEMORY.md")), true);
   assert.equal(existsSync(join(appDir, ".iroharness")), true);
 
   const packageJson = JSON.parse(readFileSync(join(appDir, "package.json"), "utf8"));
   const app = readFileSync(join(appDir, "src", "app.mjs"), "utf8");
 
   assert.equal(packageJson.dependencies.iroharness, "^0.1.0");
+  assert.match(app, /createFileCharacterProfile/);
   assert.match(app, /createIroHarness/);
   assert.match(app, /name: "Iroha"/);
   assert.match(app, /createFileProjectOs/);

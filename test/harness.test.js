@@ -1,8 +1,12 @@
 import assert from "node:assert/strict";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 
 import {
   createEchoBrain,
+  createFileCharacterProfile,
   createHeuristicRouter,
   createHttpBrain,
   createInMemoryProjectOs,
@@ -20,6 +24,28 @@ const createNamedBrain = (id, text) =>
       return { text, emotion: "focused" };
     }
   });
+
+test("file character profile loads SOUL, IDENTITY, MEMORY, and VOICE markdown", () => {
+  const dir = mkdtempSync(join(tmpdir(), "iroharness-character-"));
+  writeFileSync(join(dir, "SOUL.md"), "Calm macro harness identity.", "utf8");
+  writeFileSync(join(dir, "IDENTITY.md"), "Name: Iroha", "utf8");
+  writeFileSync(join(dir, "MEMORY.md"), "Likes durable PJOS state.", "utf8");
+  writeFileSync(join(dir, "VOICE.md"), "short and clear", "utf8");
+
+  const character = createFileCharacterProfile({
+    dir,
+    id: "iroha",
+    name: "Iroha"
+  });
+
+  assert.equal(character.id, "iroha");
+  assert.equal(character.name, "Iroha");
+  assert.equal(character.soul, "Calm macro harness identity.");
+  assert.equal(character.identity, "Name: Iroha");
+  assert.equal(character.memory, "Likes durable PJOS state.");
+  assert.equal(character.voiceStyle, "short and clear");
+  assert.match(character.metadata.sourceFiles.soul, /SOUL\.md$/);
+});
 
 const createHarness = () => {
   const projectOs = createInMemoryProjectOs();
