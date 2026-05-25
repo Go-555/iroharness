@@ -2097,6 +2097,218 @@ export const createJsonlProcessMicroHarness = ({
   });
 };
 
+export const createJsonlRealtimeCoreProcess = ({
+  id = "jsonl-realtime-core",
+  command,
+  args = [],
+  cwd,
+  env = {},
+  eventCapacity = 256,
+  messageCapacity = 256,
+  clock = () => Date.now(),
+  timestamp = () => new Date().toISOString(),
+  onMessage = () => {},
+  onStderr = () => {},
+  onExit = () => {}
+} = {}) => {
+  if (!command) {
+    throw new Error("createJsonlRealtimeCoreProcess requires command");
+  }
+  if (!Number.isInteger(eventCapacity) || eventCapacity < 1) {
+    throw new Error("createJsonlRealtimeCoreProcess requires a positive eventCapacity");
+  }
+  if (!Number.isInteger(messageCapacity) || messageCapacity < 1) {
+    throw new Error("createJsonlRealtimeCoreProcess requires a positive messageCapacity");
+  }
+
+  let processRef = null;
+  let events = Object.freeze([]);
+  let messages = Object.freeze([]);
+  let marks = Object.freeze({});
+  let measures = Object.freeze([]);
+  let speaking = false;
+  let interrupted = false;
+  let sequence = 0;
+
+  const recordMessage = (message) => {
+    messages = Object.freeze([...messages, message].slice(-messageCapacity));
+    onMessage(message);
+    return message;
+  };
+
+  const start = () => {
+    if (processRef) {
+      return processRef;
+    }
+    processRef = spawn(command, args, {
+      cwd,
+      env: {
+        ...process.env,
+        ...env
+      },
+      stdio: ["pipe", "pipe", "pipe"]
+    });
+    const lines = createInterface({ input: processRef.stdout });
+    lines.on("line", (line) => {
+      try {
+        recordMessage(JSON.parse(line));
+      } catch (error) {
+        recordMessage({
+          type: "parse_error",
+          message: error.message,
+          line
+        });
+      }
+    });
+    processRef.stderr.on("data", (chunk) => onStderr(chunk.toString("utf8")));
+    processRef.on("error", (error) => {
+      recordMessage({
+        type: "process_error",
+        message: error.message
+      });
+    });
+    processRef.on("exit", (code, signal) => {
+      processRef = null;
+      onExit({ code, signal });
+    });
+    return processRef;
+  };
+
+  const send = (op, payload = {}) => {
+    const child = start();
+    child.stdin.write(
+      `${JSON.stringify({
+        op,
+        coreId: id,
+        sequence,
+        timestamp: timestamp(),
+        ...payload
+      })}\n`
+    );
+    sequence += 1;
+  };
+
+  const publish = (event) => {
+    const nextEvent = Object.freeze({
+      ...event,
+      realtimeCoreId: id,
+      timestamp: event?.timestamp || timestamp()
+    });
+    events = Object.freeze([...events, nextEvent].slice(-eventCapacity));
+    send("publish", { event: nextEvent });
+    return nextEvent;
+  };
+
+  const mark = (name, at = clock()) => {
+    marks = Object.freeze({
+      ...marks,
+      [name]: at
+    });
+    const nextMark = Object.freeze({ name, at });
+    send("mark", { mark: nextMark });
+    return nextMark;
+  };
+
+  const measure = (name, startMark, endMark) => {
+    const startAt = marks[startMark];
+    const endAt = marks[endMark];
+    if (typeof startAt !== "number" || typeof endAt !== "number") {
+      throw new Error(`realtime core measure ${name} requires marks: ${startMark}, ${endMark}`);
+    }
+    const nextMeasure = Object.freeze({
+      name,
+      startMark,
+      endMark,
+      start: startAt,
+      end: endAt,
+      durationMs: endAt - startAt
+    });
+    measures = Object.freeze([...measures, nextMeasure]);
+    send("measure", { measure: nextMeasure });
+    return nextMeasure;
+  };
+
+  const startSpeaking = () => {
+    speaking = true;
+    interrupted = false;
+    const state = Object.freeze({ speaking, interrupted });
+    send("startSpeaking", { state });
+    return state;
+  };
+
+  const finishSpeaking = () => {
+    speaking = false;
+    const state = Object.freeze({ speaking, interrupted });
+    send("finishSpeaking", { state });
+    return state;
+  };
+
+  const shouldInterrupt = (event) => {
+    const shouldInterruptNow =
+      speaking &&
+      event?.type === "stt.partial" &&
+      String(event.delta || event.text || "").trim().length > 0;
+    if (shouldInterruptNow) {
+      interrupted = true;
+    }
+    send("shouldInterrupt", {
+      event,
+      result: shouldInterruptNow
+    });
+    return shouldInterruptNow;
+  };
+
+  const snapshot = () =>
+    Object.freeze({
+      id,
+      kind: "realtime-core",
+      implementation: "jsonl-process",
+      process: Object.freeze({
+        running: Boolean(processRef),
+        command,
+        args: Object.freeze([...args])
+      }),
+      events: Object.freeze([...events]),
+      messages: Object.freeze([...messages]),
+      latency: Object.freeze({
+        marks: Object.freeze({ ...marks }),
+        measures: Object.freeze([...measures])
+      }),
+      bargeIn: Object.freeze({
+        speaking,
+        interrupted
+      })
+    });
+
+  const close = () => {
+    if (!processRef) {
+      return null;
+    }
+    const child = processRef;
+    child.stdin.end();
+    child.kill("SIGTERM");
+    processRef = null;
+    return true;
+  };
+
+  return Object.freeze({
+    id,
+    kind: "realtime-core",
+    implementation: "jsonl-process",
+    capabilities: Object.freeze(["event-bus", "latency", "barge-in", "jsonl-process"]),
+    start,
+    publish,
+    push: publish,
+    mark,
+    measure,
+    startSpeaking,
+    finishSpeaking,
+    shouldInterrupt,
+    snapshot,
+    close
+  });
+};
+
 export const createTextProcessMicroHarness = ({
   id,
   command,

@@ -229,6 +229,15 @@ import {
 
 See [docs/realtime.md](./docs/realtime.md).
 
+For an external realtime core process:
+
+```bash
+npm run example:realtime-core
+```
+
+This uses the same runtime core contract that a future Rust or Go fast path can
+implement.
+
 ## Platform Adapters
 
 Discord and YouTube inputs are normalized before they reach personality,
@@ -518,6 +527,8 @@ examples/
   external-bridges.mjs
   youtube-live-poller.mjs
   obs-overlay-control.mjs
+  realtime-core-process.mjs
+  realtime-core-worker.mjs
   browser-server.mjs
   browser-avatar/
   vscode-companion/

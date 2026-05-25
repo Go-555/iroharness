@@ -85,7 +85,8 @@ micro harnesses.
 - [x] realtime latency metrics
 - [x] Rust event/audio/device core skeleton
 - [x] Rust event/audio/device runtime binding contract
-- [ ] Rust native/WASM/process implementation
+- [x] external realtime core JSONL process adapter
+- [ ] Rust native/WASM implementation
 
 ## Guiding Principle
 

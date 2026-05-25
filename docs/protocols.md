@@ -243,6 +243,29 @@ The process adapter writes one JSON line to stdin and reads the final JSON line
 from stdout. This is useful for local wrappers around Codex CLI, Hermes Agent,
 OpenClaw tools, or custom workers.
 
+## JSONL Realtime Core Process
+
+External realtime cores read one newline-delimited JSON command per operation:
+
+```json
+{
+  "op": "mark",
+  "coreId": "realtime-core",
+  "sequence": 1,
+  "timestamp": "2026-05-25T00:00:00.000Z",
+  "mark": {
+    "name": "audio.received",
+    "at": 1000
+  }
+}
+```
+
+The operation set is intentionally small: `publish`, `mark`, `measure`,
+`startSpeaking`, `finishSpeaking`, and `shouldInterrupt`. The external process
+may write JSONL telemetry back to stdout. IroHarness records those messages in
+the core snapshot, but the macro harness keeps identity, permissions, and PJOS
+ownership.
+
 ## Named External Bridges
 
 OpenClaw and Hermes wrappers are small projections of the same micro-harness

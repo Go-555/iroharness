@@ -15,6 +15,7 @@ import {
   createHermesGatewayMicroHarness,
   createHttpMicroHarness,
   createIroHarnessDevServerHandler,
+  createJsonlRealtimeCoreProcess,
   createJsonlProcessMicroHarness,
   createLive2DBodyBridge,
   createM5StackBodyBridge,
@@ -422,6 +423,62 @@ test("JSONL process micro harness sends one task and parses final JSON line", as
   const output = await harness.run({ id: "ticket_2" }, { character: { id: "iroha" } });
   assert.equal(output.status, "completed");
   assert.equal(output.summary, "processed ticket_2");
+});
+
+test("JSONL realtime core process streams events and keeps local interruption state", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "iroharness-realtime-core-"));
+  const scriptPath = join(dir, "realtime-core.mjs");
+  writeFileSync(
+    scriptPath,
+    [
+      "import { createInterface } from 'node:readline';",
+      "const lines = createInterface({ input: process.stdin });",
+      "lines.on('line', (line) => {",
+      "  const message = JSON.parse(line);",
+      "  console.log(JSON.stringify({",
+      "    type: 'ack',",
+      "    op: message.op,",
+      "    coreId: message.coreId,",
+      "    eventType: message.event?.type || null,",
+      "    markName: message.mark?.name || null,",
+      "    result: message.result ?? null",
+      "  }));",
+      "});"
+    ].join("\n"),
+    "utf8"
+  );
+
+  const received = [];
+  const core = createJsonlRealtimeCoreProcess({
+    id: "process-core-test",
+    command: process.execPath,
+    args: [scriptPath],
+    clock: () => 1000,
+    onMessage(message) {
+      received.push(message);
+    }
+  });
+
+  core.publish({ type: "realtime.listening" });
+  core.mark("audio.received");
+  core.startSpeaking();
+  const interrupted = core.shouldInterrupt({
+    type: "stt.partial",
+    delta: "待って"
+  });
+  core.finishSpeaking();
+
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  const snapshot = core.snapshot();
+  core.close();
+
+  assert.equal(interrupted, true);
+  assert.equal(snapshot.implementation, "jsonl-process");
+  assert.equal(snapshot.events.at(-1).type, "realtime.listening");
+  assert.equal(snapshot.latency.marks["audio.received"], 1000);
+  assert.equal(snapshot.bargeIn.interrupted, true);
+  assert.equal(received.some((message) => message.op === "publish"), true);
+  assert.equal(received.some((message) => message.op === "shouldInterrupt"), true);
 });
 
 test("text process micro harness sends a prompt and accepts plain text output", async () => {

@@ -74,6 +74,23 @@ Missing optional methods degrade gracefully. If no Rust implementation is
 available, `createRustRealtimeCoreBinding` can fall back to
 `createJavascriptRealtimeCore` so app code does not fork.
 
+## JSONL Process Fast Path
+
+`createJsonlRealtimeCoreProcess` lets the runtime core live in a separate
+process before a native addon or WASM module exists. This is the preferred
+bridge for early Rust or Go experiments because the macro harness can keep its
+stable JavaScript API while the fast path evolves independently.
+
+Run the demo:
+
+```bash
+npm run example:realtime-core
+```
+
+The process receives newline-delimited JSON operations such as `publish`,
+`mark`, `startSpeaking`, and `shouldInterrupt`. It can write JSONL messages back
+for diagnostics, telemetry, or lower-level device state.
+
 ## Validation
 
 When Rust is installed:

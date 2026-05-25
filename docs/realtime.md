@@ -154,6 +154,49 @@ Core contract:
 This keeps the macro harness API stable while the fast path underneath can move
 to Rust incrementally.
 
+## External JSONL Realtime Core
+
+Use `createJsonlRealtimeCoreProcess` when the realtime core runs as a separate
+process. That process can be Rust, Go, C++, Python, Node, or anything else that
+can read and write newline-delimited JSON.
+
+```js
+import { createJsonlRealtimeCoreProcess } from "iroharness/adapters";
+
+const realtimeCore = createJsonlRealtimeCoreProcess({
+  command: "iroharness-realtime-core",
+  args: ["--jsonl"]
+});
+```
+
+IroHarness sends one JSON object per operation:
+
+```json
+{
+  "op": "publish",
+  "coreId": "jsonl-realtime-core",
+  "sequence": 0,
+  "timestamp": "2026-05-25T00:00:00.000Z",
+  "event": {
+    "type": "realtime.speaking"
+  }
+}
+```
+
+Supported operations:
+
+- `publish`
+- `mark`
+- `measure`
+- `startSpeaking`
+- `finishSpeaking`
+- `shouldInterrupt`
+
+The adapter keeps local event, latency, and barge-in state so
+`createRealtimeVoiceSession` still gets immediate synchronous decisions. The
+external process receives the same stream and can do lower-latency audio,
+device, WebSocket, or VAD work independently.
+
 ## Why This Is A Contract First
 
 Remote STT, LLM, and TTS providers dominate latency. Rust will not make a remote
