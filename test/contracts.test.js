@@ -183,3 +183,26 @@ test("package exposes TypeScript declarations for public entrypoints", () => {
     assert.match(content, /export /);
   });
 });
+
+test("browser demo includes audience admin UI for stream and fan operations", () => {
+  const html = readFileSync(join("examples", "browser-avatar", "index.html"), "utf8");
+  const app = readFileSync(join("examples", "browser-avatar", "app.js"), "utf8");
+  const server = readFileSync("examples/browser-server.mjs", "utf8");
+
+  [
+    "admin-token-form",
+    "user-form",
+    "identity-form",
+    "permission-form",
+    "stream-form",
+    "audience-table"
+  ].forEach((id) => {
+    assert.match(html, new RegExp(`id="${id}"`));
+  });
+  assert.match(app, /\/audience\/users/);
+  assert.match(app, /\/audience\/stream-sessions/);
+  assert.doesNotMatch(app, /innerHTML/);
+  assert.match(server, /userRegistry,/);
+  assert.match(server, /IROHARNESS_ADMIN_TOKEN/);
+  assert.match(server, /\?view=admin/);
+});

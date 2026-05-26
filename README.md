@@ -373,6 +373,8 @@ Then open the printed URL. The demo exposes:
   M5Stack, Even G2, Live2D, and VRM bridge state
 - `POST /platform/discord/message` and `/platform/youtube/message` for chat
   platform testing
+- `/?view=admin` for local audience, platform identity, permission, and stream
+  session management
 
 For the VS Code companion panel:
 

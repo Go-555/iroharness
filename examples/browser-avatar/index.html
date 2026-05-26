@@ -27,7 +27,7 @@
       </section>
 
       <section class="panel">
-        <header>
+        <header class="chat-header">
           <p class="eyebrow">Character Macro Harness</p>
           <h1>Iroha</h1>
           <p id="mode">idle / neutral</p>
@@ -45,6 +45,133 @@
         </form>
 
         <div class="events" id="events"></div>
+      </section>
+
+      <section class="admin-panel" aria-label="Audience admin">
+        <header>
+          <p class="eyebrow">Audience Registry</p>
+          <h1>Audience</h1>
+          <p id="admin-status">offline</p>
+        </header>
+
+        <form id="admin-token-form" class="admin-token">
+          <label>
+            Admin Token
+            <input id="admin-token" type="password" autocomplete="off" />
+          </label>
+          <button type="submit">Apply</button>
+        </form>
+
+        <div class="admin-grid">
+          <form id="user-form" class="admin-form">
+            <h2>User</h2>
+            <label>
+              User ID
+              <input id="user-id" value="fan_1" />
+            </label>
+            <label>
+              Display Name
+              <input id="user-name" value="Fan One" />
+            </label>
+            <label>
+              Role
+              <select id="user-role">
+                <option value="fan">fan</option>
+                <option value="member">member</option>
+                <option value="moderator">moderator</option>
+                <option value="developer">developer</option>
+                <option value="owner">owner</option>
+              </select>
+            </label>
+            <label>
+              Relationship
+              <input id="user-relationship" value="public" />
+            </label>
+            <button type="submit">Save User</button>
+          </form>
+
+          <form id="identity-form" class="admin-form">
+            <h2>Identity</h2>
+            <label>
+              User ID
+              <input id="identity-user-id" value="fan_1" />
+            </label>
+            <label>
+              Platform
+              <select id="identity-platform">
+                <option value="youtube">youtube</option>
+                <option value="discord">discord</option>
+                <option value="slack">slack</option>
+                <option value="browser">browser</option>
+                <option value="vscode">vscode</option>
+              </select>
+            </label>
+            <label>
+              Platform User ID
+              <input id="identity-platform-user-id" value="UC123" />
+            </label>
+            <label>
+              Display Name
+              <input id="identity-display-name" value="Fan One" />
+            </label>
+            <button type="submit">Link Identity</button>
+          </form>
+
+          <form id="permission-form" class="admin-form">
+            <h2>Permission</h2>
+            <label>
+              User ID
+              <input id="permission-user-id" value="fan_1" />
+            </label>
+            <label>
+              Permission
+              <select id="permission-name">
+                <option value="deep_discussion">deep_discussion</option>
+                <option value="delegate_work">delegate_work</option>
+                <option value="manage_stream">manage_stream</option>
+                <option value="manage_users">manage_users</option>
+              </select>
+            </label>
+            <label>
+              Effect
+              <select id="permission-effect">
+                <option value="allow">allow</option>
+                <option value="deny">deny</option>
+              </select>
+            </label>
+            <label>
+              Scope
+              <input id="permission-scope" value="stream:youtube" />
+            </label>
+            <button type="submit">Set Permission</button>
+          </form>
+
+          <form id="stream-form" class="admin-form">
+            <h2>Stream</h2>
+            <label>
+              Stream ID
+              <input id="stream-id" value="youtube_stream_1" />
+            </label>
+            <label>
+              Platform
+              <select id="stream-platform">
+                <option value="youtube">youtube</option>
+                <option value="discord">discord</option>
+              </select>
+            </label>
+            <label>
+              Channel ID
+              <input id="stream-channel-id" value="live_1" />
+            </label>
+            <label>
+              Title
+              <input id="stream-title" value="Dev Stream" />
+            </label>
+            <button type="submit">Save Stream</button>
+          </form>
+        </div>
+
+        <div class="audience-table" id="audience-table"></div>
       </section>
     </main>
     <script type="module" src="/app.js"></script>

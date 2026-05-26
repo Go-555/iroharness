@@ -27,6 +27,7 @@ body.overlay {
 }
 
 button,
+input,
 select,
 textarea {
   font: inherit;
@@ -180,6 +181,7 @@ header p:last-child {
 }
 
 textarea,
+input,
 select {
   width: 100%;
   color: #edf5e8;
@@ -202,6 +204,11 @@ textarea {
 
 select {
   max-width: 160px;
+  padding: 0 12px;
+}
+
+input {
+  min-height: 42px;
   padding: 0 12px;
 }
 
@@ -231,6 +238,97 @@ button {
 .event {
   padding: 6px 0;
   border-bottom: 1px solid rgba(198, 255, 142, 0.08);
+}
+
+.admin-panel {
+  display: none;
+  min-height: 100vh;
+  padding: 40px;
+  gap: 24px;
+  align-content: start;
+}
+
+body.admin .avatar-stage,
+body.admin .panel {
+  display: none;
+}
+
+body.admin .shell {
+  display: block;
+}
+
+body.admin .admin-panel {
+  display: grid;
+}
+
+.admin-token {
+  display: grid;
+  grid-template-columns: minmax(220px, 360px) auto;
+  gap: 12px;
+  align-items: end;
+}
+
+.admin-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(180px, 1fr));
+  gap: 14px;
+}
+
+.admin-form {
+  display: grid;
+  gap: 10px;
+  padding: 16px;
+  border: 1px solid rgba(198, 255, 142, 0.16);
+  background: rgba(10, 14, 11, 0.66);
+}
+
+.admin-form h2,
+.audience-table h2 {
+  margin: 0;
+  font-size: 16px;
+  letter-spacing: 0;
+}
+
+label {
+  display: grid;
+  gap: 6px;
+  color: #b6c9b0;
+  font-size: 12px;
+}
+
+.admin-form select {
+  max-width: none;
+  min-height: 42px;
+}
+
+.audience-table {
+  display: grid;
+  gap: 12px;
+}
+
+.audience-list {
+  display: grid;
+  gap: 8px;
+}
+
+.audience-row {
+  display: grid;
+  grid-template-columns: 1fr 1.2fr 1.6fr;
+  gap: 12px;
+  align-items: center;
+  min-height: 48px;
+  padding: 10px 12px;
+  border: 1px solid rgba(198, 255, 142, 0.12);
+  background: rgba(10, 14, 11, 0.5);
+}
+
+.audience-row span,
+.audience-row code {
+  color: #b9c8b4;
+}
+
+.audience-row code {
+  overflow-wrap: anywhere;
 }
 
 body.overlay .shell {
@@ -282,6 +380,16 @@ body.overlay .avatar-stage {
 
   .panel {
     padding: 28px;
+  }
+
+  .admin-panel {
+    padding: 24px;
+  }
+
+  .admin-token,
+  .admin-grid,
+  .audience-row {
+    grid-template-columns: 1fr;
   }
 
   .speech {

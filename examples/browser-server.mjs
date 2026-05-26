@@ -69,6 +69,8 @@ const harness = createIroHarness({
 
 const app = createIroHarnessDevServer({
   harness,
+  userRegistry,
+  adminToken: process.env.IROHARNESS_ADMIN_TOKEN || null,
   eventStream,
   bodyDevices
 });
@@ -78,3 +80,4 @@ const { url } = await app.listen({
 });
 
 console.log(`IroHarness browser avatar: ${url}`);
+console.log(`IroHarness audience admin: ${url}/?view=admin`);
