@@ -195,7 +195,8 @@ The app starts a local browser companion server:
 ${character} is the macro harness identity. Models, micro harnesses, and body
 adapters are engines or interfaces. They do not replace the character.
 
-Edit SOUL.md, IDENTITY.md, and MEMORY.md to change the character profile.
+Edit SOUL.md, IDENTITY.md, MEMORY.md, and VOICE.md to change the character
+profile.
 `;
 
 const init = ({ dir, name, character, force }) => {
@@ -235,6 +236,11 @@ const init = ({ dir, name, character, force }) => {
     content: "# Memory\n\nDurable facts and relationship context go here.\n"
   });
   writeFile({
+    path: join(targetDir, "VOICE.md"),
+    force,
+    content: "# Voice\n\nShort, natural, responsive, and consistent across text and speech.\n"
+  });
+  writeFile({
     path: join(targetDir, ".gitignore"),
     force,
     content: "node_modules\n.iroharness/*.json\n"
@@ -269,6 +275,10 @@ const doctor = ({ dir }) => {
     {
       label: "MEMORY.md",
       path: join(targetDir, "MEMORY.md")
+    },
+    {
+      label: "VOICE.md",
+      path: join(targetDir, "VOICE.md")
     },
     {
       label: ".iroharness",

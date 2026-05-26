@@ -24,6 +24,7 @@ test("CLI init creates a minimal IroHarness app", () => {
   assert.equal(existsSync(join(appDir, "SOUL.md")), true);
   assert.equal(existsSync(join(appDir, "IDENTITY.md")), true);
   assert.equal(existsSync(join(appDir, "MEMORY.md")), true);
+  assert.equal(existsSync(join(appDir, "VOICE.md")), true);
   assert.equal(existsSync(join(appDir, ".iroharness")), true);
 
   const packageJson = JSON.parse(readFileSync(join(appDir, "package.json"), "utf8"));
@@ -44,6 +45,7 @@ test("CLI init creates a minimal IroHarness app", () => {
   assert.match(readme, /\?view=overlay/);
   assert.match(readme, /\?view=admin/);
   assert.match(readme, /\/openapi\.json/);
+  assert.match(readme, /VOICE\.md/);
 });
 
 test("CLI init refuses to overwrite generated files without force", () => {
@@ -66,6 +68,7 @@ test("CLI doctor validates generated companion app shape", () => {
   assert.equal(doctor.status, 0, doctor.stderr);
   assert.match(doctor.stdout, /ok package\.json/);
   assert.match(doctor.stdout, /ok SOUL\.md/);
+  assert.match(doctor.stdout, /ok VOICE\.md/);
   assert.match(doctor.stdout, /IroHarness project looks ready/);
 });
 

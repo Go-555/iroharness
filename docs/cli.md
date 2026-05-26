@@ -19,6 +19,7 @@ Generated files:
 - `SOUL.md`
 - `IDENTITY.md`
 - `MEMORY.md`
+- `VOICE.md`
 - `.iroharness/`
 - `.gitignore`
 - `README.md`
@@ -48,4 +49,4 @@ npx iroharness doctor ./my-companion
 ```
 
 The doctor command checks for `package.json`, `src/app.mjs`, `.iroharness/`,
-`SOUL.md`, `IDENTITY.md`, and `MEMORY.md`.
+`SOUL.md`, `IDENTITY.md`, `MEMORY.md`, and `VOICE.md`.
