@@ -206,3 +206,41 @@ test("browser demo includes audience admin UI for stream and fan operations", ()
   assert.match(server, /IROHARNESS_ADMIN_TOKEN/);
   assert.match(server, /\?view=admin/);
 });
+
+test("OpenAPI document covers dev server and audience management routes", () => {
+  const openapi = JSON.parse(readFileSync(join("protocols", "openapi.json"), "utf8"));
+
+  assert.equal(openapi.openapi, "3.1.0");
+  [
+    "/openapi.json",
+    "/events",
+    "/state",
+    "/pjos",
+    "/turn",
+    "/platforms",
+    "/platform/{platform}/message",
+    "/bodies",
+    "/body/{id}",
+    "/body/{id}/events",
+    "/audience",
+    "/audience/users",
+    "/audience/users/{userId}",
+    "/audience/users/{userId}/identities",
+    "/audience/users/{userId}/permissions",
+    "/audience/stream-sessions",
+    "/audience/stream-sessions/{sessionId}"
+  ].forEach((path) => {
+    assert.equal(Boolean(openapi.paths[path]), true, path);
+  });
+  assert.equal(openapi.components.securitySchemes.adminToken.type, "http");
+  assert.equal(
+    openapi.paths["/audience/users/{userId}/permissions"].post.requestBody.content[
+      "application/json"
+    ].schema.$ref,
+    "#/components/schemas/PermissionOverrideWrite"
+  );
+  assert.deepEqual(
+    openapi.components.schemas.AudienceSnapshot.required,
+    ["users", "userIdentities", "permissionOverrides", "streamSessions"]
+  );
+});

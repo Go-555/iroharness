@@ -709,6 +709,35 @@ test("dev server exposes body bridge snapshots", async () => {
   assert.equal(snapshot.json.state.payload.stateKey, "mouth_on_eye_on");
 });
 
+test("dev server exposes the OpenAPI document", async () => {
+  const eventStream = createEventStreamDevice("events");
+  const handler = createIroHarnessDevServerHandler({
+    eventStream,
+    harness: {
+      state() {
+        return { characterId: "iroha", mode: "idle" };
+      },
+      projectOs() {
+        return { tickets: [], runs: [], artifacts: [] };
+      },
+      async receive() {
+        return { kind: "response", text: "ok" };
+      }
+    },
+    publicDir: process.cwd()
+  });
+
+  const response = await callHandler(handler, { url: "/openapi.json" });
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.json.openapi, "3.1.0");
+  assert.equal(
+    response.json.paths["/turn"].post.summary,
+    "Send a normalized turn to the macro harness"
+  );
+  assert.equal(Boolean(response.json.paths["/audience/users/{userId}/permissions"]), true);
+});
+
 test("dev server manages audience users, identities, permissions, and stream sessions", async () => {
   const eventStream = createEventStreamDevice("events");
   const userRegistry = createInMemoryUserRegistry();

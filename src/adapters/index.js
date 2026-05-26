@@ -123,6 +123,11 @@ const mimeTypes = Object.freeze({
 const defaultPublicDir = () =>
   fileURLToPath(new URL("../../examples/browser-avatar", import.meta.url));
 
+const readOpenApiSpec = () =>
+  JSON.parse(
+    readFileSync(fileURLToPath(new URL("../../protocols/openapi.json", import.meta.url)), "utf8")
+  );
+
 const serveStatic = (response, publicDir, pathname) => {
   const requestPath = pathname === "/" ? "/index.html" : pathname;
   const normalizedPath = normalize(requestPath).replace(/^(\.\.[/\\])+/, "");
@@ -1719,6 +1724,10 @@ export const createIroHarnessDevServerHandler = ({
       }
       if (request.method === "GET" && url.pathname === "/pjos") {
         sendJson(response, 200, harness.projectOs());
+        return;
+      }
+      if (request.method === "GET" && url.pathname === "/openapi.json") {
+        sendJson(response, 200, readOpenApiSpec());
         return;
       }
       if (request.method === "GET" && url.pathname === "/audience") {

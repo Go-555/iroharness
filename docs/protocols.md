@@ -99,11 +99,15 @@ See `protocols/audience-store.schema.json`.
 The dev server exposes platform-normalized webhook endpoints:
 
 ```text
+GET  /openapi.json
 POST /platform/discord/message
 POST /platform/slack/message
 POST /platform/youtube/message
 GET  /platforms
 ```
+
+`/openapi.json` returns the OpenAPI 3.1 contract stored at
+`protocols/openapi.json`.
 
 Platform adapters convert each payload into the same IroHarness turn shape. From
 there, user registry lookup and permission policy are identical.

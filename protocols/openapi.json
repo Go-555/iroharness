@@ -1,0 +1,841 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "IroHarness Dev Server API",
+    "version": "0.1.0",
+    "description": "Local HTTP API for the IroHarness character macro harness, browser bodies, platform turns, audience registry, and Project OS state."
+  },
+  "servers": [
+    {
+      "url": "http://127.0.0.1:4178",
+      "description": "Default local development server"
+    }
+  ],
+  "security": [],
+  "paths": {
+    "/openapi.json": {
+      "get": {
+        "summary": "Read this OpenAPI document",
+        "responses": {
+          "200": {
+            "description": "OpenAPI specification",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/events": {
+      "get": {
+        "summary": "Subscribe to macro harness events",
+        "description": "Server-Sent Events stream for state, speech, task, and stream events.",
+        "responses": {
+          "200": {
+            "description": "SSE stream",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/state": {
+      "get": {
+        "summary": "Read current character state",
+        "responses": {
+          "200": {
+            "description": "Current state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CharacterState"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/pjos": {
+      "get": {
+        "summary": "Read Project OS snapshot",
+        "responses": {
+          "200": {
+            "description": "Project OS snapshot",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectOsSnapshot"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/turn": {
+      "post": {
+        "summary": "Send a normalized turn to the macro harness",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TurnInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Harness response, delegation, stream operation, or permission denial",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/platforms": {
+      "get": {
+        "summary": "List registered platform adapters",
+        "responses": {
+          "200": {
+            "description": "Platform names",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["platforms"],
+                  "properties": {
+                    "platforms": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/platform/{platform}/message": {
+      "post": {
+        "summary": "Send a raw platform message through its adapter",
+        "parameters": [
+          {
+            "name": "platform",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "examples": {
+              "discord": {
+                "value": "discord"
+              },
+              "slack": {
+                "value": "slack"
+              },
+              "youtube": {
+                "value": "youtube"
+              }
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Normalized turn and harness result"
+          },
+          "202": {
+            "description": "Payload ignored by adapter"
+          }
+        }
+      }
+    },
+    "/bodies": {
+      "get": {
+        "summary": "List registered body bridge devices",
+        "responses": {
+          "200": {
+            "description": "Body device list"
+          }
+        }
+      }
+    },
+    "/body/{id}": {
+      "get": {
+        "summary": "Read a body bridge snapshot",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/BodyId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Body snapshot"
+          },
+          "404": {
+            "description": "Body not found"
+          }
+        }
+      }
+    },
+    "/body/{id}/events": {
+      "get": {
+        "summary": "Subscribe to mapped body events",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/BodyId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Body SSE stream"
+          },
+          "404": {
+            "description": "Body not found"
+          }
+        }
+      }
+    },
+    "/audience": {
+      "get": {
+        "summary": "Read audience registry snapshot",
+        "security": [
+          {
+            "adminToken": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Audience snapshot",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AudienceSnapshot"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/AdminTokenRequired"
+          }
+        }
+      }
+    },
+    "/audience/users": {
+      "post": {
+        "summary": "Create or replace an audience user",
+        "security": [
+          {
+            "adminToken": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UserWrite"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created user"
+          },
+          "401": {
+            "$ref": "#/components/responses/AdminTokenRequired"
+          }
+        }
+      }
+    },
+    "/audience/users/{userId}": {
+      "patch": {
+        "summary": "Update an audience user",
+        "security": [
+          {
+            "adminToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/UserId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UserPatch"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated user"
+          },
+          "401": {
+            "$ref": "#/components/responses/AdminTokenRequired"
+          }
+        }
+      }
+    },
+    "/audience/users/{userId}/identities": {
+      "post": {
+        "summary": "Link a platform identity to an audience user",
+        "security": [
+          {
+            "adminToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/UserId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IdentityWrite"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Linked identity"
+          },
+          "401": {
+            "$ref": "#/components/responses/AdminTokenRequired"
+          }
+        }
+      }
+    },
+    "/audience/users/{userId}/permissions": {
+      "post": {
+        "summary": "Set a scoped permission override for a user",
+        "security": [
+          {
+            "adminToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/UserId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PermissionOverrideWrite"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Permission override"
+          },
+          "401": {
+            "$ref": "#/components/responses/AdminTokenRequired"
+          }
+        }
+      }
+    },
+    "/audience/stream-sessions": {
+      "post": {
+        "summary": "Create or replace a stream session",
+        "security": [
+          {
+            "adminToken": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StreamSessionWrite"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Stream session"
+          },
+          "401": {
+            "$ref": "#/components/responses/AdminTokenRequired"
+          }
+        }
+      }
+    },
+    "/audience/stream-sessions/{sessionId}": {
+      "patch": {
+        "summary": "Update a stream session",
+        "security": [
+          {
+            "adminToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/SessionId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StreamSessionPatch"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated stream session"
+          },
+          "401": {
+            "$ref": "#/components/responses/AdminTokenRequired"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "adminToken": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Optional local admin token for audience management routes."
+      }
+    },
+    "parameters": {
+      "UserId": {
+        "name": "userId",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string"
+        }
+      },
+      "SessionId": {
+        "name": "sessionId",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string"
+        }
+      },
+      "BodyId": {
+        "name": "id",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string"
+        }
+      }
+    },
+    "responses": {
+      "AdminTokenRequired": {
+        "description": "Admin token required",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "Actor": {
+        "type": "object",
+        "properties": {
+          "platform": {
+            "type": "string"
+          },
+          "platformUserId": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": true
+      },
+      "TurnInput": {
+        "type": "object",
+        "required": ["text"],
+        "properties": {
+          "source": {
+            "type": "string",
+            "default": "browser"
+          },
+          "modality": {
+            "type": "string",
+            "default": "text",
+            "enum": ["text", "voice"]
+          },
+          "text": {
+            "type": "string"
+          },
+          "actor": {
+            "$ref": "#/components/schemas/Actor"
+          },
+          "metadata": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
+        "additionalProperties": true
+      },
+      "CharacterState": {
+        "type": "object",
+        "required": ["characterId", "mode", "emotion"],
+        "properties": {
+          "characterId": {
+            "type": "string"
+          },
+          "mode": {
+            "type": "string"
+          },
+          "emotion": {
+            "type": "string"
+          },
+          "speechText": {
+            "type": ["string", "null"]
+          },
+          "taskRef": {
+            "type": ["string", "null"]
+          },
+          "mouth": {
+            "type": "string"
+          },
+          "gaze": {
+            "type": "string"
+          },
+          "motion": {
+            "type": "string"
+          },
+          "metadata": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
+        "additionalProperties": true
+      },
+      "ProjectOsSnapshot": {
+        "type": "object",
+        "required": ["tickets", "runs", "artifacts"],
+        "properties": {
+          "tickets": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          },
+          "runs": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          },
+          "artifacts": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          }
+        }
+      },
+      "User": {
+        "type": "object",
+        "required": ["id", "displayName", "role", "identities"],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string"
+          },
+          "relationship": {
+            "type": "string"
+          },
+          "identities": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "permissions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "metadata": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
+        "additionalProperties": true
+      },
+      "UserWrite": {
+        "type": "object",
+        "required": ["displayName"],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string",
+            "default": "fan"
+          },
+          "relationship": {
+            "type": "string",
+            "default": "public"
+          },
+          "identities": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "permissions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "metadata": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
+        "additionalProperties": true
+      },
+      "UserPatch": {
+        "type": "object",
+        "properties": {
+          "displayName": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string"
+          },
+          "relationship": {
+            "type": "string"
+          },
+          "permissions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "metadata": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
+        "additionalProperties": true
+      },
+      "IdentityWrite": {
+        "type": "object",
+        "required": ["platform", "platformUserId"],
+        "properties": {
+          "platform": {
+            "type": "string"
+          },
+          "platformUserId": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "metadata": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
+        "additionalProperties": true
+      },
+      "PermissionOverrideWrite": {
+        "type": "object",
+        "required": ["permission"],
+        "properties": {
+          "permission": {
+            "type": "string",
+            "enum": ["chat_public", "deep_discussion", "delegate_work", "manage_stream", "manage_users"]
+          },
+          "effect": {
+            "type": "string",
+            "enum": ["allow", "deny"],
+            "default": "allow"
+          },
+          "scope": {
+            "type": "string",
+            "default": "global"
+          },
+          "reason": {
+            "type": ["string", "null"]
+          },
+          "expiresAt": {
+            "type": ["string", "null"],
+            "format": "date-time"
+          },
+          "metadata": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
+        "additionalProperties": true
+      },
+      "StreamSessionWrite": {
+        "type": "object",
+        "required": ["platform", "platformChannelId"],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "platform": {
+            "type": "string"
+          },
+          "platformChannelId": {
+            "type": "string"
+          },
+          "title": {
+            "type": ["string", "null"]
+          },
+          "hostUserId": {
+            "type": ["string", "null"]
+          },
+          "status": {
+            "type": "string",
+            "default": "live"
+          },
+          "metadata": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
+        "additionalProperties": true
+      },
+      "StreamSessionPatch": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": ["string", "null"]
+          },
+          "hostUserId": {
+            "type": ["string", "null"]
+          },
+          "status": {
+            "type": "string"
+          },
+          "metadata": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "endedAt": {
+            "type": ["string", "null"],
+            "format": "date-time"
+          }
+        },
+        "additionalProperties": true
+      },
+      "AudienceSnapshot": {
+        "type": "object",
+        "required": ["users", "userIdentities", "permissionOverrides", "streamSessions"],
+        "properties": {
+          "users": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/User"
+            }
+          },
+          "userIdentities": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          },
+          "permissionOverrides": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          },
+          "streamSessions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          }
+        }
+      },
+      "Error": {
+        "type": "object",
+        "required": ["error"],
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": true
+      }
+    }
+  }
+}
