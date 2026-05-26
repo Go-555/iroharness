@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import test from "node:test";
 
 const runCli = (args) =>
@@ -10,6 +10,43 @@ const runCli = (args) =>
     cwd: process.cwd(),
     encoding: "utf8"
   });
+
+const waitForServerUrl = (child) =>
+  new Promise((resolve, reject) => {
+    let output = "";
+    const timer = setTimeout(() => {
+      reject(new Error(`Timed out waiting for generated app server. Output:\n${output}`));
+    }, 5000);
+    child.stdout.on("data", (chunk) => {
+      output += chunk.toString("utf8");
+      const match = output.match(/companion server: (http:\/\/127\.0\.0\.1:\d+)/);
+      if (match) {
+        clearTimeout(timer);
+        resolve(match[1]);
+      }
+    });
+    child.stderr.on("data", (chunk) => {
+      output += chunk.toString("utf8");
+    });
+    child.on("error", (error) => {
+      clearTimeout(timer);
+      reject(error);
+    });
+    child.on("exit", (code) => {
+      if (code !== null && code !== 0) {
+        clearTimeout(timer);
+        reject(new Error(`Generated app exited early with code ${code}. Output:\n${output}`));
+      }
+    });
+  });
+
+const stopChild = async (child) => {
+  if (child.exitCode !== null) {
+    return;
+  }
+  child.kill();
+  await new Promise((resolve) => child.once("exit", resolve));
+};
 
 test("CLI init creates a minimal IroHarness app", () => {
   const dir = mkdtempSync(join(tmpdir(), "iroharness-init-"));
@@ -70,6 +107,45 @@ test("CLI doctor validates generated companion app shape", () => {
   assert.match(doctor.stdout, /ok SOUL\.md/);
   assert.match(doctor.stdout, /ok VOICE\.md/);
   assert.match(doctor.stdout, /IroHarness project looks ready/);
+});
+
+test("CLI generated app starts a local companion server", async (context) => {
+  const dir = mkdtempSync(join(tmpdir(), "iroharness-generated-server-"));
+  const appDir = join(dir, "companion");
+  const init = runCli(["init", appDir, "--name", "companion-app", "--character", "Iroha"]);
+  assert.equal(init.status, 0, init.stderr);
+
+  mkdirSync(join(appDir, "node_modules"), { recursive: true });
+  symlinkSync(process.cwd(), join(appDir, "node_modules", "iroharness"), "dir");
+
+  const child = spawn(process.execPath, ["src/app.mjs"], {
+    cwd: appDir,
+    env: {
+      ...process.env,
+      PORT: "0"
+    },
+    stdio: ["ignore", "pipe", "pipe"]
+  });
+
+  try {
+    const url = await waitForServerUrl(child);
+    const [openapi, state] = await Promise.all([
+      fetch(`${url}/openapi.json`).then((response) => response.json()),
+      fetch(`${url}/state`).then((response) => response.json())
+    ]);
+
+    assert.equal(openapi.openapi, "3.1.0");
+    assert.equal(state.characterId, "iroha");
+    assert.equal(existsSync(join(appDir, ".iroharness", "users.json")), true);
+  } catch (error) {
+    if (String(error.message).includes("listen EPERM")) {
+      context.skip("local port binding is not permitted in this sandbox");
+      return;
+    }
+    throw error;
+  } finally {
+    await stopChild(child);
+  }
 });
 
 test("CLI doctor fails when character profile files are missing", () => {
