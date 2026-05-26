@@ -90,6 +90,7 @@ Or run the repository examples:
 ```bash
 npm run example
 npm run example:audience
+npm run example:audience-admin
 npm run example:bodies
 npm run example:brains
 npm run example:pjos
@@ -354,6 +355,12 @@ The dev server can also expose local audience management endpoints such as
 `userRegistry`. This is the setup path for Discord fan communities, YouTube
 live streams, OBS operators, and developer-only deep discussion. Add
 `adminToken` if the server is reachable outside a trusted local machine.
+
+With the browser demo running, seed stream identities from another shell:
+
+```bash
+IROHARNESS_URL=http://127.0.0.1:4178 npm run example:audience-admin
+```
 
 ## Browser Avatar Demo
 

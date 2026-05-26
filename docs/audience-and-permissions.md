@@ -212,6 +212,13 @@ Set `adminToken` whenever the dev server is reachable beyond a trusted local
 machine. Requests may send either `authorization: Bearer <token>` or
 `x-iroharness-admin-token: <token>`.
 
+The same flow is available as a runnable client example:
+
+```bash
+npm run demo:browser
+IROHARNESS_URL=http://127.0.0.1:4178 npm run example:audience-admin
+```
+
 ## Operational Pattern
 
 In an OBS / YouTube / Discord setup:

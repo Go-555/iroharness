@@ -244,3 +244,21 @@ test("OpenAPI document covers dev server and audience management routes", () => 
     ["users", "userIdentities", "permissionOverrides", "streamSessions"]
   );
 });
+
+test("audience admin client example follows the OpenAPI audience routes", () => {
+  const example = readFileSync(join("examples", "audience-admin-client.mjs"), "utf8");
+
+  [
+    "/audience/users",
+    "/audience/users/developer_demo/identities",
+    "/audience/users/developer_demo/permissions",
+    "/audience/stream-sessions",
+    "/audience"
+  ].forEach((route) => {
+    assert.match(example, new RegExp(route.replace(/[{}]/g, "\\$&")));
+  });
+  assert.match(example, /IROHARNESS_URL/);
+  assert.match(example, /IROHARNESS_ADMIN_TOKEN/);
+  assert.match(example, /manage_stream/);
+  assert.match(example, /stream:youtube/);
+});
