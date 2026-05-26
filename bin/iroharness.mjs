@@ -85,18 +85,40 @@ const characterId = (name) =>
 const appSource = ({ character }) => {
   const id = characterId(character);
   return `import {
-  createConsoleDevice,
   createEchoBrain,
   createFileCharacterProfile,
   createFileProjectOs,
+  createFileUserRegistry,
   createHeuristicRouter,
   createIroHarness,
+  createRecorderDevice,
   createStubMicroHarness
 } from "iroharness";
+import {
+  createEventStreamDevice,
+  createIroHarnessDevServer,
+  createMotionPngTuberRendererBridge,
+  createM5StackBodyBridge,
+  createEvenG2DisplayBridge,
+  createLive2DBodyBridge,
+  createVrmBodyBridge
+} from "iroharness/adapters";
 
 const projectOs = createFileProjectOs({
   path: ".iroharness/pjos.json"
 });
+const userRegistry = createFileUserRegistry({
+  path: ".iroharness/users.json"
+});
+const eventStream = createEventStreamDevice("browser-events");
+const recorder = createRecorderDevice("recorder");
+const bodyDevices = [
+  createMotionPngTuberRendererBridge(),
+  createM5StackBodyBridge(),
+  createEvenG2DisplayBridge(),
+  createLive2DBodyBridge(),
+  createVrmBodyBridge()
+];
 
 const character = createFileCharacterProfile({
   dir: ".",
@@ -104,15 +126,27 @@ const character = createFileCharacterProfile({
   name: "${character}"
 });
 
+userRegistry.registerUser({
+  id: "owner-local",
+  displayName: "Local Owner",
+  role: "owner",
+  relationship: "owner",
+  identities: {
+    browser: "browser-guest",
+    local: "owner"
+  }
+});
+
 const companion = createIroHarness({
   character,
   projectOs,
+  userRegistry,
   router: createHeuristicRouter(),
   brains: {
     voice: createEchoBrain("voice-fast"),
     text: createEchoBrain("text-deep")
   },
-  devices: [createConsoleDevice("console")],
+  devices: [eventStream, recorder, ...bodyDevices],
   microHarnesses: [
     createStubMicroHarness("codex", ["code", "files", "review"]),
     createStubMicroHarness("openclaw", ["assistant", "tools"]),
@@ -120,16 +154,21 @@ const companion = createIroHarness({
   ]
 });
 
-await companion.receive({
-  source: "local",
-  modality: "text",
-  actor: {
-    platform: "local",
-    platformUserId: "owner",
-    displayName: "Owner"
-  },
-  text: "こんにちは。まず自己紹介して。"
+const app = createIroHarnessDevServer({
+  harness: companion,
+  userRegistry,
+  adminToken: process.env.IROHARNESS_ADMIN_TOKEN || null,
+  eventStream,
+  bodyDevices
 });
+
+const { url } = await app.listen({
+  port: Number(process.env.PORT || 4178)
+});
+
+console.log(\`${character.name} companion server: \${url}\`);
+console.log(\`Audience admin: \${url}/?view=admin\`);
+console.log(\`OpenAPI: \${url}/openapi.json\`);
 `;
 };
 
@@ -143,6 +182,13 @@ Generated with IroHarness.
 npm install
 npm start
 \`\`\`
+
+The app starts a local browser companion server:
+
+- \`/\` for browser chat
+- \`/?view=overlay\` for OBS Browser Source
+- \`/?view=admin\` for audience, identity, permission, and stream setup
+- \`/openapi.json\` for the local HTTP API contract
 
 ## Character
 

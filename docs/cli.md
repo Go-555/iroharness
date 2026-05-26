@@ -25,8 +25,19 @@ Generated files:
 
 Use `--force` only when you want to overwrite generated files.
 
+`src/app.mjs` starts a local companion server. The generated app includes:
+
+- browser chat at `/`
+- OBS Browser Source mode at `/?view=overlay`
+- audience admin at `/?view=admin`
+- OpenAPI at `/openapi.json`
+- file-backed Project OS at `.iroharness/pjos.json`
+- file-backed audience registry at `.iroharness/users.json`
+
 `src/app.mjs` loads the character through `createFileCharacterProfile`, so the
 generated markdown files are the local identity and memory source of truth.
+Set `IROHARNESS_ADMIN_TOKEN` before exposing the server beyond a trusted local
+machine.
 
 ## Doctor
 

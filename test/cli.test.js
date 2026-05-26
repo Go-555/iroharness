@@ -34,6 +34,16 @@ test("CLI init creates a minimal IroHarness app", () => {
   assert.match(app, /createIroHarness/);
   assert.match(app, /name: "Iroha"/);
   assert.match(app, /createFileProjectOs/);
+  assert.match(app, /createFileUserRegistry/);
+  assert.match(app, /createIroHarnessDevServer/);
+  assert.match(app, /createMotionPngTuberRendererBridge/);
+  assert.match(app, /IROHARNESS_ADMIN_TOKEN/);
+  assert.match(app, /\/openapi\.json/);
+
+  const readme = readFileSync(join(appDir, "README.md"), "utf8");
+  assert.match(readme, /\?view=overlay/);
+  assert.match(readme, /\?view=admin/);
+  assert.match(readme, /\/openapi\.json/);
 });
 
 test("CLI init refuses to overwrite generated files without force", () => {
