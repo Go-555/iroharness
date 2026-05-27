@@ -52,6 +52,9 @@ See [docs/capability-matrix.md](./docs/capability-matrix.md) for the current
 implementation matrix across micro harnesses, platforms, bodies, storage, and
 deployment.
 
+To add a new integration, see
+[docs/build-an-adapter.md](./docs/build-an-adapter.md).
+
 ## Status
 
 This repository is an early OSS skeleton. It intentionally starts with a small
@@ -630,6 +633,7 @@ docs/
   audience-data-model.md
   brains.md
   body-bridges.md
+  build-an-adapter.md
   character-profile.md
   capability-matrix.md
   cli.md

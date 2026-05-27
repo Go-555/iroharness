@@ -145,6 +145,7 @@ test("OSS contribution metadata is present and aligned with harness boundaries",
   const pkg = JSON.parse(readFileSync("package.json", "utf8"));
   const readme = readFileSync("README.md", "utf8");
   const matrix = readFileSync(join("docs", "capability-matrix.md"), "utf8");
+  const adapterGuide = readFileSync(join("docs", "build-an-adapter.md"), "utf8");
   const contributing = readFileSync("CONTRIBUTING.md", "utf8");
   const codeOfConduct = readFileSync("CODE_OF_CONDUCT.md", "utf8");
   const prTemplate = readFileSync(join(".github", "pull_request_template.md"), "utf8");
@@ -172,6 +173,18 @@ test("OSS contribution metadata is present and aligned with harness boundaries",
   assert.match(readme, /npx iroharness audience user/);
   assert.match(readme, /\?view=overlay/);
   assert.match(readme, /capability-matrix/);
+  assert.match(readme, /build-an-adapter/);
+  assert.match(contributing, /build-an-adapter/);
+  [
+    "Micro Harness Adapter",
+    "Body Or Device Adapter",
+    "Brain Adapter",
+    "Platform Adapter",
+    "Pull Request Checklist",
+    "IroHarness owns identity"
+  ].forEach((section) => {
+    assert.match(adapterGuide, new RegExp(section));
+  });
   [
     "Codex app-server",
     "OpenClaw",

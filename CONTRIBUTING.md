@@ -16,6 +16,9 @@ Good first contributions:
 - examples that show character state changing across bodies
 - tests for routing and task/run state
 
+For adapter work, start with [docs/build-an-adapter.md](./docs/build-an-adapter.md)
+and validate the implementation with `iroharness/testing`.
+
 Design rules:
 
 - keep identity in the macro harness, not inside a single provider adapter
