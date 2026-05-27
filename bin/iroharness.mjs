@@ -233,13 +233,20 @@ const companion = createIroHarness({
   ]
 });
 
+const runtimes = [];
+
 const app = createIroHarnessDevServer({
   harness: companion,
   userRegistry,
   adminToken: process.env.IROHARNESS_ADMIN_TOKEN || null,
   eventStream,
   bodyDevices,
-  turnEnricher: enrichTurn
+  turnEnricher: enrichTurn,
+  runtimeStatus: () =>
+    runtimes.map(({ id, runtime }) => ({
+      id,
+      state: typeof runtime.state === "function" ? runtime.state() : { active: true }
+    }))
 });
 
 const { url } = await app.listen({
@@ -250,8 +257,6 @@ console.log(\`${character.name} companion server: \${url}\`);
 console.log(\`Audience admin: \${url}/?view=admin\`);
 console.log(\`Health: \${url}/health\`);
 console.log(\`OpenAPI: \${url}/openapi.json\`);
-
-const runtimes = [];
 
 if (process.env.YOUTUBE_API_KEY && process.env.YOUTUBE_LIVE_CHAT_ID) {
   userRegistry.createStreamSession({
@@ -274,7 +279,7 @@ if (process.env.YOUTUBE_API_KEY && process.env.YOUTUBE_LIVE_CHAT_ID) {
     }
   });
   youtube.start();
-  runtimes.push(youtube);
+  runtimes.push({ id: "youtube", runtime: youtube });
   console.log("YouTube live chat runtime started");
 }
 
@@ -295,12 +300,12 @@ if (process.env.DISCORD_BOT_TOKEN) {
     }
   });
   discord.start();
-  runtimes.push(discord);
+  runtimes.push({ id: "discord", runtime: discord });
   console.log("Discord runtime started");
 }
 
 process.once("SIGINT", async () => {
-  runtimes.forEach((runtime) => runtime.stop?.());
+  runtimes.forEach(({ runtime }) => runtime.stop?.());
   await app.close();
   process.exit(0);
 });

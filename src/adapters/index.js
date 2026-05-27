@@ -1678,6 +1678,7 @@ export const createIroHarnessDevServerHandler = ({
     createYouTubeLiveChatAdapter()
   ]),
   turnEnricher = async (turn) => turn,
+  runtimeStatus = () => [],
   publicDir = defaultPublicDir()
 }) => {
   if (!harness || !eventStream) {
@@ -1734,6 +1735,7 @@ export const createIroHarnessDevServerHandler = ({
           adminProtected: Boolean(adminToken),
           bodies: bodySummary(),
           platforms: platformAdapters.platforms(),
+          runtimes: runtimeStatus(),
           projectOs: {
             tickets: Array.isArray(projectOs.tickets) ? projectOs.tickets.length : 0,
             runs: Array.isArray(projectOs.runs) ? projectOs.runs.length : 0,

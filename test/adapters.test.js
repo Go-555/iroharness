@@ -771,6 +771,15 @@ test("dev server exposes public health metadata without audience records", async
         return { kind: "response", text: "ok" };
       }
     },
+    runtimeStatus: () => [
+      {
+        id: "youtube",
+        state: {
+          active: true,
+          seenCount: 2
+        }
+      }
+    ],
     publicDir: process.cwd()
   });
 
@@ -783,6 +792,8 @@ test("dev server exposes public health metadata without audience records", async
   assert.equal(response.json.adminProtected, true);
   assert.equal(response.json.bodies[0].id, "motionpngtuber");
   assert.equal(response.json.platforms.includes("youtube"), true);
+  assert.equal(response.json.runtimes[0].id, "youtube");
+  assert.equal(response.json.runtimes[0].state.active, true);
   assert.equal(response.json.projectOs.tickets, 1);
   assert.equal(response.json.users, undefined);
   assert.equal(response.json.userIdentities, undefined);

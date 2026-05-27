@@ -242,6 +242,10 @@ test("OpenAPI document covers dev server and audience management routes", () => 
     "#/components/schemas/HealthStatus"
   );
   assert.equal(
+    openapi.components.schemas.HealthStatus.properties.runtimes.items.required.includes("state"),
+    true
+  );
+  assert.equal(
     openapi.paths["/audience/resolve"].get.responses["200"].content["application/json"].schema
       .$ref,
     "#/components/schemas/AudienceResolution"

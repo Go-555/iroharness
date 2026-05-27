@@ -94,6 +94,8 @@ test("CLI init creates a minimal IroHarness app", () => {
   assert.match(app, /createObsStreamController/);
   assert.match(app, /IROHARNESS_ENABLE_OBS/);
   assert.match(app, /turnEnricher: enrichTurn/);
+  assert.match(app, /runtimeStatus/);
+  assert.match(app, /runtimes\.map/);
   assert.match(app, /name: "Iroha"/);
   assert.match(app, /createFileProjectOs/);
   assert.match(app, /createFileUserRegistry/);

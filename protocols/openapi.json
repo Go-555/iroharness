@@ -567,6 +567,7 @@
           "adminProtected",
           "bodies",
           "platforms",
+          "runtimes",
           "projectOs"
         ],
         "properties": {
@@ -596,6 +597,23 @@
             "type": "array",
             "items": {
               "type": "string"
+            }
+          },
+          "runtimes": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["id", "state"],
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "state": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              },
+              "additionalProperties": true
             }
           },
           "projectOs": {
