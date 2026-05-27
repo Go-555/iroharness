@@ -5,6 +5,7 @@ import {
   createFileProjectOs,
   createFileUserRegistry,
   createHeuristicRouter,
+  createHttpBrain,
   createIroHarness,
   createStubMicroHarness
 } from "../src/index.js";
@@ -33,6 +34,63 @@ const userRegistry = createFileUserRegistry({
   path: join(process.cwd(), ".iroharness", "users.json")
 });
 
+const brainAuthHeaders = () =>
+  process.env.IROHARNESS_BRAIN_AUTH_TOKEN
+    ? { authorization: `Bearer ${process.env.IROHARNESS_BRAIN_AUTH_TOKEN}` }
+    : {};
+
+const brainSlotEnv = Object.freeze({
+  voice: {
+    endpoint: "IROHARNESS_VOICE_BRAIN_ENDPOINT",
+    model: "IROHARNESS_VOICE_BRAIN_MODEL",
+    id: "IROHARNESS_VOICE_BRAIN_ID"
+  },
+  text: {
+    endpoint: "IROHARNESS_TEXT_BRAIN_ENDPOINT",
+    model: "IROHARNESS_TEXT_BRAIN_MODEL",
+    id: "IROHARNESS_TEXT_BRAIN_ID"
+  },
+  deep: {
+    endpoint: "IROHARNESS_DEEP_BRAIN_ENDPOINT",
+    model: "IROHARNESS_DEEP_BRAIN_MODEL",
+    id: "IROHARNESS_DEEP_BRAIN_ID"
+  }
+});
+
+const createConfiguredBrain = ({ slot, fallbackId }) => {
+  const env = brainSlotEnv[slot];
+  const endpoint = process.env[env.endpoint];
+  if (!endpoint) {
+    return createEchoBrain(fallbackId);
+  }
+  return createHttpBrain({
+    id: process.env[env.id] || `${slot}-http`,
+    endpoint,
+    model: process.env[env.model] || null,
+    headers: brainAuthHeaders()
+  });
+};
+
+const voiceBrain = createConfiguredBrain({
+  slot: "voice",
+  fallbackId: "voice-fast"
+});
+const textBrain = createConfiguredBrain({
+  slot: "text",
+  fallbackId: "text-deep"
+});
+const deepBrain = process.env.IROHARNESS_DEEP_BRAIN_ENDPOINT
+  ? createConfiguredBrain({
+      slot: "deep",
+      fallbackId: "deep-reasoning"
+    })
+  : null;
+const brains = Object.freeze({
+  voice: voiceBrain,
+  text: textBrain,
+  ...(deepBrain ? { deep: deepBrain } : {})
+});
+
 userRegistry.registerUser({
   id: "owner-local",
   displayName: "Local Developer",
@@ -55,10 +113,7 @@ const harness = createIroHarness({
   projectOs,
   userRegistry,
   router: createHeuristicRouter(),
-  brains: {
-    voice: createEchoBrain("voice-fast"),
-    text: createEchoBrain("text-deep")
-  },
+  brains,
   devices: [eventStream, ...bodyDevices],
   microHarnesses: [
     createStubMicroHarness("codex", ["code", "files", "review"]),
@@ -81,3 +136,4 @@ const { url } = await app.listen({
 
 console.log(`IroHarness browser avatar: ${url}`);
 console.log(`IroHarness audience admin: ${url}/?view=admin`);
+console.log(`IroHarness brains: voice=${voiceBrain.id} text=${textBrain.id} deep=${deepBrain?.id || "text fallback"}`);

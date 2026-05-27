@@ -307,6 +307,7 @@ test("browser demo includes audience admin UI for stream and fan operations", ()
   const html = readFileSync(join("examples", "browser-avatar", "index.html"), "utf8");
   const app = readFileSync(join("examples", "browser-avatar", "app.js"), "utf8");
   const server = readFileSync("examples/browser-server.mjs", "utf8");
+  const envExample = readFileSync(".env.example", "utf8");
 
   [
     "admin-token-form",
@@ -328,7 +329,13 @@ test("browser demo includes audience admin UI for stream and fan operations", ()
   assert.doesNotMatch(app, /innerHTML/);
   assert.match(server, /userRegistry,/);
   assert.match(server, /IROHARNESS_ADMIN_TOKEN/);
+  assert.match(server, /createHttpBrain/);
+  assert.match(server, /IROHARNESS_VOICE_BRAIN_ENDPOINT/);
+  assert.match(server, /IROHARNESS_DEEP_BRAIN_ENDPOINT/);
   assert.match(server, /\?view=admin/);
+  assert.match(envExample, /IROHARNESS_VOICE_BRAIN_ENDPOINT=/);
+  assert.match(envExample, /IROHARNESS_TEXT_BRAIN_MODEL=/);
+  assert.match(envExample, /IROHARNESS_DEEP_BRAIN_ENDPOINT=/);
 });
 
 test("OpenAPI document covers dev server and audience management routes", () => {

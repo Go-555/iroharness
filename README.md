@@ -149,6 +149,7 @@ npm run example:audience
 npm run example:audience-admin
 npm run example:adapter
 npm run example:bodies
+npm run example:brain-gateway
 npm run example:brains
 npm run example:pjos
 npm run example:codex
@@ -461,6 +462,17 @@ IROHARNESS_URL=http://127.0.0.1:4178 npm run example:audience-admin
 Run:
 
 ```bash
+npm run demo:browser
+```
+
+To test model-slot routing locally, run the demo brain gateway in another shell
+and point the browser demo at it:
+
+```bash
+npm run example:brain-gateway
+IROHARNESS_VOICE_BRAIN_ENDPOINT=http://127.0.0.1:8788/voice \
+IROHARNESS_TEXT_BRAIN_ENDPOINT=http://127.0.0.1:8788/text \
+IROHARNESS_DEEP_BRAIN_ENDPOINT=http://127.0.0.1:8788/deep \
 npm run demo:browser
 ```
 
