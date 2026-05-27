@@ -56,6 +56,65 @@ For always-on deployments, use the templates in `examples/deployment/` and the
 guide in `docs/deployment.md`. They cover Mac mini `launchd`, Linux `systemd`,
 Tailscale-only exposure, and Caddy/nginx reverse proxies.
 
+## Connect
+
+`iroharness connect` prepares a generated app for a concrete interface or body.
+This is the non-interactive first step toward onboarding presets.
+
+### Slack
+
+Slack is a text interface. It does not need a full visual body by default, but
+it can use a lightweight presence body later for `idle`, `thinking`, `working`,
+`done`, and `error` status.
+
+```bash
+npx iroharness connect slack ./my-companion \
+  --bot-token xoxb-... \
+  --signing-secret ... \
+  --bot-user-id UIROHA \
+  --owner-slack-user-id UOWNER
+```
+
+This updates `.env`, writes `.iroharness/connections/slack.json`, and links the
+owner Slack user in `.iroharness/users.json` when an owner Slack ID is supplied.
+
+Current prototype runtime:
+
+```bash
+cd ~/.iroharness/source
+set -a
+source ~/iroharness-apps/iroha/.env
+set +a
+npm run example:slack-stackchan
+```
+
+Expose `/slack/events` from the running host with Tailscale Serve, Cloudflare
+Tunnel, ngrok, or another trusted HTTPS ingress.
+
+### StackChan
+
+StackChan is a physical body preset. Its body, mic, speaker, display, and
+button/touch inputs are mostly determined by the device, so onboarding asks for
+the host URL and firmware-facing Wi-Fi details instead of asking for a separate
+body type.
+
+```bash
+npx iroharness connect stackchan ./my-companion \
+  --host-url http://100.64.0.10:4182 \
+  --wifi-ssid YOUR_WIFI_SSID \
+  --wifi-pass YOUR_WIFI_PASSWORD
+```
+
+This writes:
+
+- `.iroharness/connections/stackchan.device.json`
+- `.iroharness/connections/stackchan-firmware-config.json`
+
+Copy the firmware config values into
+`examples/stackchan-face-poller/data/config.json`, then build/upload from the
+PlatformIO sketch directory. The M5Stack must use a LAN or Tailscale address it
+can reach; `127.0.0.1` only points back to the M5Stack itself.
+
 ## Audience Setup
 
 The generated app stores local audience data in `.iroharness/users.json`.

@@ -69,6 +69,8 @@ Initial OSS skeleton for a character macro harness.
   companion app setup, dry-run, and StackChan next-step guidance
 - installation guide covering source/app directory separation and first
   StackChan connection
+- `iroharness connect slack` and `iroharness connect stackchan` for first
+  onboarding files, `.env` setup, owner Slack identity, and firmware config
 - CLI `init`, `doctor`, `doctor --json`, and `audience`
   `user/link/grant/revoke/stream/export/import/list`
 - generated `AGENTS.md` companion instructions for character, permission, and

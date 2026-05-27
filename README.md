@@ -236,6 +236,13 @@ npm run oss:publish-preflight
 npm run demo:browser
 ```
 
+Slack と StackChan を先に試す場合は、生成アプリで接続設定を作れます。
+
+```bash
+npx iroharness connect slack ~/iroharness-apps/iroha --owner-slack-user-id UOWNER
+npx iroharness connect stackchan ~/iroharness-apps/iroha --host-url http://MAC_MINI_IP:4182
+```
+
 CLIの詳細は [docs/cli.md](./docs/cli.md) を見てください。
 browser screenshot E2E は [docs/ci.md](./docs/ci.md) にあります。
 

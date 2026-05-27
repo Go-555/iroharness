@@ -335,6 +335,75 @@ test("CLI audience manages users, platform identities, permissions, and streams"
   assert.equal(restoredSnapshot.auditLog.length, snapshot.auditLog.length + 1);
 });
 
+test("CLI connect prepares Slack and StackChan onboarding files", () => {
+  const dir = mkdtempSync(join(tmpdir(), "iroharness-connect-"));
+  const appDir = join(dir, "companion");
+  const init = runCli(["init", appDir, "--character", "Iroha"]);
+  const slack = runCli([
+    "connect",
+    "slack",
+    appDir,
+    "--bot-token",
+    "xoxb-test",
+    "--signing-secret",
+    "secret-test",
+    "--bot-user-id",
+    "UIROHA",
+    "--owner-slack-user-id",
+    "UOWNER",
+    "--json"
+  ]);
+  const stackchan = runCli([
+    "connect",
+    "stackchan",
+    appDir,
+    "--host-url",
+    "http://100.64.0.10:4182/",
+    "--wifi-ssid",
+    "ssid-test",
+    "--wifi-pass",
+    "pass-test",
+    "--poll-interval-ms",
+    "750",
+    "--json"
+  ]);
+  const slackResult = JSON.parse(slack.stdout);
+  const stackchanResult = JSON.parse(stackchan.stdout);
+  const env = readFileSync(join(appDir, ".env"), "utf8");
+  const slackConnection = JSON.parse(
+    readFileSync(join(appDir, ".iroharness", "connections", "slack.json"), "utf8")
+  );
+  const stackchanDevice = JSON.parse(
+    readFileSync(join(appDir, ".iroharness", "connections", "stackchan.device.json"), "utf8")
+  );
+  const firmwareConfig = JSON.parse(
+    readFileSync(
+      join(appDir, ".iroharness", "connections", "stackchan-firmware-config.json"),
+      "utf8"
+    )
+  );
+  const audience = JSON.parse(readFileSync(join(appDir, ".iroharness", "users.json"), "utf8"));
+
+  assert.equal(init.status, 0, init.stderr);
+  assert.equal(slack.status, 0, slack.stderr);
+  assert.equal(stackchan.status, 0, stackchan.stderr);
+  assert.match(env, /SLACK_BOT_TOKEN=xoxb-test/);
+  assert.match(env, /SLACK_SIGNING_SECRET=secret-test/);
+  assert.match(env, /IROHARNESS_SLACK_OWNER_USER_ID=UOWNER/);
+  assert.equal(slackConnection.preset, "slack-text");
+  assert.equal(slackConnection.body.kind, "presence");
+  assert.equal(slackResult.connection.requiredEnv.includes("SLACK_BOT_TOKEN"), true);
+  assert.equal(audience.users.some((user) => user.id === "owner"), true);
+  assert.equal(stackchanResult.deviceConfig.server.baseUrl, "http://100.64.0.10:4182");
+  assert.equal(stackchanDevice.kind, "stackchan");
+  assert.equal(stackchanDevice.server.facePath, "/stackchan/face");
+  assert.equal(stackchanDevice.server.invokePath, "/device/stackchan/invoke");
+  assert.equal(stackchanDevice.metadata.connectionMode, "http-polling");
+  assert.equal(firmwareConfig.face_url, "http://100.64.0.10:4182/stackchan/face");
+  assert.equal(firmwareConfig.invoke_url, "http://100.64.0.10:4182/device/stackchan/invoke");
+  assert.equal(firmwareConfig.poll_interval_ms, 750);
+});
+
 test("CLI doctor production profile requires a strong admin token", () => {
   const dir = mkdtempSync(join(tmpdir(), "iroharness-doctor-production-"));
   const appDir = join(dir, "companion");

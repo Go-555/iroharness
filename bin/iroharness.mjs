@@ -16,6 +16,8 @@ Usage:
   iroharness audience export [dir] [--file <path>] [--json]
   iroharness audience import [dir] --file <path> --force
   iroharness audience list [dir] [--json]
+  iroharness connect slack [dir] [--bot-token <xoxb-token>] [--signing-secret <secret>] [--bot-user-id <user-id>] [--owner-slack-user-id <user-id>]
+  iroharness connect stackchan [dir] [--host-url <url>] [--wifi-ssid <ssid>] [--wifi-pass <password>] [--device-id <id>] [--poll-interval-ms <ms>]
   iroharness doctor [dir] [--production] [--json]
   iroharness --help
 
@@ -26,6 +28,8 @@ Examples:
   iroharness audience revoke ./my-companion --user keita --permission manage_stream --scope stream:youtube
   iroharness audience export ./my-companion --file ./audience-backup.json
   iroharness audience import ./my-companion --file ./audience-backup.json --force
+  iroharness connect slack ./my-companion --owner-slack-user-id UOWNER
+  iroharness connect stackchan ./my-companion --host-url http://100.64.0.10:4182
   iroharness doctor ./my-companion
   IROHARNESS_ADMIN_TOKEN=... iroharness doctor ./my-companion --production
   iroharness doctor ./my-companion --production --json
@@ -55,6 +59,15 @@ const parseArgs = (argv) => {
   let title = null;
   let hostUserId = null;
   let file = null;
+  let botToken = null;
+  let signingSecret = null;
+  let botUserId = null;
+  let ownerSlackUserId = null;
+  let hostUrl = null;
+  let wifiSsid = null;
+  let wifiPass = null;
+  let deviceId = "stackchan";
+  let pollIntervalMs = "500";
   const identities = {};
   const positional = [];
 
@@ -162,6 +175,51 @@ const parseArgs = (argv) => {
       index += 1;
       continue;
     }
+    if (value === "--bot-token") {
+      botToken = rest[index + 1];
+      index += 1;
+      continue;
+    }
+    if (value === "--signing-secret") {
+      signingSecret = rest[index + 1];
+      index += 1;
+      continue;
+    }
+    if (value === "--bot-user-id") {
+      botUserId = rest[index + 1];
+      index += 1;
+      continue;
+    }
+    if (value === "--owner-slack-user-id") {
+      ownerSlackUserId = rest[index + 1];
+      index += 1;
+      continue;
+    }
+    if (value === "--host-url") {
+      hostUrl = rest[index + 1];
+      index += 1;
+      continue;
+    }
+    if (value === "--wifi-ssid") {
+      wifiSsid = rest[index + 1];
+      index += 1;
+      continue;
+    }
+    if (value === "--wifi-pass") {
+      wifiPass = rest[index + 1];
+      index += 1;
+      continue;
+    }
+    if (value === "--device-id") {
+      deviceId = rest[index + 1] || deviceId;
+      index += 1;
+      continue;
+    }
+    if (value === "--poll-interval-ms") {
+      pollIntervalMs = rest[index + 1] || pollIntervalMs;
+      index += 1;
+      continue;
+    }
     if (["--youtube", "--discord", "--slack", "--vscode", "--browser", "--m5stack", "--even-g2"].includes(value)) {
       identities[value.slice(2)] = rest[index + 1];
       index += 1;
@@ -171,7 +229,7 @@ const parseArgs = (argv) => {
       positional.push(value);
     }
   }
-  if (command === "audience") {
+  if (command === "audience" || command === "connect") {
     [action = null, dir = "."] = positional;
   } else if (positional.length > 0) {
     dir = positional[positional.length - 1];
@@ -201,6 +259,15 @@ const parseArgs = (argv) => {
     title,
     hostUserId,
     file,
+    botToken,
+    signingSecret,
+    botUserId,
+    ownerSlackUserId,
+    hostUrl,
+    wifiSsid,
+    wifiPass,
+    deviceId,
+    pollIntervalMs,
     identities
   };
 };
@@ -917,6 +984,27 @@ const writeJsonFile = (path, value) => {
   writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`, "utf8");
 };
 
+const envLineValue = (value) => {
+  const text = String(value || "");
+  return /^[A-Za-z0-9_./:@-]*$/.test(text) ? text : JSON.stringify(text);
+};
+
+const mergeEnvFile = (path, entries) => {
+  const existing = existsSync(path) ? readEnvFile(path) : {};
+  const merged = {
+    ...existing,
+    ...Object.fromEntries(Object.entries(entries).filter(([, value]) => value !== null))
+  };
+  const content = `${Object.entries(merged)
+    .map(([key, value]) => `${key}=${envLineValue(value)}`)
+    .join("\n")}\n`;
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, content, "utf8");
+  return merged;
+};
+
+const normalizeBaseUrl = (value) => String(value || "http://127.0.0.1:4182").replace(/\/+$/g, "");
+
 const createCliAuditRecord = ({ action, resourceType, resourceId, metadata = {} }) => ({
   id: `audit_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`,
   action,
@@ -1091,6 +1179,147 @@ const audience = (args) => {
   throw new Error(`Unknown audience action: ${args.action || "(missing)"}\n\n${usage}`);
 };
 
+const connectSlack = (args) => {
+  const targetDir = resolve(args.dir);
+  const connectionDir = join(targetDir, ".iroharness", "connections");
+  const envPath = join(targetDir, ".env");
+  mkdirSync(connectionDir, { recursive: true });
+  const ownerSlackUserId = args.ownerSlackUserId || "UOWNER";
+  mergeEnvFile(envPath, {
+    SLACK_BOT_TOKEN: args.botToken || "xoxb-...",
+    SLACK_SIGNING_SECRET: args.signingSecret || "...",
+    SLACK_BOT_USER_ID: args.botUserId || "UIROHA",
+    SLACK_MENTION_ONLY: "1",
+    IROHARNESS_SLACK_OWNER_USER_ID: ownerSlackUserId
+  });
+  const connection = {
+    id: "slack",
+    kind: "interface",
+    preset: "slack-text",
+    envFile: ".env",
+    requiredEnv: [
+      "SLACK_BOT_TOKEN",
+      "SLACK_SIGNING_SECRET",
+      "SLACK_BOT_USER_ID",
+      "IROHARNESS_SLACK_OWNER_USER_ID"
+    ],
+    body: {
+      kind: "presence",
+      optional: true
+    },
+    nextSteps: [
+      "Create a Slack app and enable Events API.",
+      "Set the Events Request URL to /slack/events on the running host.",
+      "Use npm run example:slack-stackchan for the current Slack + StackChan prototype."
+    ]
+  };
+  const connectionPath = join(connectionDir, "slack.json");
+  writeJsonFile(connectionPath, connection);
+  if (args.ownerSlackUserId) {
+    audienceRegistry(args.dir).registerUser({
+      id: "owner",
+      displayName: "Owner",
+      role: "owner",
+      relationship: "owner",
+      identities: {
+        slack: ownerSlackUserId
+      }
+    });
+  }
+  return {
+    targetDir,
+    envPath,
+    connectionPath,
+    connection
+  };
+};
+
+const connectStackChan = (args) => {
+  const targetDir = resolve(args.dir);
+  const connectionDir = join(targetDir, ".iroharness", "connections");
+  mkdirSync(connectionDir, { recursive: true });
+  const baseUrl = normalizeBaseUrl(args.hostUrl);
+  const deviceId = args.deviceId || "stackchan";
+  const pollIntervalMs = Number(args.pollIntervalMs || "500");
+  const deviceConfig = {
+    deviceId,
+    kind: "stackchan",
+    server: {
+      baseUrl,
+      facePath: "/stackchan/face",
+      invokePath: "/device/stackchan/invoke",
+      eventsPath: `/body/${deviceId}/events`
+    },
+    wifiNetworks: [
+      {
+        name: "default",
+        ssid: args.wifiSsid || "YOUR_WIFI_SSID",
+        pass: args.wifiPass || "YOUR_WIFI_PASSWORD"
+      }
+    ],
+    display: {
+      rotation: 0,
+      brightness: 180,
+      statusOverlayEnabled: true
+    },
+    invokeTemplates: {
+      touch: "$StackChanのボタンが押されました。短く反応してください。",
+      vision: "$見えているものに反応してください。",
+      ptt: "$StackChanから音声入力が届きました。短く反応してください。"
+    },
+    metadata: {
+      connectionMode: "http-polling"
+    }
+  };
+  const firmwareConfig = {
+    wifi_ssid: args.wifiSsid || "YOUR_WIFI_SSID",
+    wifi_pass: args.wifiPass || "YOUR_WIFI_PASSWORD",
+    face_url: `${baseUrl}/stackchan/face`,
+    invoke_url: `${baseUrl}/device/stackchan/invoke`,
+    device_id: deviceId,
+    poll_interval_ms: Number.isFinite(pollIntervalMs) ? pollIntervalMs : 500
+  };
+  const deviceConfigPath = join(connectionDir, "stackchan.device.json");
+  const firmwareConfigPath = join(connectionDir, "stackchan-firmware-config.json");
+  writeJsonFile(deviceConfigPath, deviceConfig);
+  writeJsonFile(firmwareConfigPath, firmwareConfig);
+  return {
+    targetDir,
+    deviceConfigPath,
+    firmwareConfigPath,
+    deviceConfig,
+    firmwareConfig
+  };
+};
+
+const connect = (args) => {
+  if (args.action === "slack") {
+    const result = connectSlack(args);
+    if (args.json) {
+      console.log(JSON.stringify(result, null, 2));
+      return;
+    }
+    console.log(`configured Slack in ${result.targetDir}`);
+    console.log(`env: ${result.envPath}`);
+    console.log(`connection: ${result.connectionPath}`);
+    console.log("next: fill real Slack values in .env, then expose /slack/events on the running host");
+    return;
+  }
+  if (args.action === "stackchan") {
+    const result = connectStackChan(args);
+    if (args.json) {
+      console.log(JSON.stringify(result, null, 2));
+      return;
+    }
+    console.log(`configured StackChan in ${result.targetDir}`);
+    console.log(`device config: ${result.deviceConfigPath}`);
+    console.log(`firmware config: ${result.firmwareConfigPath}`);
+    console.log("next: copy firmware config values into examples/stackchan-face-poller/data/config.json");
+    return;
+  }
+  throw new Error(`Unknown connect target: ${args.action || "(missing)"}\n\n${usage}`);
+};
+
 const main = () => {
   const args = parseArgs(process.argv.slice(2));
   if (args.command === "--help" || args.command === "-h" || args.command === "help") {
@@ -1118,6 +1347,10 @@ const main = () => {
   }
   if (args.command === "audience") {
     audience(args);
+    return;
+  }
+  if (args.command === "connect") {
+    connect(args);
     return;
   }
   if (args.command !== "init") {
