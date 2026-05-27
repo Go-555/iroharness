@@ -361,6 +361,8 @@ npm run example:audience
 
 See [docs/audience-data-model.md](./docs/audience-data-model.md) and
 [docs/audience-and-permissions.md](./docs/audience-and-permissions.md).
+For OBS/YouTube streaming and Discord fan/community operations, see
+[docs/streaming-community.md](./docs/streaming-community.md).
 
 The dev server can also expose local audience management endpoints such as
 `GET /audience`, `GET /audience/resolve`, `POST /audience/users`,
@@ -579,6 +581,7 @@ docs/
   external-bridges.md
   platform-adapters.md
   obs.md
+  streaming-community.md
   realtime.md
   rust-core.md
   vscode.md
