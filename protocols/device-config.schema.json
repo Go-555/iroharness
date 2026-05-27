@@ -1,0 +1,125 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://iroharness.dev/protocols/device-config.schema.json",
+  "title": "IroHarness Device Config",
+  "type": "object",
+  "required": ["deviceId", "kind", "server"],
+  "properties": {
+    "deviceId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "kind": {
+      "type": "string",
+      "enum": ["stackchan", "m5stack", "even-g2", "browser", "custom"]
+    },
+    "server": {
+      "type": "object",
+      "required": ["baseUrl"],
+      "properties": {
+        "baseUrl": {
+          "type": "string",
+          "minLength": 1
+        },
+        "facePath": {
+          "type": "string",
+          "default": "/stackchan/face"
+        },
+        "invokePath": {
+          "type": "string",
+          "default": "/device/stackchan/invoke"
+        },
+        "eventsPath": {
+          "type": "string",
+          "default": "/body/stackchan/events"
+        }
+      },
+      "additionalProperties": false
+    },
+    "wifiNetworks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "ssid"],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "ssid": {
+            "type": "string"
+          },
+          "pass": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "display": {
+      "type": "object",
+      "properties": {
+        "rotation": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 3
+        },
+        "brightness": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 255
+        },
+        "statusOverlayEnabled": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "audio": {
+      "type": "object",
+      "properties": {
+        "micSampleRate": {
+          "type": "integer",
+          "minimum": 8000
+        },
+        "micBufferSamples": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2048
+        },
+        "vadThresholdDb": {
+          "type": "number"
+        },
+        "playbackQueueDepth": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "speakerVolume": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 255
+        }
+      },
+      "additionalProperties": false
+    },
+    "invokeTemplates": {
+      "type": "object",
+      "properties": {
+        "touch": {
+          "type": "string"
+        },
+        "vision": {
+          "type": "string"
+        },
+        "ptt": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": false
+}

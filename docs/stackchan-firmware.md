@@ -59,7 +59,11 @@ Those belong in firmware or a device relay package.
 
 ### Phase 0: Simple Face Polling
 
-This is the current IroHarness prototype path.
+This is implemented as the first firmware skeleton:
+
+```text
+examples/stackchan-face-poller/
+```
 
 ```text
 Slack -> IroHarness -> /stackchan/face -> StackChan display
@@ -97,13 +101,13 @@ changes.
 
 ### Phase 2: IroHarness Device Invoke
 
-Add device-originated events:
+Device-originated events are available in `examples/slack-stackchan-companion.mjs`:
 
 ```text
 POST /device/stackchan/invoke
 ```
 
-Planned payloads:
+Payloads:
 
 ```json
 {
@@ -183,12 +187,13 @@ Until then, keep contracts and examples in the main monorepo.
 
 ## Near-Term Work
 
-1. Keep `examples/slack-stackchan-companion.mjs` as the Mac mini host process.
-2. Add `protocols/device-config.schema.json`.
-3. Add `protocols/device-invoke.schema.json`.
-4. Add a minimal PlatformIO sketch that polls `/stackchan/face`.
-5. Add a WebSocket/SSE relay sketch.
-6. Add AIAvatarStackChan-compatible WebSocket mode.
+1. Done: keep `examples/slack-stackchan-companion.mjs` as the Mac mini host process.
+2. Done: add `protocols/device-config.schema.json`.
+3. Done: add `protocols/device-invoke.schema.json`.
+4. Done: add a minimal StackChan/CoreS3 face polling sketch.
+5. Add deeper integration tests around `/device/stackchan/invoke`.
+6. Add a WebSocket/SSE relay sketch.
+7. Add AIAvatarStackChan-compatible WebSocket mode.
 
 The first firmware should be intentionally small. It should prove networking,
 display, and shared identity before attempting STT/TTS, camera, servo, and

@@ -60,6 +60,8 @@ Status labels:
 | OBS WebSocket | adapter | `createObsWebSocketAdapter` | Scene, overlay, and mute operations after `manage_stream` approval. |
 | MotionPNGTuber | adapter | `createMotionPngTuberMapper`, `createMotionPngTuberRendererBridge` | Maps normalized character state to PNG state. |
 | M5Stack | adapter | `createM5StackFaceMapper`, `createM5StackBodyBridge` | Maps character state to compact device face payloads. |
+| StackChan face poller firmware | example | `examples/stackchan-face-poller/` | Minimal PlatformIO/CoreS3 sketch that polls `/stackchan/face` and posts touch invokes. |
+| Device config/invoke protocol | contract | `protocols/device-config.schema.json`, `protocols/device-invoke.schema.json` | Stable contract for physical body settings and device-originated events. |
 | StackChan firmware strategy | guide | `docs/stackchan-firmware.md` | Uses AIAvatarStackChan as the reference while keeping firmware, body rendering, and macro identity separated. |
 | Even G2 | adapter | `createEvenG2DisplayMapper`, `createEvenG2DisplayBridge` | Maps state and speech to display payloads. |
 | Live2D | adapter | `createLive2DMapper`, `createLive2DBodyBridge` | Maps state to expression, motion, and lip sync. |

@@ -98,6 +98,39 @@ snapshot shape.
 
 See `protocols/audience-store.schema.json`.
 
+## Device Config And Invoke
+
+Physical bodies such as StackChan can use a small device configuration contract:
+
+```json
+{
+  "deviceId": "stackchan",
+  "kind": "stackchan",
+  "server": {
+    "baseUrl": "http://127.0.0.1:4182",
+    "facePath": "/stackchan/face",
+    "invokePath": "/device/stackchan/invoke",
+    "eventsPath": "/body/stackchan/events"
+  }
+}
+```
+
+See `protocols/device-config.schema.json`.
+
+Device-originated events use the invoke contract:
+
+```json
+{
+  "type": "touch",
+  "deviceId": "stackchan",
+  "userId": "stackchan",
+  "channel": "local",
+  "text": "$頭を撫でられました。短く反応してください。"
+}
+```
+
+See `protocols/device-invoke.schema.json`.
+
 ## Platform Message Endpoint
 
 The dev server exposes platform-normalized webhook endpoints:

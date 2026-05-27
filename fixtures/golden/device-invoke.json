@@ -1,0 +1,10 @@
+{
+  "type": "touch",
+  "deviceId": "stackchan",
+  "userId": "stackchan",
+  "channel": "local",
+  "text": "$頭を撫でられました。短く反応してください。",
+  "metadata": {
+    "source": "m5stack"
+  }
+}

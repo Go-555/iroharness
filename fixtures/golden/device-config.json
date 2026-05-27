@@ -1,0 +1,34 @@
+{
+  "deviceId": "stackchan",
+  "kind": "stackchan",
+  "server": {
+    "baseUrl": "http://127.0.0.1:4182",
+    "facePath": "/stackchan/face",
+    "invokePath": "/device/stackchan/invoke",
+    "eventsPath": "/body/stackchan/events"
+  },
+  "wifiNetworks": [
+    {
+      "name": "Home",
+      "ssid": "YOUR_WIFI_SSID",
+      "pass": "YOUR_WIFI_PASSWORD"
+    }
+  ],
+  "display": {
+    "rotation": 1,
+    "brightness": 64,
+    "statusOverlayEnabled": true
+  },
+  "audio": {
+    "micSampleRate": 16000,
+    "micBufferSamples": 1024,
+    "vadThresholdDb": -40,
+    "playbackQueueDepth": 2048,
+    "speakerVolume": 80
+  },
+  "invokeTemplates": {
+    "touch": "$頭を撫でられました。短く反応してください。",
+    "vision": "$見えているものに反応してください。",
+    "ptt": "$音声入力に短く返答してください。"
+  }
+}

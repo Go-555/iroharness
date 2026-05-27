@@ -20,12 +20,13 @@ Good now:
 - Slack Events API input and thread replies
 - StackChan face JSON polling
 - StackChan Server-Sent Events stream
+- minimal StackChan/CoreS3 PlatformIO face poller sketch
 - shared character state between Slack and StackChan
 - optional Codex OAuth model use through `codex app-server`
 
 Still early:
 
-- no bundled StackChan firmware
+- no full AIAvatarStackChan-compatible firmware yet
 - no built-in STT/TTS on the M5Stack device
 - no device-side reconnect/backoff helper yet
 - no OTA or provisioning flow yet
@@ -48,6 +49,7 @@ The example prints:
 ```text
 Slack Events URL: http://127.0.0.1:4182/slack/events
 StackChan face JSON: http://127.0.0.1:4182/stackchan/face
+StackChan invoke URL: http://127.0.0.1:4182/device/stackchan/invoke
 StackChan SSE: http://127.0.0.1:4182/body/stackchan/events
 ```
 
@@ -90,6 +92,45 @@ GET /body/stackchan/events
 ```
 
 That endpoint streams the same body payloads as Server-Sent Events.
+
+## Device Invoke
+
+StackChan can also send events back to IroHarness:
+
+```text
+POST /device/stackchan/invoke
+```
+
+Example:
+
+```json
+{
+  "type": "touch",
+  "deviceId": "stackchan",
+  "userId": "stackchan",
+  "channel": "local",
+  "text": "$頭を撫でられました。短く反応してください。"
+}
+```
+
+IroHarness treats this as a normal device-originated turn. The same character
+identity, brain routing, Project OS state, and permissions are used.
+
+## Minimal Firmware Example
+
+A first PlatformIO sketch is included at:
+
+```text
+examples/stackchan-face-poller/
+```
+
+It does two things:
+
+- polls `/stackchan/face` and draws the face/text on an M5Stack CoreS3 display
+- sends a touch/button invoke to `/device/stackchan/invoke`
+
+Edit `examples/stackchan-face-poller/data/config.json`, then build/upload with
+PlatformIO.
 
 ## Optional Codex OAuth
 

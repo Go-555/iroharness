@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://iroharness.dev/protocols/device-invoke.schema.json",
+  "title": "IroHarness Device Invoke",
+  "type": "object",
+  "required": ["type", "deviceId"],
+  "properties": {
+    "type": {
+      "type": "string",
+      "enum": ["touch", "ptt", "vision", "audio", "button", "sensor", "custom"]
+    },
+    "deviceId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "userId": {
+      "type": "string"
+    },
+    "channel": {
+      "type": "string"
+    },
+    "text": {
+      "type": "string"
+    },
+    "imageDataUrl": {
+      "type": "string"
+    },
+    "audio": {
+      "type": "object",
+      "properties": {
+        "encoding": {
+          "type": "string",
+          "enum": ["pcm_s16le", "wav", "opus", "mp3"]
+        },
+        "sampleRate": {
+          "type": "integer",
+          "minimum": 8000
+        },
+        "dataBase64": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": false
+}

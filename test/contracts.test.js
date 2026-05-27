@@ -126,6 +126,28 @@ test("realtime core JSONL command and message schemas cover golden fixtures", ()
   assert.equal(message.coreId, command.coreId);
 });
 
+test("device config and invoke schemas cover StackChan fixtures", () => {
+  const configSchema = readProtocol("device-config.schema.json");
+  const invokeSchema = readProtocol("device-invoke.schema.json");
+  const config = readFixture("device-config.json");
+  const invoke = readFixture("device-invoke.json");
+
+  configSchema.required.forEach((field) => {
+    assert.notEqual(config[field], undefined);
+  });
+  invokeSchema.required.forEach((field) => {
+    assert.notEqual(invoke[field], undefined);
+  });
+
+  assert.equal(config.kind, "stackchan");
+  assert.equal(config.server.facePath, "/stackchan/face");
+  assert.equal(config.server.invokePath, "/device/stackchan/invoke");
+  assert.equal(configSchema.properties.kind.enum.includes("stackchan"), true);
+  assert.equal(invoke.type, "touch");
+  assert.equal(invokeSchema.properties.type.enum.includes("vision"), true);
+  assert.equal(invokeSchema.properties.type.enum.includes("audio"), true);
+});
+
 test("design principles document locks the macro harness boundary", () => {
   const design = readFileSync(join("docs", "design-principles.md"), "utf8");
 
@@ -174,6 +196,12 @@ test("OSS contribution metadata is present and aligned with harness boundaries",
   const tailscale = readFileSync(join("examples", "deployment", "tailscale-serve.sh"), "utf8");
   const postgresBackup = readFileSync(join("examples", "postgres-audience-backup.sh"), "utf8");
   const postgresRestore = readFileSync(join("examples", "postgres-audience-restore.sh"), "utf8");
+  const stackchanFirmware = readFileSync(join("docs", "stackchan-firmware.md"), "utf8");
+  const slackStackchan = readFileSync(join("docs", "slack-stackchan.md"), "utf8");
+  const stackchanPoller = readFileSync(
+    join("examples", "stackchan-face-poller", "src", "main.cpp"),
+    "utf8"
+  );
 
   ["AGENTS.md", "CONTRIBUTING.md", "CODE_OF_CONDUCT.md"].forEach((file) => {
     assert.equal(pkg.files.includes(file), true);
@@ -296,6 +324,8 @@ test("OSS contribution metadata is present and aligned with harness boundaries",
   assert.match(matrix, /PostgreSQL audience backup\/restore/);
   assert.match(matrix, /Inspiration map/);
   assert.match(matrix, /Absorption architecture/);
+  assert.match(matrix, /StackChan face poller firmware/);
+  assert.match(matrix, /Device config\/invoke protocol/);
   assert.match(inspirationMap, /CursorTuberKit/);
   assert.match(inspirationMap, /Neuro SDK/);
   assert.match(inspirationMap, /AIAvatarStackChan/);
@@ -308,6 +338,11 @@ test("OSS contribution metadata is present and aligned with harness boundaries",
   assert.match(absorptionArchitecture, /observe -> contract -> adapter -> simulator -> core promotion/);
   assert.match(absorptionArchitecture, /Serialized speech playback queue/);
   assert.match(absorptionArchitecture, /Device config schema/);
+  assert.match(stackchanFirmware, /AIAvatarStackChan/);
+  assert.match(stackchanFirmware, /examples\/stackchan-face-poller/);
+  assert.match(slackStackchan, /\/device\/stackchan\/invoke/);
+  assert.match(stackchanPoller, /\/config\.json/);
+  assert.match(stackchanPoller, /\/device\/stackchan\/invoke/);
   assert.match(postgresBackup, /pg_dump/);
   assert.match(postgresBackup, /--table=public\.iroharness_audit_log/);
   assert.match(postgresRestore, /IROHARNESS_RESTORE_CONFIRM/);

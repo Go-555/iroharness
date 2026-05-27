@@ -184,6 +184,38 @@ const createSlackStackChanCompanion = () => {
     }
   });
 
+  const handleDeviceInvoke = async (payload) => {
+    const text =
+      payload.text ||
+      (payload.type === "touch"
+        ? "$頭を撫でられました。短く反応してください。"
+        : "$StackChanからイベントが届きました。短く反応してください。");
+    const result = await harness.receive({
+      source: "m5stack",
+      modality: payload.type === "audio" ? "voice" : "text",
+      text,
+      actor: {
+        platform: "m5stack",
+        platformUserId: payload.userId || payload.deviceId || stackchan.id,
+        displayName: payload.deviceId || "StackChan"
+      },
+      metadata: {
+        deviceId: payload.deviceId || stackchan.id,
+        deviceInvokeType: payload.type || "custom",
+        channel: payload.channel || "local",
+        imageDataUrl: payload.imageDataUrl || null,
+        audio: payload.audio || null,
+        ...(payload.metadata || {})
+      }
+    });
+    return {
+      ok: true,
+      resultKind: result.kind,
+      text: result.text || result.output?.summary || "",
+      face: stackchan.snapshot()?.payload || null
+    };
+  };
+
   const server = createServer(async (request, response) => {
     if (request.method === "GET" && request.url === "/health") {
       sendJson(response, 200, {
@@ -219,6 +251,17 @@ const createSlackStackChanCompanion = () => {
     }
     if (request.method === "GET" && request.url === `/body/${stackchan.id}/events`) {
       stackchan.connect(request, response);
+      return;
+    }
+    if (request.method === "POST" && request.url === "/device/stackchan/invoke") {
+      try {
+        const body = await readBody(request);
+        const payload = parseJson(body);
+        const result = await handleDeviceInvoke(payload);
+        sendJson(response, 200, result);
+      } catch (error) {
+        sendJson(response, 400, { ok: false, error: error.message });
+      }
       return;
     }
     if (request.method !== "POST" || request.url !== "/slack/events") {
@@ -261,6 +304,7 @@ const createSlackStackChanCompanion = () => {
           resolve({
             slackEventsUrl: `http://${host}:${port}/slack/events`,
             stackchanFaceUrl: `http://${host}:${port}/stackchan/face`,
+            stackchanInvokeUrl: `http://${host}:${port}/device/stackchan/invoke`,
             stackchanEventsUrl: `http://${host}:${port}/body/${stackchan.id}/events`
           });
         });
@@ -276,4 +320,5 @@ const companion = createSlackStackChanCompanion();
 const urls = await companion.listen();
 console.log(`Slack Events URL: ${urls.slackEventsUrl}`);
 console.log(`StackChan face JSON: ${urls.stackchanFaceUrl}`);
+console.log(`StackChan invoke URL: ${urls.stackchanInvokeUrl}`);
 console.log(`StackChan SSE: ${urls.stackchanEventsUrl}`);
