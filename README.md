@@ -212,6 +212,7 @@ Use this checklist before inviting fans or collaborators:
 ```bash
 npm run doctor
 npx iroharness audience list . --json
+npx iroharness audience export . --file ./audience-backup.json
 IROHARNESS_ADMIN_TOKEN="$(openssl rand -hex 24)" npm run doctor:production
 ```
 
@@ -222,6 +223,7 @@ Then confirm:
 - OBS uses `http://127.0.0.1:4178/?view=overlay` as a Browser Source
 - YouTube users and Discord users resolve to the same person when appropriate
 - only trusted users have `delegate_work`, `manage_stream`, or `manage_users`
+- audience backups are kept private and outside git
 - `IROHARNESS_ADMIN_TOKEN` is set before using Tailscale, tunnels, or a reverse
   proxy
 

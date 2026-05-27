@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { basename, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 
 import { createFileUserRegistry } from "../src/index.js";
 
@@ -13,6 +13,8 @@ Usage:
   iroharness audience grant [dir] --user <user-id> --permission <permission> [--scope <scope>] [--expires-at <iso-date>]
   iroharness audience revoke [dir] --user <user-id> --permission <permission> [--scope <scope>]
   iroharness audience stream [dir] --id <stream-id> --platform <platform> --channel <channel-id>
+  iroharness audience export [dir] [--file <path>] [--json]
+  iroharness audience import [dir] --file <path> --force
   iroharness audience list [dir] [--json]
   iroharness doctor [dir] [--production] [--json]
   iroharness --help
@@ -22,6 +24,8 @@ Examples:
   iroharness audience user ./my-companion --id keita --display-name Keita --role developer --youtube UCxxx --discord 123456
   iroharness audience grant ./my-companion --user keita --permission manage_stream --scope stream:youtube
   iroharness audience revoke ./my-companion --user keita --permission manage_stream --scope stream:youtube
+  iroharness audience export ./my-companion --file ./audience-backup.json
+  iroharness audience import ./my-companion --file ./audience-backup.json --force
   iroharness doctor ./my-companion
   IROHARNESS_ADMIN_TOKEN=... iroharness doctor ./my-companion --production
   iroharness doctor ./my-companion --production --json
@@ -50,6 +54,7 @@ const parseArgs = (argv) => {
   let channel = null;
   let title = null;
   let hostUserId = null;
+  let file = null;
   const identities = {};
   const positional = [];
 
@@ -152,6 +157,11 @@ const parseArgs = (argv) => {
       index += 1;
       continue;
     }
+    if (value === "--file") {
+      file = rest[index + 1];
+      index += 1;
+      continue;
+    }
     if (["--youtube", "--discord", "--slack", "--vscode", "--browser", "--m5stack", "--even-g2"].includes(value)) {
       identities[value.slice(2)] = rest[index + 1];
       index += 1;
@@ -190,6 +200,7 @@ const parseArgs = (argv) => {
     channel,
     title,
     hostUserId,
+    file,
     identities
   };
 };
@@ -778,11 +789,33 @@ const audienceRegistry = (dir) =>
     path: join(resolve(dir), ".iroharness", "users.json")
   });
 
+const audienceRegistryPath = (dir) => join(resolve(dir), ".iroharness", "users.json");
+
 const requireValue = (value, label) => {
   if (!value) {
     throw new Error(`${label} is required`);
   }
   return value;
+};
+
+const assertAudienceSnapshot = (snapshot) => {
+  if (!snapshot || typeof snapshot !== "object" || Array.isArray(snapshot)) {
+    throw new Error("audience backup must be a JSON object");
+  }
+  ["users", "userIdentities", "permissionOverrides", "streamSessions"].forEach((key) => {
+    if (!Array.isArray(snapshot[key])) {
+      throw new Error(`audience backup requires array field ${key}`);
+    }
+  });
+  return snapshot;
+};
+
+const readAudienceBackup = (path) =>
+  assertAudienceSnapshot(JSON.parse(readFileSync(path, "utf8")));
+
+const writeJsonFile = (path, value) => {
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`, "utf8");
 };
 
 const optionalIsoDate = (value, label) => {
@@ -805,6 +838,25 @@ const printAudienceResult = ({ json, result, summary }) => {
 };
 
 const audience = (args) => {
+  if (args.action === "import") {
+    const backupPath = resolve(requireValue(args.file, "--file"));
+    const targetPath = audienceRegistryPath(args.dir);
+    if (existsSync(targetPath) && !args.force) {
+      throw new Error("audience import overwrites existing state; pass --force to continue");
+    }
+    const snapshot = readAudienceBackup(backupPath);
+    writeJsonFile(targetPath, snapshot);
+    const imported = audienceRegistry(args.dir).snapshot();
+    printAudienceResult({
+      json: args.json,
+      result: {
+        path: targetPath,
+        snapshot: imported
+      },
+      summary: `imported audience backup from ${backupPath} to ${targetPath}`
+    });
+    return;
+  }
   const registry = audienceRegistry(args.dir);
   if (args.action === "user") {
     const user = registry.registerUser({
@@ -879,6 +931,24 @@ const audience = (args) => {
       json: args.json,
       result: stream,
       summary: `registered stream ${stream.id} (${stream.platform}:${stream.platformChannelId})`
+    });
+    return;
+  }
+  if (args.action === "export") {
+    const snapshot = registry.snapshot();
+    if (!args.file) {
+      console.log(JSON.stringify(snapshot, null, 2));
+      return;
+    }
+    const backupPath = resolve(args.file);
+    writeJsonFile(backupPath, snapshot);
+    printAudienceResult({
+      json: args.json,
+      result: {
+        path: backupPath,
+        snapshot
+      },
+      summary: `exported audience backup to ${backupPath}`
     });
     return;
   }

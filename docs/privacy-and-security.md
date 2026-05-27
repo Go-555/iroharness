@@ -84,6 +84,25 @@ Use `--expires-at` for temporary privileges. After the stream, review and remove
 or expire temporary privileges in the backing registry. Production deployments
 should use PostgreSQL/Supabase and cleanup workflows.
 
+## Audience Backups
+
+File-backed audience state lives in `.iroharness/users.json`. Before changing
+roles, permissions, or stream sessions, export a backup:
+
+```bash
+npx iroharness audience export . --file ./audience-backup.json
+```
+
+Restore only from trusted backups:
+
+```bash
+npx iroharness audience import . --file ./audience-backup.json --force
+```
+
+Audience backups contain platform user IDs, roles, permission overrides, and
+stream sessions. Do not commit them, paste them into public issues, or share
+them with model providers.
+
 ## Issue And PR Hygiene
 
 Before posting logs, screenshots, fixtures, or reproduction data:

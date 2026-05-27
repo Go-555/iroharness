@@ -21,6 +21,7 @@ Initial OSS skeleton for a character macro harness.
 - permission override expiry and revoke support
 - browser admin UI for users, platform IDs, scoped permissions, permission
   revoke, and stream sessions
+- file-backed audience export/import for backups and local restores
 - PostgreSQL/Supabase schema and registry adapter for production audience state
 - privacy and security guide for character memory, user IDs, credentials, and
   stream permissions
@@ -46,7 +47,7 @@ Initial OSS skeleton for a character macro harness.
 ### OSS Operations
 
 - CLI `init`, `doctor`, `doctor --json`, and `audience`
-  `user/link/grant/revoke/stream/list`
+  `user/link/grant/revoke/stream/export/import/list`
 - protocol schemas, golden fixtures, contract tests, and CI
 - npm release workflow with provenance, contribution guide, code of conduct,
   security notes, and issue/PR templates

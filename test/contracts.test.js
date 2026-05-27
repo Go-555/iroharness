@@ -186,6 +186,7 @@ test("OSS contribution metadata is present and aligned with harness boundaries",
   [
     "HTTP brain adapters",
     "permission override expiry and revoke support",
+    "file-backed audience export/import",
     "browser admin UI",
     "HTTP brain gateway demo",
     "npm release workflow"
@@ -194,6 +195,7 @@ test("OSS contribution metadata is present and aligned with harness boundaries",
   });
   [
     "configurable voice/text/deep HTTP brain slots",
+    "file-backed audience backup and restore CLI",
     "browser admin UI for users, identities, permissions, revoke, and streams",
     "Production Hardening"
   ].forEach((entry) => {

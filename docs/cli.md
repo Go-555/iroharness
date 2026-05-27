@@ -117,6 +117,22 @@ Inspect the file-backed registry:
 npx iroharness audience list ./my-companion --json
 ```
 
+Back up and restore the file-backed registry:
+
+```bash
+npx iroharness audience export ./my-companion \
+  --file ./audience-backup.json
+
+npx iroharness audience import ./my-companion \
+  --file ./audience-backup.json \
+  --force
+```
+
+`audience import` overwrites `.iroharness/users.json`, so it requires
+`--force` when state already exists. Exported backups include users, platform
+identities, permission overrides, and stream sessions. Treat them as private
+operational data.
+
 ## Doctor
 
 Validate that a generated app still has the expected local shape:

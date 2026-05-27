@@ -254,8 +254,27 @@ test("CLI audience manages users, platform identities, permissions, and streams"
     "--host",
     "owner"
   ]);
+  const backupPath = join(dir, "audience-backup.json");
+  const exported = runCli(["audience", "export", appDir, "--file", backupPath]);
+  const exportedJson = runCli(["audience", "export", appDir, "--json"]);
+  const refusedImport = runCli(["audience", "import", appDir, "--file", backupPath]);
+  const restoredDir = join(dir, "restored");
+  const restoredInit = runCli(["init", restoredDir, "--character", "Iroha"]);
+  const imported = runCli([
+    "audience",
+    "import",
+    restoredDir,
+    "--file",
+    backupPath,
+    "--force",
+    "--json"
+  ]);
+  const restoredList = runCli(["audience", "list", restoredDir, "--json"]);
   const list = runCli(["audience", "list", appDir, "--json"]);
   const snapshot = JSON.parse(list.stdout);
+  const exportedSnapshot = JSON.parse(exportedJson.stdout);
+  const importedSnapshot = JSON.parse(imported.stdout).snapshot;
+  const restoredSnapshot = JSON.parse(restoredList.stdout);
 
   assert.equal(init.status, 0, init.stderr);
   assert.equal(user.status, 0, user.stderr);
@@ -264,6 +283,13 @@ test("CLI audience manages users, platform identities, permissions, and streams"
   assert.equal(revoke.status, 0, revoke.stderr);
   assert.equal(grantAgain.status, 0, grantAgain.stderr);
   assert.equal(stream.status, 0, stream.stderr);
+  assert.equal(exported.status, 0, exported.stderr);
+  assert.equal(exportedJson.status, 0, exportedJson.stderr);
+  assert.notEqual(refusedImport.status, 0);
+  assert.match(refusedImport.stderr, /pass --force/);
+  assert.equal(restoredInit.status, 0, restoredInit.stderr);
+  assert.equal(imported.status, 0, imported.stderr);
+  assert.equal(restoredList.status, 0, restoredList.stderr);
   assert.equal(list.status, 0, list.stderr);
   assert.match(user.stdout, /registered user owner/);
   assert.match(link.stdout, /linked slack:UOWNER -> owner/);
@@ -271,6 +297,7 @@ test("CLI audience manages users, platform identities, permissions, and streams"
   assert.match(grant.stdout, /2099-01-01T00:00:00.000Z/);
   assert.match(revoke.stdout, /revoked manage_stream for owner in stream:youtube/);
   assert.match(stream.stdout, /registered stream youtube-live/);
+  assert.match(exported.stdout, /exported audience backup/);
   assert.equal(snapshot.users[0].id, "owner");
   assert.equal(snapshot.users[0].identities.youtube, "UCOWNER");
   assert.equal(snapshot.users[0].identities.discord, "DOWNER");
@@ -278,6 +305,10 @@ test("CLI audience manages users, platform identities, permissions, and streams"
   assert.equal(snapshot.permissionOverrides[0].permission, "manage_stream");
   assert.equal(snapshot.permissionOverrides[0].expiresAt, "2099-01-01T00:00:00.000Z");
   assert.equal(snapshot.streamSessions[0].platformChannelId, "live-chat-id");
+  assert.equal(exportedSnapshot.users[0].id, "owner");
+  assert.equal(importedSnapshot.users[0].id, "owner");
+  assert.equal(restoredSnapshot.users[0].identities.youtube, "UCOWNER");
+  assert.equal(restoredSnapshot.permissionOverrides[0].permission, "manage_stream");
 });
 
 test("CLI doctor production profile requires a strong admin token", () => {

@@ -45,7 +45,7 @@ Status labels:
 | Slack | runtime | `createSlackMessageAdapter`, `createSlackEventsRuntime` | Events API payload handling and replies. |
 | YouTube Live Chat | runtime | `createYouTubeLiveChatAdapter`, `createYouTubeLiveChatPollingRuntime` | Polling runtime for live chat turns. |
 | VS Code | adapter | `createVsCodeCompanionAdapter`, `examples/vscode-companion` | Companion panel and developer turns. |
-| Audience CLI | built-in | `iroharness audience user/link/grant/revoke/stream/list` | Sets up users, platform IDs, permissions, and streams before going live. |
+| Audience CLI | built-in | `iroharness audience user/link/grant/revoke/stream/export/import/list` | Sets up users, platform IDs, permissions, streams, and file-backed backups before going live. |
 
 ## Bodies And Stream Output
 
