@@ -157,6 +157,7 @@ test("OSS contribution metadata is present and aligned with harness boundaries",
   const codeOfConduct = readFileSync("CODE_OF_CONDUCT.md", "utf8");
   const prTemplate = readFileSync(join(".github", "pull_request_template.md"), "utf8");
   const releaseWorkflow = readFileSync(join(".github", "workflows", "release.yml"), "utf8");
+  const browserWorkflow = readFileSync(join(".github", "workflows", "browser-e2e.yml"), "utf8");
   const adapterSkeleton = readFileSync(join("examples", "adapter-skeleton.mjs"), "utf8");
   const launchd = readFileSync(join("examples", "deployment", "launchd.plist"), "utf8");
   const systemd = readFileSync(join("examples", "deployment", "systemd.service"), "utf8");
@@ -202,6 +203,7 @@ test("OSS contribution metadata is present and aligned with harness boundaries",
     "deployment guide and templates",
     "provider brain gateway recipe",
     "PostgreSQL/Supabase audience backup and restore recipes",
+    "browser screenshot E2E workflow",
     "browser admin UI",
     "HTTP brain gateway demo",
     "npm release workflow"
@@ -216,6 +218,7 @@ test("OSS contribution metadata is present and aligned with harness boundaries",
     "deployment examples for Tailscale, reverse proxy, systemd, and launchd",
     "provider brain gateway recipes for OpenAI, Claude, and local models",
     "PostgreSQL audience backup/restore recipes",
+    "end-to-end browser screenshots outside sandboxed CI port restrictions",
     "browser admin UI for users, identities, permissions, revoke, and streams",
     "Production Hardening"
   ].forEach((entry) => {
@@ -236,6 +239,9 @@ test("OSS contribution metadata is present and aligned with harness boundaries",
   assert.match(caddyfile, /reverse_proxy 127\.0\.0\.1:4178/);
   assert.match(nginx, /proxy_pass http:\/\/127\.0\.0\.1:4178/);
   assert.match(tailscale, /tailscale serve/);
+  assert.match(browserWorkflow, /npm run e2e:browser-screenshots/);
+  assert.match(browserWorkflow, /playwright install --with-deps chromium/);
+  assert.match(browserWorkflow, /upload-artifact/);
   [
     "pg_dump",
     "pg_restore",
@@ -502,6 +508,7 @@ test("browser demo includes audience admin UI for stream and fan operations", ()
   const html = readFileSync(join("examples", "browser-avatar", "index.html"), "utf8");
   const app = readFileSync(join("examples", "browser-avatar", "app.js"), "utf8");
   const server = readFileSync("examples/browser-server.mjs", "utf8");
+  const screenshotCheck = readFileSync(join("examples", "browser-screenshot-check.mjs"), "utf8");
   const envExample = readFileSync(".env.example", "utf8");
 
   [
@@ -528,6 +535,12 @@ test("browser demo includes audience admin UI for stream and fan operations", ()
   assert.match(server, /IROHARNESS_VOICE_BRAIN_ENDPOINT/);
   assert.match(server, /IROHARNESS_DEEP_BRAIN_ENDPOINT/);
   assert.match(server, /\?view=admin/);
+  assert.match(screenshotCheck, /playwright/);
+  assert.match(screenshotCheck, /name: "chat"/);
+  assert.match(screenshotCheck, /name: "overlay"/);
+  assert.match(screenshotCheck, /name: "admin"/);
+  assert.match(screenshotCheck, /IROHARNESS_E2E_URL/);
+  assert.match(screenshotCheck, /Overlay view should hide the control panel/);
   assert.match(envExample, /IROHARNESS_VOICE_BRAIN_ENDPOINT=/);
   assert.match(envExample, /IROHARNESS_TEXT_BRAIN_MODEL=/);
   assert.match(envExample, /IROHARNESS_DEEP_BRAIN_ENDPOINT=/);

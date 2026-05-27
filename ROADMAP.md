@@ -68,6 +68,7 @@ micro harnesses.
 - [x] PostgreSQL persisted audit log for privileged audience changes
 - [x] deployment examples for Tailscale, reverse proxy, systemd, and launchd
 - [x] PostgreSQL audience backup/restore recipes
+- [x] end-to-end browser screenshots outside sandboxed CI port restrictions
 
 ## Milestone 2: Harness Interop
 
@@ -102,7 +103,10 @@ micro harnesses.
 
 ## Milestone 5: Production Hardening
 
-- [ ] end-to-end browser screenshots outside sandboxed CI port restrictions
+- [x] provider brain recipes
+- [x] deployment examples
+- [x] PostgreSQL/Supabase backup and restore recipes
+- [x] browser screenshot E2E workflow
 
 ## Guiding Principle
 

@@ -57,5 +57,7 @@ Initial OSS skeleton for a character macro harness.
 - CLI `init`, `doctor`, `doctor --json`, and `audience`
   `user/link/grant/revoke/stream/export/import/list`
 - protocol schemas, golden fixtures, contract tests, and CI
+- browser screenshot E2E workflow for chat, OBS overlay, and audience admin
+  views
 - npm release workflow with provenance, contribution guide, code of conduct,
   security notes, and issue/PR templates

@@ -1,0 +1,45 @@
+name: Browser E2E
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "examples/browser-avatar/**"
+      - "examples/browser-server.mjs"
+      - "examples/browser-screenshot-check.mjs"
+      - "src/**"
+      - "protocols/openapi.json"
+      - ".github/workflows/browser-e2e.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  screenshots:
+    name: Browser screenshots
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Install
+        run: npm install
+
+      - name: Install Playwright
+        run: npm install --no-save playwright && npx playwright install --with-deps chromium
+
+      - name: Capture screenshots
+        run: npm run e2e:browser-screenshots
+
+      - name: Upload screenshots
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: browser-e2e-screenshots
+          path: agent-output/browser-e2e
+          if-no-files-found: ignore

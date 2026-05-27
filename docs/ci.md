@@ -1,6 +1,6 @@
 # CI
 
-IroHarness has two required validation lanes.
+IroHarness has two required validation lanes and one browser screenshot lane.
 
 ## Node
 
@@ -46,3 +46,37 @@ Required secret:
 ```text
 NPM_TOKEN
 ```
+
+## Browser Screenshots
+
+The `Browser E2E` workflow captures the browser companion, OBS overlay, and
+audience admin views with Playwright. It runs on manual dispatch and on pull
+requests that touch browser-facing files.
+
+Local run:
+
+```bash
+npm install --no-save playwright
+npx playwright install chromium
+npm run e2e:browser-screenshots
+```
+
+By default, the script starts `examples/browser-server.mjs` on port `4179` and
+writes screenshots to:
+
+```text
+agent-output/browser-e2e/
+```
+
+To point it at an already running companion:
+
+```bash
+IROHARNESS_E2E_URL=http://127.0.0.1:4178 npm run e2e:browser-screenshots
+```
+
+The check verifies that:
+
+- the chat view renders the avatar and composer
+- the OBS overlay view renders the avatar while hiding controls
+- the admin view renders audience management controls
+- each screenshot is non-empty and written as an artifact

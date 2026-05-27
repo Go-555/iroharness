@@ -165,10 +165,12 @@ npm run example:slack
 npm run example:youtube
 npm run example:obs
 npm run example:realtime-core
+npm run e2e:browser-screenshots
 npm run demo:browser
 ```
 
 See [docs/cli.md](./docs/cli.md) for the `iroharness init` command.
+For browser screenshot E2E, see [docs/ci.md](./docs/ci.md).
 
 Or import the core:
 
