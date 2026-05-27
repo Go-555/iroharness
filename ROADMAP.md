@@ -111,6 +111,7 @@ micro harnesses.
 - [x] generated companion AGENTS.md instructions for coding agents
 - [x] generated app smoke test for OSS package consumers
 - [x] OSS readiness check for package and repository publication
+- [x] publish preflight check for GitHub and npm credentials
 
 ## Guiding Principle
 

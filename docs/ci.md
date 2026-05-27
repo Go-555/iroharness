@@ -27,6 +27,15 @@ workflow coverage, npm package file inclusions, and that `.env` /
 IROHARNESS_REQUIRE_GIT_REMOTE=1 npm run oss:ready
 ```
 
+Before creating the release tag or running the publish workflow, run:
+
+```bash
+npm run oss:publish-preflight
+```
+
+This additionally checks the GitHub remote, clean working tree, unused version
+tag, `gh auth status`, and `npm whoami`.
+
 ## Rust
 
 The Rust lane validates the realtime core crate, native/WASM C ABI library, and

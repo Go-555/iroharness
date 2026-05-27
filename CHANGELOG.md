@@ -63,6 +63,8 @@ Initial OSS skeleton for a character macro harness.
   setup
 - OSS readiness check for package metadata, workflows, tracked secrets, and
   public-file coverage
+- publish preflight check for GitHub remote, clean tree, version tag, GitHub
+  auth, and npm auth
 - protocol schemas, golden fixtures, contract tests, and CI
 - browser screenshot E2E workflow for chat, OBS overlay, and audience admin
   views

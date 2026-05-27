@@ -162,6 +162,7 @@ test("OSS contribution metadata is present and aligned with harness boundaries",
   const browserWorkflow = readFileSync(join(".github", "workflows", "browser-e2e.yml"), "utf8");
   const smokeTest = readFileSync(join("examples", "generated-app-smoke-test.mjs"), "utf8");
   const readinessCheck = readFileSync(join("examples", "oss-readiness-check.mjs"), "utf8");
+  const publishPreflight = readFileSync(join("examples", "publish-preflight.mjs"), "utf8");
   const adapterSkeleton = readFileSync(join("examples", "adapter-skeleton.mjs"), "utf8");
   const launchd = readFileSync(join("examples", "deployment", "launchd.plist"), "utf8");
   const systemd = readFileSync(join("examples", "deployment", "systemd.service"), "utf8");
@@ -196,6 +197,7 @@ test("OSS contribution metadata is present and aligned with harness boundaries",
   assert.match(releaseWorkflow, /npm run smoke:generated-app/);
   assert.match(releaseWorkflow, /IROHARNESS_REQUIRE_GIT_REMOTE=1 npm run oss:ready/);
   assert.match(pkg.scripts["oss:ready"], /oss-readiness-check/);
+  assert.match(pkg.scripts["oss:publish-preflight"], /publish-preflight/);
   assert.match(readme, /Generated App Checklist/);
   assert.match(readme, /npx iroharness audience user/);
   assert.match(readme, /\?view=overlay/);
@@ -217,6 +219,7 @@ test("OSS contribution metadata is present and aligned with harness boundaries",
     "native/WASM C ABI",
     "generated app smoke test",
     "OSS readiness check",
+    "publish preflight check",
     "browser screenshot E2E workflow",
     "browser admin UI",
     "HTTP brain gateway demo",
@@ -236,6 +239,7 @@ test("OSS contribution metadata is present and aligned with harness boundaries",
     "Rust native/WASM C ABI implementation",
     "generated app smoke test for OSS package consumers",
     "OSS readiness check for package and repository publication",
+    "publish preflight check for GitHub and npm credentials",
     "browser admin UI for users, identities, permissions, revoke, and streams",
     "Production Hardening"
   ].forEach((entry) => {
@@ -267,6 +271,9 @@ test("OSS contribution metadata is present and aligned with harness boundaries",
   assert.match(readinessCheck, /git/);
   assert.match(readinessCheck, /IROHARNESS_REQUIRE_GIT_REMOTE/);
   assert.match(readinessCheck, /\.iroharness/);
+  assert.match(publishPreflight, /gh/);
+  assert.match(publishPreflight, /npm/);
+  assert.match(publishPreflight, /rev-parse/);
   assert.match(ciWorkflow, /cargo build -p iroharness-realtime-core --lib/);
   assert.match(ciWorkflow, /wasm32-unknown-unknown/);
   [

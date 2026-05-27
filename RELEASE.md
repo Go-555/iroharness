@@ -33,9 +33,20 @@ cargo build -p iroharness-realtime-core --bin iroharness-realtime-core-jsonl
    IROHARNESS_REQUIRE_GIT_REMOTE=1 npm run oss:ready
    ```
 
-4. Run the local checklist.
-5. Confirm GitHub Actions is green on `main`.
-6. Create a GitHub Release for the version tag, or run the `Release` workflow
+4. Confirm local publishing credentials:
+
+   ```bash
+   gh auth status
+   npm whoami
+   npm run oss:publish-preflight
+   ```
+
+   If these fail, run `gh auth login -h github.com` and `npm login` before
+   publishing.
+
+5. Run the local checklist.
+6. Confirm GitHub Actions is green on `main`.
+7. Create a GitHub Release for the version tag, or run the `Release` workflow
    manually with `dry_run=false`.
 
 The release workflow runs Node checks, Rust checks, package dry-run, and

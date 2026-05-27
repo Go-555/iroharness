@@ -168,6 +168,7 @@ npm run example:realtime-core
 npm run e2e:browser-screenshots
 npm run smoke:generated-app
 npm run oss:ready
+npm run oss:publish-preflight
 npm run demo:browser
 ```
 
