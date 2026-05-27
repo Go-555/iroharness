@@ -41,7 +41,7 @@ Slack / Web / VS Code / M5Stack / Even G2 / Live2D / MotionPNGTuber
 |---|---|
 | 人格の中心管理 | `SOUL.md`、`IDENTITY.md`、`MEMORY.md`、`VOICE.md` を読み込み、同じ人格を複数の入口で使える |
 | Project OS | goals、stories、specs、tickets、runs、artifacts を永続状態として扱える |
-| モデル切り替え | voice / text / deep / work の brain slot を分け、音声は軽量、テキストは高品質、深い議論は強いモデルにできる |
+| モデル切り替え | voice / text / deep / work の brain slot を分け、音声は軽量、テキストは高品質、深い議論は強いモデルにできる。text/deep brain は Codex OAuth 経由の model 選択にも対応 |
 | micro harness 委譲 | Codex app-server、Claude Code CLI、OpenClaw、Hermes、HTTP worker、JSONL process、text process に仕事を投げる adapter がある |
 | ブラウザ companion | ローカルWeb UI、OBS overlay、audience admin、SSE event stream、OpenAPI を持つ開発サーバーを起動できる |
 | 配信・Slack対応 | OBS Browser Source、OBS WebSocket、YouTube Live Chat polling、Discord bot、Slack Events、Slack + Codex companion の実装例がある |
@@ -385,6 +385,18 @@ IroHarness は人格とモデル選択を分離します。
 npm run example:brains
 npm run example:brain-gateway
 npm run example:provider-brain-gateway
+```
+
+Codex OAuth 済みのホストでは、text/deep brain 自体をCodex modelにできます。
+
+```bash
+codex login
+
+IROHARNESS_TEXT_BRAIN_PROVIDER=codex \
+IROHARNESS_TEXT_BRAIN_MODEL=gpt-5.4 \
+IROHARNESS_DEEP_BRAIN_PROVIDER=codex \
+IROHARNESS_DEEP_BRAIN_MODEL=gpt-5.5 \
+npm run example:slack-codex
 ```
 
 生成アプリでは `.env` から brain slot ごとに model gateway を指定できます。

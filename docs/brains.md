@@ -68,6 +68,46 @@ It should return:
 }
 ```
 
+## Codex OAuth Brain
+
+Use `createCodexAppServerBrain` when you want a main text/deep brain to use the
+host machine's Codex OAuth session instead of an API key. The host must already
+be logged in with `codex login`.
+
+```js
+import { createCodexAppServerBrain } from "iroharness/adapters";
+
+const text = createCodexAppServerBrain({
+  id: "text-codex-gpt-5.4",
+  slot: "text",
+  cwd: "/path/to/project",
+  model: "gpt-5.4"
+});
+
+const deep = createCodexAppServerBrain({
+  id: "deep-codex-gpt-5.5",
+  slot: "deep",
+  cwd: "/path/to/project",
+  model: "gpt-5.5"
+});
+```
+
+This follows the same separation that OpenClaw uses for model routing: auth is
+handled as a provider credential/profile concern, while the active model is a
+separate selection. In IroHarness, Codex OAuth belongs to the local
+`codex app-server` process; IroHarness selects the brain slot and model.
+
+For a main character brain, default to read-only sandboxing and no approvals:
+
+```text
+approvalPolicy: "never"
+threadSandbox: "read-only"
+```
+
+Coding, file editing, and reviews should still go through a micro harness such
+as `createCodexAppServerMicroHarness`, where `delegate_work` permission and
+approval policy can be stricter.
+
 ## Example
 
 ```bash
@@ -96,6 +136,19 @@ IROHARNESS_TEXT_BRAIN_ENDPOINT=http://127.0.0.1:8788/text
 IROHARNESS_TEXT_BRAIN_MODEL=balanced-text-model
 IROHARNESS_DEEP_BRAIN_ENDPOINT=http://127.0.0.1:8788/deep
 IROHARNESS_DEEP_BRAIN_MODEL=deep-reasoning-model
+```
+
+The Slack + Codex companion can use Codex OAuth directly for text/deep brain
+slots:
+
+```bash
+codex login
+
+IROHARNESS_TEXT_BRAIN_PROVIDER=codex
+IROHARNESS_TEXT_BRAIN_MODEL=gpt-5.4
+IROHARNESS_DEEP_BRAIN_PROVIDER=codex
+IROHARNESS_DEEP_BRAIN_MODEL=gpt-5.5
+npm run example:slack-codex
 ```
 
 The important invariant is that each brain receives the same macro context:

@@ -20,6 +20,7 @@ export interface BodyBridgeDevice extends Device {
 export function createHttpMicroHarness(input: JsonObject): MicroHarness;
 export function createOpenClawMicroHarness(input: JsonObject): MicroHarness;
 export function createHermesGatewayMicroHarness(input: JsonObject): MicroHarness;
+export function createCodexAppServerBrain(input: JsonObject): JsonObject;
 export function createCodexAppServerMicroHarness(input: JsonObject): MicroHarness;
 export function createJsonlProcessMicroHarness(input: JsonObject): MicroHarness;
 export function createTextProcessMicroHarness(input: JsonObject): MicroHarness;

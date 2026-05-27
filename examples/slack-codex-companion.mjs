@@ -10,6 +10,7 @@ import {
   createIroHarness
 } from "../src/index.js";
 import {
+  createCodexAppServerBrain,
   createCodexAppServerMicroHarness,
   createSlackEventsRuntime,
   createSlackMessageAdapter
@@ -63,6 +64,28 @@ const parseJson = (body) => {
   }
 };
 
+const createBrainForSlot = ({ slot, codexWorkspace }) => {
+  const prefix = `IROHARNESS_${slot.toUpperCase()}_BRAIN`;
+  const provider = process.env[`${prefix}_PROVIDER`] || (slot === "voice" ? "echo" : "codex");
+  const model = process.env[`${prefix}_MODEL`] || process.env.CODEX_BRAIN_MODEL || process.env.CODEX_MODEL || "gpt-5.4";
+  if (provider === "codex") {
+    return createCodexAppServerBrain({
+      id: `${slot}-codex-${model}`,
+      slot,
+      cwd: codexWorkspace,
+      model,
+      approvalPolicy: process.env[`${prefix}_APPROVAL_POLICY`] || "never",
+      threadSandbox: process.env[`${prefix}_SANDBOX`] || "read-only",
+      sandboxPolicy: {
+        type: "readOnly",
+        writableRoots: [],
+        networkAccess: process.env[`${prefix}_NETWORK_ACCESS`] === "1"
+      }
+    });
+  }
+  return createEchoBrain(`${slot}-echo`);
+};
+
 const createSlackCodexCompanion = () => {
   if (process.env.IROHARNESS_RUN_CODEX !== "1") {
     throw new Error("Set IROHARNESS_RUN_CODEX=1 after running `codex login`.");
@@ -105,8 +128,9 @@ const createSlackCodexCompanion = () => {
     userRegistry,
     router: createHeuristicRouter(),
     brains: {
-      voice: createEchoBrain("voice-fast"),
-      text: createEchoBrain("text-deep")
+      voice: createBrainForSlot({ slot: "voice", codexWorkspace }),
+      text: createBrainForSlot({ slot: "text", codexWorkspace }),
+      deep: createBrainForSlot({ slot: "deep", codexWorkspace })
     },
     microHarnesses: [
       createCodexAppServerMicroHarness({

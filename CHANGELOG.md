@@ -11,6 +11,8 @@ Initial OSS skeleton for a character macro harness.
 - file-backed character profile loader for `SOUL.md`, `IDENTITY.md`,
   `MEMORY.md`, and `VOICE.md`
 - voice/text/deep brain routing with replaceable HTTP brain adapters
+- Codex OAuth brain adapter for selecting text/deep models through the host
+  machine's `codex app-server`
 - safe `/health` metadata for service, body, runtime, Project OS, and brain
   slot visibility
 

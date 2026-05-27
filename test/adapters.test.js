@@ -7,6 +7,7 @@ import test from "node:test";
 import {
   createAIAvatarKitBridgeDevice,
   createClaudeCodeCliMicroHarness,
+  createCodexAppServerBrain,
   createCodexAppServerMicroHarness,
   createDiscordBotRuntime,
   createDiscordMessageAdapter,
@@ -403,6 +404,56 @@ test("Codex app-server micro harness starts thread and returns assistant deltas"
   assert.equal(transport.requests[1].params.model, "gpt-test");
   assert.equal(transport.requests[2].method, "turn/start");
   assert.equal(transport.requests[2].params.threadId, "thread_1");
+});
+
+test("Codex app-server brain uses selected model and returns assistant deltas", async () => {
+  const transport = createFakeCodexTransport();
+  const brain = createCodexAppServerBrain({
+    id: "codex-text",
+    slot: "text",
+    cwd: "/tmp/project",
+    model: "gpt-brain-test",
+    transport,
+    timeoutMs: 1000
+  });
+
+  const output = await brain.respond({
+    character: {
+      id: "iroha",
+      name: "Iroha",
+      soul: "Stable macro identity."
+    },
+    actor: {
+      user: {
+        displayName: "Developer"
+      }
+    },
+    audience: {
+      permissions: ["deep_discussion"]
+    },
+    input: {
+      text: "こんにちは"
+    },
+    route: {
+      kind: "text"
+    },
+    state: {},
+    projectOs: {
+      tickets: []
+    }
+  });
+
+  assert.equal(output.text, "実装を確認しました。");
+  assert.equal(output.raw.provider, "codex");
+  assert.equal(output.raw.model, "gpt-brain-test");
+  assert.equal(transport.requests[0].method, "initialize");
+  assert.equal(transport.requests[1].method, "thread/start");
+  assert.equal(transport.requests[1].params.model, "gpt-brain-test");
+  assert.equal(transport.requests[1].params.sandbox, "read-only");
+  assert.equal(transport.requests[2].method, "turn/start");
+  assert.match(transport.requests[2].params.input[0].text, /Brain slot: text/);
+  assert.match(transport.requests[2].params.input[0].text, /Iroha/);
+  assert.match(transport.requests[2].params.input[0].text, /こんにちは/);
 });
 
 test("JSONL process micro harness sends one task and parses final JSON line", async () => {

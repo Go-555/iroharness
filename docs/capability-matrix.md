@@ -21,6 +21,7 @@ Status labels:
 | Audience registry | built-in | `createInMemoryUserRegistry`, `createFileUserRegistry`, `createPostgresUserRegistry` | Links platform IDs to one user. |
 | Permissions | built-in | `createPermissionPolicy`, `createAudienceContextPolicy` | Gates deep discussion, work delegation, stream control, and user management. |
 | Brain routing | built-in | `createHeuristicRouter`, `createEchoBrain`, `createHttpBrain`, generated `.env` brain slots | Supports voice/text/deep/work routing while keeping identity stable. |
+| Codex OAuth brain | adapter | `createCodexAppServerBrain`, `docs/brains.md` | Uses the host machine's Codex OAuth session as a selectable text/deep brain model. |
 | Provider brain gateway | example | `examples/provider-brain-gateway.mjs` | Routes voice/text/deep slots to OpenAI, Claude, or local OpenAI-compatible providers. |
 | Realtime voice contract | contract | `createRealtimeVoiceSession`, STT/TTS interfaces, schemas | JavaScript contract exists; production STT/TTS providers are replaceable. |
 | Rust realtime core | contract | `crates/realtime-core`, `createRustRealtimeCoreBinding`, `createRustRealtimeCoreCabiAdapter` | Rust crate exposes JSONL plus native/WASM C ABI fast-path bindings. |

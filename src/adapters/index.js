@@ -596,6 +596,129 @@ export const createCodexAppServerMicroHarness = ({
   });
 };
 
+const formatCodexBrainContext = ({ slot, model, context }) =>
+  [
+    "You are the current IroHarness brain for this character.",
+    "Answer as the character. Do not claim to be Codex unless the user asks about the backend.",
+    "Keep character identity, audience permissions, and Project OS context stable.",
+    "Do not modify files or run development work from this brain path; delegate work belongs to micro harnesses.",
+    "",
+    `Brain slot: ${slot}`,
+    `Model: ${model || "default"}`,
+    "",
+    "Character:",
+    JSON.stringify(context.character || {}, null, 2),
+    "",
+    "Actor:",
+    JSON.stringify(context.actor || {}, null, 2),
+    "",
+    "Audience:",
+    JSON.stringify(context.audience || {}, null, 2),
+    "",
+    "Route:",
+    JSON.stringify(context.route || {}, null, 2),
+    "",
+    "Project OS snapshot:",
+    JSON.stringify(context.projectOs || {}, null, 2),
+    "",
+    "User message:",
+    context.input?.text || ""
+  ].join("\n");
+
+export const createCodexAppServerBrain = ({
+  id = "codex-brain",
+  slot = "text",
+  cwd = process.cwd(),
+  model = "gpt-5.4",
+  approvalPolicy = "never",
+  sandboxPolicy = {
+    type: "readOnly",
+    writableRoots: [],
+    networkAccess: false
+  },
+  threadSandbox = "read-only",
+  serviceName = "iroharness-brain",
+  timeoutMs = 2 * 60_000,
+  transport = createCodexAppServerTransport({ cwd }),
+  formatContext = formatCodexBrainContext
+} = {}) => {
+  let threadId = null;
+
+  const ensureThread = async () => {
+    await transport.initialize?.();
+    if (threadId) {
+      return threadId;
+    }
+    const result = await transport.sendRequest("thread/start", {
+      model,
+      cwd,
+      approvalPolicy,
+      sandbox: threadSandbox,
+      serviceName
+    });
+    const nextThreadId = result?.thread?.id;
+    if (!nextThreadId) {
+      throw new Error("Codex app-server brain did not return a thread id");
+    }
+    threadId = nextThreadId;
+    return threadId;
+  };
+
+  return Object.freeze({
+    id,
+    async respond(context) {
+      const nextThreadId = await ensureThread();
+      const events = [];
+      const unsubscribe = transport.subscribe?.((event) => {
+        events.push(event);
+      });
+      try {
+        const waitForCompletion = new Promise((resolve) => {
+          const stop = transport.subscribe?.((event) => {
+            if (event.method === "turn/completed") {
+              stop?.();
+              resolve(event);
+            }
+          });
+        });
+        await transport.sendRequest("turn/start", {
+          threadId: nextThreadId,
+          input: [
+            {
+              type: "text",
+              text: formatContext({ slot, model, context })
+            }
+          ],
+          cwd,
+          approvalPolicy,
+          sandboxPolicy
+        });
+        await withTimeout(
+          waitForCompletion,
+          timeoutMs,
+          `Codex app-server brain ${id} timed out after ${timeoutMs}ms`
+        );
+        return Object.freeze({
+          text: extractCodexText(events) || "受け取ったよ。",
+          emotion: context.route?.kind === "deep" ? "focused" : "attentive",
+          raw: Object.freeze({
+            provider: "codex",
+            model,
+            threadId: nextThreadId,
+            events
+          })
+        });
+      } finally {
+        unsubscribe?.();
+      }
+    },
+    close() {
+      transport.close?.();
+      threadId = null;
+    }
+  });
+};
+
 export const createDiscordMessageAdapter = ({
   ignoreBots = true,
   mentionOnly = false,
