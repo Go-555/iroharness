@@ -5,9 +5,13 @@ import { join } from "node:path";
 import { spawn, spawnSync } from "node:child_process";
 import test from "node:test";
 
-const runCli = (args) =>
+const runCli = (args, { env = {} } = {}) =>
   spawnSync(process.execPath, [join(process.cwd(), "bin", "iroharness.mjs"), ...args], {
     cwd: process.cwd(),
+    env: {
+      ...process.env,
+      ...env
+    },
     encoding: "utf8"
   });
 
@@ -107,6 +111,35 @@ test("CLI doctor validates generated companion app shape", () => {
   assert.match(doctor.stdout, /ok SOUL\.md/);
   assert.match(doctor.stdout, /ok VOICE\.md/);
   assert.match(doctor.stdout, /IroHarness project looks ready/);
+});
+
+test("CLI doctor production profile requires a strong admin token", () => {
+  const dir = mkdtempSync(join(tmpdir(), "iroharness-doctor-production-"));
+  const appDir = join(dir, "companion");
+  const init = runCli(["init", appDir, "--character", "Iroha"]);
+  const missingToken = runCli(["doctor", appDir, "--production"], {
+    env: {
+      IROHARNESS_ADMIN_TOKEN: ""
+    }
+  });
+  const shortToken = runCli(["doctor", appDir, "--production"], {
+    env: {
+      IROHARNESS_ADMIN_TOKEN: "short"
+    }
+  });
+  const ready = runCli(["doctor", appDir, "--production"], {
+    env: {
+      IROHARNESS_ADMIN_TOKEN: "production-token-123"
+    }
+  });
+
+  assert.equal(init.status, 0, init.stderr);
+  assert.notEqual(missingToken.status, 0);
+  assert.match(missingToken.stdout, /failed IROHARNESS_ADMIN_TOKEN/);
+  assert.notEqual(shortToken.status, 0);
+  assert.match(shortToken.stdout, /failed IROHARNESS_ADMIN_TOKEN length >= 16/);
+  assert.equal(ready.status, 0, ready.stderr);
+  assert.match(ready.stdout, /ok audience admin token wiring/);
 });
 
 test("CLI generated app starts a local companion server", async (context) => {

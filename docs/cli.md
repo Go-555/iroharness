@@ -50,3 +50,16 @@ npx iroharness doctor ./my-companion
 
 The doctor command checks for `package.json`, `src/app.mjs`, `.iroharness/`,
 `SOUL.md`, `IDENTITY.md`, `MEMORY.md`, and `VOICE.md`.
+
+Before exposing the companion server through Tailscale, a tunnel, a reverse
+proxy, Discord, YouTube, or OBS tooling, run the production profile:
+
+```bash
+IROHARNESS_ADMIN_TOKEN="$(openssl rand -hex 24)" \
+  npx iroharness doctor ./my-companion --production
+```
+
+`--production` fails unless `IROHARNESS_ADMIN_TOKEN` is present, at least 16
+characters long, and the generated app wires that token into the audience admin
+routes. This protects user, identity, permission, and stream-session management
+while leaving public chat and overlay routes usable.

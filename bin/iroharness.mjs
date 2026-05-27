@@ -1,17 +1,18 @@
 #!/usr/bin/env node
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
 
 const usage = `IroHarness
 
 Usage:
   iroharness init [dir] [--name <package-name>] [--character <character-name>] [--force]
-  iroharness doctor [dir]
+  iroharness doctor [dir] [--production]
   iroharness --help
 
 Examples:
   iroharness init ./my-companion --character Iroha
   iroharness doctor ./my-companion
+  IROHARNESS_ADMIN_TOKEN=... iroharness doctor ./my-companion --production
 `;
 
 const parseArgs = (argv) => {
@@ -20,6 +21,7 @@ const parseArgs = (argv) => {
   let name = null;
   let character = "Iroha";
   let force = false;
+  let production = false;
 
   for (let index = 0; index < rest.length; index += 1) {
     const value = rest[index];
@@ -37,6 +39,10 @@ const parseArgs = (argv) => {
       force = true;
       continue;
     }
+    if (value === "--production") {
+      production = true;
+      continue;
+    }
     if (!value.startsWith("-")) {
       dir = value;
     }
@@ -47,7 +53,8 @@ const parseArgs = (argv) => {
     dir,
     name,
     character,
-    force
+    force,
+    production
   };
 };
 
@@ -253,7 +260,7 @@ const init = ({ dir, name, character, force }) => {
   };
 };
 
-const doctor = ({ dir }) => {
+const doctor = ({ dir, production = false }) => {
   const targetDir = resolve(dir);
   const checks = [
     {
@@ -288,12 +295,34 @@ const doctor = ({ dir }) => {
     ...check,
     ok: existsSync(check.path)
   }));
+  const appPath = join(targetDir, "src", "app.mjs");
+  const appSourceText = existsSync(appPath) ? readFileSync(appPath, "utf8") : "";
+  const productionChecks = production
+    ? [
+        {
+          label: "IROHARNESS_ADMIN_TOKEN",
+          ok: Boolean(process.env.IROHARNESS_ADMIN_TOKEN)
+        },
+        {
+          label: "IROHARNESS_ADMIN_TOKEN length >= 16",
+          ok: String(process.env.IROHARNESS_ADMIN_TOKEN || "").length >= 16
+        },
+        {
+          label: "audience admin token wiring",
+          ok: appSourceText.includes("adminToken: process.env.IROHARNESS_ADMIN_TOKEN")
+        }
+      ]
+    : [];
+  const allChecks = [...checks, ...productionChecks];
   const missing = checks.filter((check) => !check.ok);
+  const failedProductionChecks = productionChecks.filter((check) => !check.ok);
   return {
     targetDir,
-    ok: missing.length === 0,
-    checks,
-    missing
+    ok: missing.length === 0 && failedProductionChecks.length === 0,
+    checks: allChecks,
+    missing,
+    failedProductionChecks,
+    production
   };
 };
 
@@ -306,7 +335,8 @@ const main = () => {
   if (args.command === "doctor") {
     const result = doctor(args);
     result.checks.forEach((check) => {
-      console.log(`${check.ok ? "ok" : "missing"} ${check.label}`);
+      const status = check.ok ? "ok" : check.path ? "missing" : "failed";
+      console.log(`${status} ${check.label}`);
     });
     if (!result.ok) {
       throw new Error(`IroHarness project check failed in ${result.targetDir}`);

@@ -85,6 +85,13 @@ npm install
 npm start
 ```
 
+Before exposing the server beyond a trusted local machine, set an admin token
+and run the production doctor:
+
+```bash
+IROHARNESS_ADMIN_TOKEN="$(openssl rand -hex 24)" npx iroharness doctor . --production
+```
+
 Or run the repository examples:
 
 ```bash
