@@ -787,6 +787,10 @@ test("dev server exposes public health metadata without audience records", async
 
   assert.equal(response.statusCode, 200);
   assert.equal(response.json.ok, true);
+  assert.equal(response.json.service.name, "iroharness");
+  assert.equal(response.json.service.version, "0.1.0");
+  assert.match(response.json.service.startedAt, /^\d{4}-\d{2}-\d{2}T/);
+  assert.equal(typeof response.json.service.uptimeMs, "number");
   assert.equal(response.json.characterId, "iroha");
   assert.equal(response.json.audienceRegistry, true);
   assert.equal(response.json.adminProtected, true);

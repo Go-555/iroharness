@@ -128,6 +128,16 @@ const readOpenApiSpec = () =>
     readFileSync(fileURLToPath(new URL("../../protocols/openapi.json", import.meta.url)), "utf8")
   );
 
+const readPackageInfo = () => {
+  const pkg = JSON.parse(
+    readFileSync(fileURLToPath(new URL("../../package.json", import.meta.url)), "utf8")
+  );
+  return Object.freeze({
+    name: pkg.name || "iroharness",
+    version: pkg.version || "0.0.0"
+  });
+};
+
 const serveStatic = (response, publicDir, pathname) => {
   const requestPath = pathname === "/" ? "/index.html" : pathname;
   const normalizedPath = normalize(requestPath).replace(/^(\.\.[/\\])+/, "");
@@ -1707,6 +1717,9 @@ export const createIroHarnessDevServerHandler = ({
   };
   const audiencePath = (pathname) =>
     pathname === "/audience" || pathname.startsWith("/audience/");
+  const packageInfo = readPackageInfo();
+  const startedAt = new Date().toISOString();
+  const startedAtMs = Date.now();
   const bodySummary = () =>
     bodyDevices.map((body) => ({
       id: body.id,
@@ -1729,6 +1742,11 @@ export const createIroHarnessDevServerHandler = ({
             : { tickets: [], runs: [], artifacts: [] };
         sendJson(response, 200, {
           ok: true,
+          service: {
+            ...packageInfo,
+            startedAt,
+            uptimeMs: Math.max(0, Date.now() - startedAtMs)
+          },
           characterId: state.characterId,
           mode: state.mode,
           audienceRegistry: Boolean(audienceRegistry),
