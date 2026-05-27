@@ -68,6 +68,8 @@ See [RELEASE.md](./RELEASE.md), [CHANGELOG.md](./CHANGELOG.md), and
 [SECURITY.md](./SECURITY.md) for OSS operation notes. See
 [CONTRIBUTING.md](./CONTRIBUTING.md) and
 [CODE_OF_CONDUCT.md](./CODE_OF_CONDUCT.md) before contributing.
+For handling character memory, user IDs, credentials, and stream permissions,
+see [docs/privacy-and-security.md](./docs/privacy-and-security.md).
 
 ## Install
 
@@ -644,6 +646,7 @@ docs/
   external-bridges.md
   platform-adapters.md
   obs.md
+  privacy-and-security.md
   streaming-community.md
   realtime.md
   rust-core.md

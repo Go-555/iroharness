@@ -270,6 +270,8 @@ test("CLI doctor production profile requires a strong admin token", () => {
   assert.equal(readyFromEnvFile.status, 0, readyFromEnvFile.stderr);
   assert.equal(ready.status, 0, ready.stderr);
   assert.match(ready.stdout, /ok audience admin token wiring/);
+  assert.match(ready.stdout, /ok \.env is ignored/);
+  assert.match(ready.stdout, /ok \.iroharness JSON state is ignored/);
 });
 
 test("CLI generated app starts a local companion server", async (context) => {

@@ -634,6 +634,8 @@ const doctor = ({ dir, production = false }) => {
   }));
   const appPath = join(targetDir, "src", "app.mjs");
   const appSourceText = existsSync(appPath) ? readFileSync(appPath, "utf8") : "";
+  const gitignorePath = join(targetDir, ".gitignore");
+  const gitignoreText = existsSync(gitignorePath) ? readFileSync(gitignorePath, "utf8") : "";
   const env = {
     ...readEnvFile(join(targetDir, ".env")),
     ...process.env
@@ -651,6 +653,14 @@ const doctor = ({ dir, production = false }) => {
         {
           label: "audience admin token wiring",
           ok: appSourceText.includes("adminToken: process.env.IROHARNESS_ADMIN_TOKEN")
+        },
+        {
+          label: ".env is ignored",
+          ok: gitignoreText.split(/\r?\n/).some((line) => line.trim() === ".env")
+        },
+        {
+          label: ".iroharness JSON state is ignored",
+          ok: gitignoreText.split(/\r?\n/).some((line) => line.trim() === ".iroharness/*.json")
         }
       ]
     : [];

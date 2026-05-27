@@ -31,3 +31,7 @@ Security-sensitive areas include:
 - process adapters
 - OBS / stream controls
 - filesystem-backed PJOS and character profile files
+
+See [docs/privacy-and-security.md](./docs/privacy-and-security.md) for
+operational guidance on character memory, audience identity, credentials, admin
+routes, and stream permissions.

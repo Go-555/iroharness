@@ -147,6 +147,8 @@ test("OSS contribution metadata is present and aligned with harness boundaries",
   const readme = readFileSync("README.md", "utf8");
   const matrix = readFileSync(join("docs", "capability-matrix.md"), "utf8");
   const adapterGuide = readFileSync(join("docs", "build-an-adapter.md"), "utf8");
+  const privacyGuide = readFileSync(join("docs", "privacy-and-security.md"), "utf8");
+  const security = readFileSync("SECURITY.md", "utf8");
   const contributing = readFileSync("CONTRIBUTING.md", "utf8");
   const codeOfConduct = readFileSync("CODE_OF_CONDUCT.md", "utf8");
   const prTemplate = readFileSync(join(".github", "pull_request_template.md"), "utf8");
@@ -176,7 +178,19 @@ test("OSS contribution metadata is present and aligned with harness boundaries",
   assert.match(readme, /\?view=overlay/);
   assert.match(readme, /capability-matrix/);
   assert.match(readme, /build-an-adapter/);
+  assert.match(readme, /privacy-and-security/);
+  assert.match(security, /privacy-and-security/);
   assert.match(contributing, /build-an-adapter/);
+  [
+    "Audience identity",
+    "IROHARNESS_ADMIN_TOKEN",
+    "manage_stream",
+    "Issue And PR Hygiene"
+  ].forEach((section) => {
+    assert.match(privacyGuide, new RegExp(section));
+  });
+  assert.match(privacyGuide, /`\.env` is ignored/);
+  assert.match(privacyGuide, /`\.iroharness\/\*\.json` is ignored/);
   assert.match(pkg.scripts["example:adapter"], /adapter-skeleton/);
   assert.match(pkg.scripts.check, /examples\/adapter-skeleton\.mjs/);
   assert.match(adapterSkeleton, /createSkeletonMicroHarness/);
