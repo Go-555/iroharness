@@ -145,6 +145,8 @@ test("design principles document locks the macro harness boundary", () => {
 test("OSS contribution metadata is present and aligned with harness boundaries", () => {
   const pkg = JSON.parse(readFileSync("package.json", "utf8"));
   const readme = readFileSync("README.md", "utf8");
+  const changelog = readFileSync("CHANGELOG.md", "utf8");
+  const roadmap = readFileSync("ROADMAP.md", "utf8");
   const matrix = readFileSync(join("docs", "capability-matrix.md"), "utf8");
   const adapterGuide = readFileSync(join("docs", "build-an-adapter.md"), "utf8");
   const privacyGuide = readFileSync(join("docs", "privacy-and-security.md"), "utf8");
@@ -181,6 +183,22 @@ test("OSS contribution metadata is present and aligned with harness boundaries",
   assert.match(readme, /privacy-and-security/);
   assert.match(security, /privacy-and-security/);
   assert.match(contributing, /build-an-adapter/);
+  [
+    "HTTP brain adapters",
+    "permission override expiry and revoke support",
+    "browser admin UI",
+    "HTTP brain gateway demo",
+    "npm release workflow"
+  ].forEach((entry) => {
+    assert.match(changelog, new RegExp(entry));
+  });
+  [
+    "configurable voice/text/deep HTTP brain slots",
+    "browser admin UI for users, identities, permissions, revoke, and streams",
+    "Production Hardening"
+  ].forEach((entry) => {
+    assert.match(roadmap, new RegExp(entry));
+  });
   [
     "Audience identity",
     "IROHARNESS_ADMIN_TOKEN",

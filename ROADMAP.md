@@ -29,6 +29,7 @@ micro harnesses.
 - [x] PostgreSQL/Supabase audience schema
 - [x] PostgreSQL/Supabase audience registry adapter
 - [x] permission overrides
+- [x] expiring and revocable permission overrides
 - [x] stream session registry
 - [x] stream session context enrichment
 - [x] role-based permission policy
@@ -43,12 +44,15 @@ micro harnesses.
 - [x] Discord bot runtime
 - [x] Slack Events runtime
 - [x] YouTube Live Chat polling runtime
+- [x] safe health metadata for service, runtime, body, PJOS, and brain slots
 
 ## Milestone 1: Useful Local Demo
 
 - [x] browser avatar demo
 - [x] streaming event endpoint
 - [x] voice/text model switch demo
+- [x] configurable voice/text/deep HTTP brain slots
+- [x] local HTTP brain gateway demo
 - [x] Codex app-server adapter
 - [x] file-backed PJOS
 - [x] MotionPNGTuber renderer bridge
@@ -57,6 +61,7 @@ micro harnesses.
 - [x] YouTube Live Chat API polling runtime
 - [x] OBS control/websocket adapter
 - [x] audience registry demo
+- [x] browser admin UI for users, identities, permissions, revoke, and streams
 
 ## Milestone 2: Harness Interop
 
@@ -88,6 +93,14 @@ micro harnesses.
 - [x] external realtime core JSONL process adapter
 - [x] Rust JSONL process binary scaffold
 - [ ] Rust native/WASM implementation
+
+## Milestone 5: Production Hardening
+
+- [ ] real provider recipes for OpenAI, Claude, and local model brain gateways
+- [ ] deployment examples for Tailscale, reverse proxy, and systemd/launchd
+- [ ] persisted audit log for privileged actions
+- [ ] built-in backup/restore commands for file and PostgreSQL audience state
+- [ ] end-to-end browser screenshots outside sandboxed CI port restrictions
 
 ## Guiding Principle
 
