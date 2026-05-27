@@ -1726,6 +1726,8 @@ export const createIroHarnessDevServerHandler = ({
       kind: body.kind,
       capabilities: body.capabilities || []
     }));
+  const brainSummary = () =>
+    typeof harness.brains === "function" ? harness.brains() : [];
 
   return async (request, response) => {
     const url = new URL(request.url, "http://127.0.0.1");
@@ -1751,6 +1753,7 @@ export const createIroHarnessDevServerHandler = ({
           mode: state.mode,
           audienceRegistry: Boolean(audienceRegistry),
           adminProtected: Boolean(adminToken),
+          brains: brainSummary(),
           bodies: bodySummary(),
           platforms: platformAdapters.platforms(),
           runtimes: runtimeStatus(),

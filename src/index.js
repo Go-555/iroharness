@@ -2039,6 +2039,21 @@ export const createIroHarness = ({
   if (!brains || !brains.voice || !brains.text) {
     throw new Error("brains.voice and brains.text are required");
   }
+  const brainSummary = () =>
+    Object.freeze(
+      [
+        ["voice", brains.voice],
+        ["text", brains.text],
+        ["deep", brains.deep]
+      ]
+        .filter(([, brain]) => Boolean(brain))
+        .map(([slot, brain]) =>
+          freezeCopy({
+            slot,
+            id: brain.id || slot
+          })
+        )
+    );
 
   let state = createCharacterState({
     characterId: character.id,
@@ -2410,6 +2425,7 @@ export const createIroHarness = ({
     character: freezeCopy(character),
     receive,
     state: () => state,
+    brains: brainSummary,
     projectOs: () => projectOs.snapshot(),
     users: () => userRegistry.snapshot()
   });

@@ -609,6 +609,7 @@
           "mode",
           "audienceRegistry",
           "adminProtected",
+          "brains",
           "bodies",
           "platforms",
           "runtimes",
@@ -655,6 +656,31 @@
           },
           "adminProtected": {
             "type": "boolean"
+          },
+          "brains": {
+            "type": "array",
+            "description": "Safe public brain-slot metadata. Endpoint URLs, model secrets, and credentials are intentionally omitted.",
+            "items": {
+              "type": "object",
+              "required": [
+                "slot",
+                "id"
+              ],
+              "properties": {
+                "slot": {
+                  "type": "string",
+                  "examples": [
+                    "voice",
+                    "text",
+                    "deep"
+                  ]
+                },
+                "id": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            }
           },
           "bodies": {
             "type": "array",

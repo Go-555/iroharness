@@ -138,6 +138,11 @@ export interface ProjectOsSnapshot {
   readonly artifacts: readonly ArtifactRecord[];
 }
 
+export interface BrainSummary {
+  readonly slot: string;
+  readonly id: string;
+}
+
 export interface ProjectOs {
   createTicket(input: {
     readonly title: string;
@@ -208,6 +213,7 @@ export interface IroHarness {
   readonly character: CharacterProfile;
   receive(input: TurnInput): Promise<JsonObject>;
   state(): CharacterState;
+  brains(): readonly BrainSummary[];
   projectOs(): ProjectOsSnapshot;
   users(): UserRegistrySnapshot | Promise<UserRegistrySnapshot>;
 }

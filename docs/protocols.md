@@ -109,10 +109,11 @@ GET  /platforms
 
 `/openapi.json` returns the OpenAPI 3.1 contract stored at
 `protocols/openapi.json`.
-`/health` returns public readiness metadata: current character id/mode, body
-bridges, platform adapters, optional runtime states, Project OS counts, and
-whether audience admin routes are token-protected. It does not expose audience
-records. Generated apps also attach runtime telemetry such as `lastReadyAt`,
+`/health` returns public readiness metadata: current character id/mode, safe
+brain slot ids, body bridges, platform adapters, optional runtime states,
+Project OS counts, and whether audience admin routes are token-protected. It
+does not expose audience records, model endpoints, credentials, or character
+memory. Generated apps also attach runtime telemetry such as `lastReadyAt`,
 `lastResultAt`, `lastErrorAt`, and `lastError` for YouTube and Discord runtimes.
 
 Platform adapters convert each payload into the same IroHarness turn shape. From

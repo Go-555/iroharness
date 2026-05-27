@@ -374,6 +374,11 @@ test("OpenAPI document covers dev server and audience management routes", () => 
     openapi.components.schemas.HealthStatus.properties.service.required.includes("version"),
     true
   );
+  assert.equal(openapi.components.schemas.HealthStatus.required.includes("brains"), true);
+  assert.equal(
+    openapi.components.schemas.HealthStatus.properties.brains.items.required.includes("slot"),
+    true
+  );
   assert.equal(
     openapi.components.schemas.HealthStatus.properties.runtimes.items.required.includes("state"),
     true
