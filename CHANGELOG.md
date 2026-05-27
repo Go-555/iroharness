@@ -65,6 +65,10 @@ Initial OSS skeleton for a character macro harness.
 
 ### OSS Operations
 
+- OpenClaw-style `install.sh` with GitHub checkout, npm install mode, generated
+  companion app setup, dry-run, and StackChan next-step guidance
+- installation guide covering source/app directory separation and first
+  StackChan connection
 - CLI `init`, `doctor`, `doctor --json`, and `audience`
   `user/link/grant/revoke/stream/export/import/list`
 - generated `AGENTS.md` companion instructions for character, permission, and

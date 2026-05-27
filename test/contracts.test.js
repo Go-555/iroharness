@@ -169,6 +169,8 @@ test("OSS contribution metadata is present and aligned with harness boundaries",
   const agents = readFileSync("AGENTS.md", "utf8");
   const readme = readFileSync("README.md", "utf8");
   const changelog = readFileSync("CHANGELOG.md", "utf8");
+  const installScript = readFileSync("install.sh", "utf8");
+  const installGuide = readFileSync(join("docs", "install.md"), "utf8");
   const roadmap = readFileSync("ROADMAP.md", "utf8");
   const matrix = readFileSync(join("docs", "capability-matrix.md"), "utf8");
   const inspirationMap = readFileSync(join("docs", "inspiration-map.md"), "utf8");
@@ -203,7 +205,7 @@ test("OSS contribution metadata is present and aligned with harness boundaries",
     "utf8"
   );
 
-  ["AGENTS.md", "CONTRIBUTING.md", "CODE_OF_CONDUCT.md"].forEach((file) => {
+  ["AGENTS.md", "CONTRIBUTING.md", "CODE_OF_CONDUCT.md", "install.sh"].forEach((file) => {
     assert.equal(pkg.files.includes(file), true);
   });
   assert.match(agents, /The macro harness owns character identity/);
@@ -237,11 +239,14 @@ test("OSS contribution metadata is present and aligned with harness boundaries",
   assert.match(readme, /absorption-architecture/);
   assert.match(readme, /build-an-adapter/);
   assert.match(readme, /docs\/deployment\.md/);
+  assert.match(readme, /docs\/install\.md/);
   assert.match(readme, /docs\/postgres-backup-restore\.md/);
   assert.match(readme, /privacy-and-security/);
   assert.match(security, /privacy-and-security/);
   assert.match(contributing, /build-an-adapter/);
   [
+    "OpenClaw-style `install.sh`",
+    "installation guide",
     "HTTP brain adapters",
     "permission override expiry and revoke support",
     "file-backed audience audit log plus export/import",
@@ -326,6 +331,14 @@ test("OSS contribution metadata is present and aligned with harness boundaries",
   assert.match(matrix, /Absorption architecture/);
   assert.match(matrix, /StackChan face poller firmware/);
   assert.match(matrix, /Device config\/invoke protocol/);
+  assert.match(matrix, /OpenClaw-style installer/);
+  assert.match(installScript, /IROHARNESS_INSTALL_METHOD/);
+  assert.match(installScript, /npm run example:slack-stackchan/);
+  assert.match(installScript, /\/device\/stackchan\/invoke/);
+  assert.match(installGuide, /OpenClaw/);
+  assert.match(installGuide, /~\/iroharness-apps\/iroha/);
+  assert.match(installGuide, /StackChan First Connection/);
+  assert.match(installGuide, /MAC_MINI_IP/);
   assert.match(inspirationMap, /CursorTuberKit/);
   assert.match(inspirationMap, /Neuro SDK/);
   assert.match(inspirationMap, /AIAvatarStackChan/);

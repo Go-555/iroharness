@@ -106,6 +106,19 @@ OSS運用については [RELEASE.md](./RELEASE.md)、[CHANGELOG.md](./CHANGELOG
 
 ## インストール
 
+OpenClawのように、GitHubから1コマンドで入れる導線を用意しています。
+npm公開前の推奨は GitHub install です。
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Go-555/iroharness/main/install.sh | bash
+```
+
+これは `~/.iroharness/source` にOSS本体を入れ、
+`~/iroharness-apps/iroha` に個人用の相棒アプリを作ります。
+詳しくは [docs/install.md](./docs/install.md) を見てください。
+
+手動でリポジトリを触る場合:
+
 ```bash
 npm install
 ```

@@ -82,6 +82,7 @@
   },
   "files": [
     "bin",
+    "install.sh",
     "src",
     "crates",
     "fixtures",
