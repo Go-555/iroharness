@@ -146,6 +146,7 @@ test("OSS contribution metadata is present and aligned with harness boundaries",
   const contributing = readFileSync("CONTRIBUTING.md", "utf8");
   const codeOfConduct = readFileSync("CODE_OF_CONDUCT.md", "utf8");
   const prTemplate = readFileSync(join(".github", "pull_request_template.md"), "utf8");
+  const releaseWorkflow = readFileSync(join(".github", "workflows", "release.yml"), "utf8");
 
   ["CONTRIBUTING.md", "CODE_OF_CONDUCT.md"].forEach((file) => {
     assert.equal(pkg.files.includes(file), true);
@@ -162,6 +163,9 @@ test("OSS contribution metadata is present and aligned with harness boundaries",
   assert.match(codeOfConduct, /private character prompts/);
   assert.match(prTemplate, /Character identity remains owned by the macro harness/);
   assert.match(prTemplate, /Permissions are checked/);
+  assert.match(releaseWorkflow, /npm publish --provenance --access public/);
+  assert.match(releaseWorkflow, /id-token: write/);
+  assert.match(releaseWorkflow, /cargo test -p iroharness-realtime-core/);
 });
 
 test("package exposes TypeScript declarations for public entrypoints", () => {

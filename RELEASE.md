@@ -24,7 +24,14 @@ cargo build -p iroharness-realtime-core --bin iroharness-realtime-core-jsonl
 2. Update `package.json` version.
 3. Run the local checklist.
 4. Confirm GitHub Actions is green on `main`.
-5. Publish with npm provenance when available:
+5. Create a GitHub Release for the version tag, or run the `Release` workflow
+   manually with `dry_run=false`.
+
+The release workflow runs Node checks, Rust checks, package dry-run, and
+publishes with npm provenance. Configure `NPM_TOKEN` as a GitHub Actions secret
+before publishing.
+
+Manual fallback:
 
 ```bash
 npm publish --provenance
@@ -32,6 +39,6 @@ npm publish --provenance
 
 ## Post-Release
 
-- Create a Git tag matching the npm version.
+- Confirm the Git tag matches the npm version.
 - Confirm `npx iroharness init ./my-companion --character Iroha` works from the
   published package.
