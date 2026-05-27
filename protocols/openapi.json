@@ -250,6 +250,60 @@
         }
       }
     },
+    "/audience/resolve": {
+      "get": {
+        "summary": "Resolve a platform identity to an audience user",
+        "security": [
+          {
+            "adminToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "platform",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "platformUserId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "displayName",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Resolved audience identity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AudienceResolution"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing identity query parameters"
+          },
+          "401": {
+            "$ref": "#/components/responses/AdminTokenRequired"
+          }
+        }
+      }
+    },
     "/audience/users": {
       "post": {
         "summary": "Create or replace an audience user",
@@ -822,6 +876,35 @@
             }
           }
         }
+      },
+      "AudienceResolution": {
+        "type": "object",
+        "required": ["known", "user", "identity"],
+        "properties": {
+          "known": {
+            "type": "boolean"
+          },
+          "user": {
+            "$ref": "#/components/schemas/User"
+          },
+          "identity": {
+            "type": "object",
+            "required": ["platform", "platformUserId", "displayName"],
+            "properties": {
+              "platform": {
+                "type": "string"
+              },
+              "platformUserId": {
+                "type": "string"
+              },
+              "displayName": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": true
+          }
+        },
+        "additionalProperties": true
       },
       "Error": {
         "type": "object",

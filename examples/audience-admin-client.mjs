@@ -61,12 +61,17 @@ await jsonRequest("/audience/stream-sessions", {
   }
 });
 
+const resolved = await jsonRequest(
+  "/audience/resolve?platform=youtube&platformUserId=UC-demo-developer&displayName=Demo%20Developer"
+);
 const snapshot = await jsonRequest("/audience");
 
 console.log(
   JSON.stringify(
     {
       baseUrl,
+      resolvedUserId: resolved.user.id,
+      resolvedKnown: resolved.known,
       users: snapshot.users.length,
       identities: snapshot.userIdentities.length,
       permissionOverrides: snapshot.permissionOverrides.length,

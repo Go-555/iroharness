@@ -11,6 +11,8 @@ const adminToken = document.querySelector("#admin-token");
 const audienceTable = document.querySelector("#audience-table");
 const userForm = document.querySelector("#user-form");
 const identityForm = document.querySelector("#identity-form");
+const resolveForm = document.querySelector("#resolve-form");
+const resolveResult = document.querySelector("#resolve-result");
 const permissionForm = document.querySelector("#permission-form");
 const streamForm = document.querySelector("#stream-form");
 const params = new URLSearchParams(window.location.search);
@@ -209,6 +211,24 @@ identityForm?.addEventListener("submit", async (event) => {
     }
   });
   await loadAudience();
+});
+
+resolveForm?.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const platform = document.querySelector("#resolve-platform").value;
+  const platformUserId = document.querySelector("#resolve-platform-user-id").value.trim();
+  const displayName = document.querySelector("#resolve-display-name").value.trim();
+  const query = new URLSearchParams({
+    platform,
+    platformUserId,
+    ...(displayName ? { displayName } : {})
+  });
+  const resolved = await adminRequest(`/audience/resolve?${query}`);
+  if (resolveResult) {
+    resolveResult.textContent = resolved.known
+      ? `${resolved.user.id} / ${resolved.user.role} / ${resolved.user.relationship}`
+      : `anonymous / ${resolved.identity.platform}:${resolved.identity.platformUserId}`;
+  }
 });
 
 permissionForm?.addEventListener("submit", async (event) => {

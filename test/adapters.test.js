@@ -735,6 +735,7 @@ test("dev server exposes the OpenAPI document", async () => {
     response.json.paths["/turn"].post.summary,
     "Send a normalized turn to the macro harness"
   );
+  assert.equal(Boolean(response.json.paths["/audience/resolve"]), true);
   assert.equal(Boolean(response.json.paths["/audience/users/{userId}/permissions"]), true);
 });
 
@@ -809,6 +810,9 @@ test("dev server manages audience users, identities, permissions, and stream ses
       status: "paused"
     }
   });
+  const resolved = await callHandler(handler, {
+    url: "/audience/resolve?platform=youtube&platformUserId=UCDEV&displayName=Dev%20Channel"
+  });
   const snapshot = await callHandler(handler, { url: "/audience" });
 
   assert.equal(created.statusCode, 201);
@@ -821,6 +825,10 @@ test("dev server manages audience users, identities, permissions, and stream ses
   assert.equal(stream.json.streamSession.id, "stream_1");
   assert.equal(paused.statusCode, 200);
   assert.equal(paused.json.streamSession.status, "paused");
+  assert.equal(resolved.statusCode, 200);
+  assert.equal(resolved.json.known, true);
+  assert.equal(resolved.json.user.id, "dev_1");
+  assert.equal(resolved.json.identity.platform, "youtube");
   assert.equal(snapshot.json.users[0].identities.discord, "DDEV");
   assert.equal(snapshot.json.users[0].identities.youtube, "UCDEV");
   assert.equal(snapshot.json.permissionOverrides[0].scope, "stream:youtube");

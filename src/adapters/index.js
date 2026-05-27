@@ -1744,6 +1744,32 @@ export const createIroHarnessDevServerHandler = ({
         sendJson(response, 200, snapshot);
         return;
       }
+      if (request.method === "GET" && url.pathname === "/audience/resolve") {
+        if (!audienceRegistry || typeof audienceRegistry.resolveActor !== "function") {
+          sendJson(response, 404, { error: "audience_registry_not_configured" });
+          return;
+        }
+        const platform = url.searchParams.get("platform");
+        const platformUserId = url.searchParams.get("platformUserId");
+        if (!platform || !platformUserId) {
+          sendJson(response, 400, {
+            error: "invalid_audience_identity",
+            message: "platform and platformUserId query parameters are required"
+          });
+          return;
+        }
+        const actor = await audienceRegistry.resolveActor({
+          platform,
+          platformUserId,
+          displayName: url.searchParams.get("displayName") || ""
+        });
+        sendJson(response, 200, {
+          known: actor.known,
+          user: actor.user,
+          identity: actor.identity
+        });
+        return;
+      }
       if (request.method === "POST" && url.pathname === "/audience/users") {
         const payload = await readRequestJson(request);
         const user = await requireAudienceRegistry("registerUser").registerUser(payload);

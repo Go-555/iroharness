@@ -270,6 +270,7 @@ routes.
 
 ```text
 GET   /audience
+GET   /audience/resolve?platform=youtube&platformUserId=UC123
 POST  /audience/users
 PATCH /audience/users/:userId
 POST  /audience/users/:userId/identities
@@ -280,6 +281,9 @@ PATCH /audience/stream-sessions/:sessionId
 
 Use this for stream setup, fan/member role management, and linking platform IDs
 to one durable person before permissions and personality routing run.
+`/audience/resolve` is a preflight check for stream operators: paste a YouTube,
+Discord, Slack, browser, or VS Code identity and confirm whether it resolves to
+the expected user before the public event starts.
 
 ## Why This Layer Exists
 

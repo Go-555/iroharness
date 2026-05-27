@@ -193,12 +193,14 @@ test("browser demo includes audience admin UI for stream and fan operations", ()
     "admin-token-form",
     "user-form",
     "identity-form",
+    "resolve-form",
     "permission-form",
     "stream-form",
     "audience-table"
   ].forEach((id) => {
     assert.match(html, new RegExp(`id="${id}"`));
   });
+  assert.match(app, /\/audience\/resolve/);
   assert.match(app, /\/audience\/users/);
   assert.match(app, /\/audience\/stream-sessions/);
   assert.doesNotMatch(app, /innerHTML/);
@@ -223,6 +225,7 @@ test("OpenAPI document covers dev server and audience management routes", () => 
     "/body/{id}",
     "/body/{id}/events",
     "/audience",
+    "/audience/resolve",
     "/audience/users",
     "/audience/users/{userId}",
     "/audience/users/{userId}/identities",
@@ -233,6 +236,11 @@ test("OpenAPI document covers dev server and audience management routes", () => 
     assert.equal(Boolean(openapi.paths[path]), true, path);
   });
   assert.equal(openapi.components.securitySchemes.adminToken.type, "http");
+  assert.equal(
+    openapi.paths["/audience/resolve"].get.responses["200"].content["application/json"].schema
+      .$ref,
+    "#/components/schemas/AudienceResolution"
+  );
   assert.equal(
     openapi.paths["/audience/users/{userId}/permissions"].post.requestBody.content[
       "application/json"
@@ -253,6 +261,7 @@ test("audience admin client example follows the OpenAPI audience routes", () => 
     "/audience/users/developer_demo/identities",
     "/audience/users/developer_demo/permissions",
     "/audience/stream-sessions",
+    "/audience/resolve",
     "/audience"
   ].forEach((route) => {
     assert.match(example, new RegExp(route.replace(/[{}]/g, "\\$&")));

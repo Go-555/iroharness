@@ -117,6 +117,30 @@
             <button type="submit">Link Identity</button>
           </form>
 
+          <form id="resolve-form" class="admin-form">
+            <h2>Resolve</h2>
+            <label>
+              Platform
+              <select id="resolve-platform">
+                <option value="youtube">youtube</option>
+                <option value="discord">discord</option>
+                <option value="slack">slack</option>
+                <option value="browser">browser</option>
+                <option value="vscode">vscode</option>
+              </select>
+            </label>
+            <label>
+              Platform User ID
+              <input id="resolve-platform-user-id" value="UC123" />
+            </label>
+            <label>
+              Display Name
+              <input id="resolve-display-name" value="Fan One" />
+            </label>
+            <button type="submit">Resolve Identity</button>
+            <output id="resolve-result" class="resolve-result">not checked</output>
+          </form>
+
           <form id="permission-form" class="admin-form">
             <h2>Permission</h2>
             <label>
