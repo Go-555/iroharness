@@ -270,6 +270,7 @@ test("browser demo includes audience admin UI for stream and fan operations", ()
     "identity-form",
     "resolve-form",
     "permission-form",
+    "permission-expires-at",
     "stream-form",
     "audience-table"
   ].forEach((id) => {
@@ -277,6 +278,8 @@ test("browser demo includes audience admin UI for stream and fan operations", ()
   });
   assert.match(app, /\/audience\/resolve/);
   assert.match(app, /\/audience\/users/);
+  assert.match(app, /method: "DELETE"/);
+  assert.match(app, /permissionOverrides/);
   assert.match(app, /\/audience\/stream-sessions/);
   assert.doesNotMatch(app, /innerHTML/);
   assert.match(server, /userRegistry,/);

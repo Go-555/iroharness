@@ -127,12 +127,34 @@ const appendText = (parent, tagName, text, className = "") => {
   return element;
 };
 
+const formatExpiry = (expiresAt) => (expiresAt ? `until ${expiresAt}` : "no expiry");
+
+const createRevokeButton = (override) => {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "compact danger";
+  button.textContent = "Revoke";
+  button.addEventListener("click", async () => {
+    const query = new URLSearchParams({
+      permission: override.permission,
+      scope: override.scope || "global"
+    });
+    await adminRequest(
+      `/audience/users/${encodeURIComponent(override.userId)}/permissions?${query}`,
+      { method: "DELETE" }
+    );
+    await loadAudience();
+  });
+  return button;
+};
+
 const renderAudience = (snapshot) => {
   if (!audienceTable) {
     return;
   }
   const users = snapshot.users || [];
   const streams = snapshot.streamSessions || [];
+  const permissionOverrides = snapshot.permissionOverrides || [];
   audienceTable.replaceChildren();
 
   const userList = document.createElement("div");
@@ -160,11 +182,32 @@ const renderAudience = (snapshot) => {
     streamList.append(row);
   });
 
+  const permissionList = document.createElement("div");
+  permissionList.className = "audience-list";
+  permissionOverrides.forEach((override) => {
+    const row = document.createElement("article");
+    row.className = "audience-row permission-row";
+    appendText(row, "strong", override.userId);
+    appendText(row, "span", `${override.effect} ${override.permission} / ${override.scope}`);
+    appendText(row, "code", formatExpiry(override.expiresAt));
+    row.append(createRevokeButton(override));
+    permissionList.append(row);
+  });
+
   const usersTitle = document.createElement("h2");
   usersTitle.textContent = "Users";
   const streamsTitle = document.createElement("h2");
   streamsTitle.textContent = "Streams";
-  audienceTable.append(usersTitle, userList, streamsTitle, streamList);
+  const permissionsTitle = document.createElement("h2");
+  permissionsTitle.textContent = "Permission Overrides";
+  audienceTable.append(
+    usersTitle,
+    userList,
+    streamsTitle,
+    streamList,
+    permissionsTitle,
+    permissionList
+  );
 };
 
 const loadAudience = async () => {
@@ -234,12 +277,14 @@ resolveForm?.addEventListener("submit", async (event) => {
 permissionForm?.addEventListener("submit", async (event) => {
   event.preventDefault();
   const userId = document.querySelector("#permission-user-id").value.trim();
+  const expiresAt = document.querySelector("#permission-expires-at").value.trim();
   await adminRequest(`/audience/users/${encodeURIComponent(userId)}/permissions`, {
     method: "POST",
     body: {
       permission: document.querySelector("#permission-name").value,
       effect: document.querySelector("#permission-effect").value,
-      scope: document.querySelector("#permission-scope").value.trim()
+      scope: document.querySelector("#permission-scope").value.trim(),
+      ...(expiresAt ? { expiresAt } : {})
     }
   });
   await loadAudience();

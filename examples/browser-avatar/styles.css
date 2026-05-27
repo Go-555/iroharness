@@ -223,6 +223,17 @@ button {
   cursor: pointer;
 }
 
+button.compact {
+  min-width: 84px;
+  min-height: 36px;
+  padding: 0 12px;
+}
+
+button.danger {
+  color: #ffe9e9;
+  background: #8f3333;
+}
+
 .events {
   height: 220px;
   overflow: auto;
@@ -331,6 +342,10 @@ label {
   background: rgba(10, 14, 11, 0.5);
 }
 
+.permission-row {
+  grid-template-columns: 1fr 1.4fr 1.4fr auto;
+}
+
 .audience-row span,
 .audience-row code {
   color: #b9c8b4;
@@ -397,7 +412,8 @@ body.overlay .avatar-stage {
 
   .admin-token,
   .admin-grid,
-  .audience-row {
+  .audience-row,
+  .permission-row {
     grid-template-columns: 1fr;
   }
 
