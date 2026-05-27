@@ -93,7 +93,9 @@ const characterId = (name) =>
 
 const appSource = ({ character }) => {
   const id = characterId(character);
-  return `import {
+  return `import { existsSync, readFileSync } from "node:fs";
+
+import {
   createEchoBrain,
   createFileCharacterProfile,
   createFileProjectOs,
@@ -112,6 +114,26 @@ import {
   createLive2DBodyBridge,
   createVrmBodyBridge
 } from "iroharness/adapters";
+
+const loadEnvFile = (path = ".env") => {
+  if (!existsSync(path)) {
+    return;
+  }
+  readFileSync(path, "utf8")
+    .split(/\\r?\\n/)
+    .map((line) => line.trim())
+    .filter((line) => line && !line.startsWith("#") && line.includes("="))
+    .forEach((line) => {
+      const separator = line.indexOf("=");
+      const key = line.slice(0, separator).trim();
+      const value = line.slice(separator + 1).trim().replace(/^['"]|['"]$/g, "");
+      if (key && process.env[key] === undefined) {
+        process.env[key] = value;
+      }
+    });
+};
+
+loadEnvFile();
 
 const projectOs = createFileProjectOs({
   path: ".iroharness/pjos.json"
@@ -189,6 +211,7 @@ Generated with IroHarness.
 
 \`\`\`bash
 npm install
+cp .env.example .env
 npm start
 \`\`\`
 

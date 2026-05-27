@@ -77,6 +77,9 @@ test("CLI init creates a minimal IroHarness app", () => {
   assert.equal(packageJson.scripts["doctor:production"], "iroharness doctor . --production");
   assert.match(app, /createFileCharacterProfile/);
   assert.match(app, /createIroHarness/);
+  assert.match(app, /loadEnvFile/);
+  assert.match(app, /existsSync/);
+  assert.match(app, /process\.env\[key\] === undefined/);
   assert.match(app, /name: "Iroha"/);
   assert.match(app, /createFileProjectOs/);
   assert.match(app, /createFileUserRegistry/);
@@ -89,6 +92,7 @@ test("CLI init creates a minimal IroHarness app", () => {
   assert.match(readme, /\?view=overlay/);
   assert.match(readme, /\?view=admin/);
   assert.match(readme, /\/openapi\.json/);
+  assert.match(readme, /cp \.env\.example \.env/);
   assert.match(readme, /npm run doctor/);
   assert.match(readme, /IROHARNESS_ADMIN_TOKEN/);
   assert.match(readme, /VOICE\.md/);

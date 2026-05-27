@@ -81,6 +81,7 @@ Create a local companion app:
 npx iroharness init ./my-companion --character Iroha
 cd my-companion
 npm install
+cp .env.example .env
 npm run doctor
 npm start
 ```

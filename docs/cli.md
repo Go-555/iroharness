@@ -9,6 +9,7 @@ the macro harness and uses replaceable brains, devices, and micro harnesses.
 npx iroharness init ./my-companion --character Iroha
 cd my-companion
 npm install
+cp .env.example .env
 npm start
 ```
 
@@ -40,6 +41,8 @@ Use `--force` only when you want to overwrite generated files.
 generated markdown files are the local identity and memory source of truth.
 `package.json` includes `npm run doctor` and `npm run doctor:production`, and
 `.env.example` lists the common local, YouTube, Discord, and OBS settings.
+The generated app reads `.env` on startup without adding a runtime dependency;
+real environment variables still take precedence over `.env` values.
 Set `IROHARNESS_ADMIN_TOKEN` before exposing the server beyond a trusted local
 machine.
 
