@@ -79,6 +79,7 @@ Status labels:
 | GitHub CI | built-in | `.github/workflows/ci.yml` | Node, packaging, and Rust checks. |
 | npm release workflow | built-in | `.github/workflows/release.yml` | Publishes with provenance after Node/Rust gates. |
 | Inspiration map | guide | `docs/inspiration-map.md`, `docs/inspiration-map.html` | Explains what IroHarness borrows from CursorTuberKit, Neuro SDK, and AIAvatarStackChan. |
+| Absorption architecture | guide | `docs/absorption-architecture.md` | Defines the monorepo lanes for observing, contracting, adapting, simulating, and promoting upstream ideas. |
 
 ## Current Non-Goals
 

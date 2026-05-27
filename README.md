@@ -58,6 +58,8 @@ For how IroHarness learns from CursorTuberKit, Neuro SDK, and
 AIAvatarStackChan without becoming a clone, see
 [docs/inspiration-map.md](./docs/inspiration-map.md). A browser-readable
 version is available at [docs/inspiration-map.html](./docs/inspiration-map.html).
+The concrete monorepo absorption process is documented in
+[docs/absorption-architecture.md](./docs/absorption-architecture.md).
 
 ## Status
 

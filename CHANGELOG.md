@@ -67,6 +67,8 @@ Initial OSS skeleton for a character macro harness.
   auth, and npm auth
 - inspiration map and HTML comparison view for CursorTuberKit, Neuro SDK, and
   AIAvatarStackChan
+- monorepo absorption architecture for turning upstream ideas into contracts,
+  adapters, simulators, and core features
 - protocol schemas, golden fixtures, contract tests, and CI
 - browser screenshot E2E workflow for chat, OBS overlay, and audience admin
   views

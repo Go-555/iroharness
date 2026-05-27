@@ -151,6 +151,7 @@ test("OSS contribution metadata is present and aligned with harness boundaries",
   const matrix = readFileSync(join("docs", "capability-matrix.md"), "utf8");
   const inspirationMap = readFileSync(join("docs", "inspiration-map.md"), "utf8");
   const inspirationHtml = readFileSync(join("docs", "inspiration-map.html"), "utf8");
+  const absorptionArchitecture = readFileSync(join("docs", "absorption-architecture.md"), "utf8");
   const adapterGuide = readFileSync(join("docs", "build-an-adapter.md"), "utf8");
   const privacyGuide = readFileSync(join("docs", "privacy-and-security.md"), "utf8");
   const deploymentGuide = readFileSync(join("docs", "deployment.md"), "utf8");
@@ -205,6 +206,7 @@ test("OSS contribution metadata is present and aligned with harness boundaries",
   assert.match(readme, /\?view=overlay/);
   assert.match(readme, /capability-matrix/);
   assert.match(readme, /inspiration-map/);
+  assert.match(readme, /absorption-architecture/);
   assert.match(readme, /build-an-adapter/);
   assert.match(readme, /docs\/deployment\.md/);
   assert.match(readme, /docs\/postgres-backup-restore\.md/);
@@ -224,6 +226,7 @@ test("OSS contribution metadata is present and aligned with harness boundaries",
     "OSS readiness check",
     "publish preflight check",
     "inspiration map and HTML comparison view",
+    "monorepo absorption architecture",
     "browser screenshot E2E workflow",
     "browser admin UI",
     "HTTP brain gateway demo",
@@ -245,6 +248,7 @@ test("OSS contribution metadata is present and aligned with harness boundaries",
     "OSS readiness check for package and repository publication",
     "publish preflight check for GitHub and npm credentials",
     "inspiration map and HTML comparison view for adjacent avatar, game SDK",
+    "monorepo absorption architecture for upstream ideas",
     "browser admin UI for users, identities, permissions, revoke, and streams",
     "Production Hardening"
   ].forEach((entry) => {
@@ -291,6 +295,7 @@ test("OSS contribution metadata is present and aligned with harness boundaries",
   });
   assert.match(matrix, /PostgreSQL audience backup\/restore/);
   assert.match(matrix, /Inspiration map/);
+  assert.match(matrix, /Absorption architecture/);
   assert.match(inspirationMap, /CursorTuberKit/);
   assert.match(inspirationMap, /Neuro SDK/);
   assert.match(inspirationMap, /AIAvatarStackChan/);
@@ -300,6 +305,9 @@ test("OSS contribution metadata is present and aligned with harness boundaries",
   assert.match(inspirationHtml, /Neuro SDK/);
   assert.match(inspirationHtml, /AIAvatarStackChan/);
   assert.match(inspirationHtml, /まずはIroHarness本体1リポジトリ/);
+  assert.match(absorptionArchitecture, /observe -> contract -> adapter -> simulator -> core promotion/);
+  assert.match(absorptionArchitecture, /Serialized speech playback queue/);
+  assert.match(absorptionArchitecture, /Device config schema/);
   assert.match(postgresBackup, /pg_dump/);
   assert.match(postgresBackup, /--table=public\.iroharness_audit_log/);
   assert.match(postgresRestore, /IROHARNESS_RESTORE_CONFIRM/);

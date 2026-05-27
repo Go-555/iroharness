@@ -114,6 +114,7 @@ micro harnesses.
 - [x] publish preflight check for GitHub and npm credentials
 - [x] inspiration map and HTML comparison view for adjacent avatar, game SDK,
   and robot projects
+- [x] monorepo absorption architecture for upstream ideas
 
 ## Guiding Principle
 
