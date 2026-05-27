@@ -317,6 +317,7 @@ For voice/text/deep model switching:
 
 ```bash
 npm run example:brains
+npm run example:brain-gateway
 ```
 
 Generated companion apps can also route each brain slot to a model gateway from
@@ -328,6 +329,10 @@ IROHARNESS_TEXT_BRAIN_ENDPOINT=http://127.0.0.1:8788/text
 IROHARNESS_DEEP_BRAIN_ENDPOINT=http://127.0.0.1:8788/deep
 IROHARNESS_BRAIN_AUTH_TOKEN=optional-bearer-token
 ```
+
+`example:brain-gateway` is a dependency-free local HTTP gateway that implements
+the same request/response shape as `createHttpBrain`, so generated apps can test
+slot routing before you connect a real model provider.
 
 See [docs/brains.md](./docs/brains.md).
 

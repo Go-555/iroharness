@@ -72,9 +72,12 @@ It should return:
 
 ```bash
 npm run example:brains
+npm run example:brain-gateway
 ```
 
-The example shows voice/text/deep routing without changing character identity.
+`example:brains` shows voice/text/deep routing without changing character
+identity. `example:brain-gateway` starts a local HTTP brain gateway on
+`127.0.0.1:8788` with `/voice`, `/text`, and `/deep` routes.
 
 ## Generated App Environment
 
@@ -94,3 +97,7 @@ IROHARNESS_DEEP_BRAIN_MODEL=deep-reasoning-model
 The important invariant is that each brain receives the same macro context:
 character profile, actor, audience permissions, route, current state, and PJOS.
 Only the engine changes.
+
+The gateway endpoint is intentionally thin. In production, keep this protocol
+shape and replace the demo response logic with calls to your preferred voice,
+text, or deep reasoning model.

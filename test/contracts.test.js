@@ -239,6 +239,50 @@ test("adapter skeleton example runs all public adapter contracts", () => {
   assert.equal(output.brain.emotion, "attentive");
 });
 
+test("brain gateway example documents the generated app HTTP brain contract", () => {
+  const pkg = JSON.parse(readFileSync("package.json", "utf8"));
+  const readme = readFileSync("README.md", "utf8");
+  const brains = readFileSync(join("docs", "brains.md"), "utf8");
+  const gateway = readFileSync(join("examples", "brain-gateway.mjs"), "utf8");
+
+  assert.match(pkg.scripts["example:brain-gateway"], /brain-gateway/);
+  assert.match(pkg.scripts.check, /examples\/brain-gateway\.mjs/);
+  assert.match(readme, /example:brain-gateway/);
+  assert.match(brains, /127\.0\.0\.1:8788/);
+  assert.match(gateway, /POST \/voice/);
+  assert.match(gateway, /POST \/text/);
+  assert.match(gateway, /POST \/deep/);
+  assert.match(gateway, /payload\.audience/);
+  assert.match(gateway, /export const responseFor/);
+  assert.doesNotMatch(gateway, /innerHTML/);
+});
+
+test("brain gateway example returns slot-specific replies from macro context", async () => {
+  const { responseFor } = await import("../examples/brain-gateway.mjs");
+  const response = responseFor({
+    slot: "deep",
+    payload: {
+      model: "deep-demo",
+      character: { name: "Iroha" },
+      actor: { displayName: "Developer" },
+      audience: {
+        responseDepth: "deep",
+        permissions: ["chat_public", "deep_discussion"]
+      },
+      input: { text: "設計を詰めたい" },
+      route: { kind: "deep" },
+      projectOs: { tickets: [{ id: "ticket_1" }] }
+    }
+  });
+
+  assert.match(response.text, /Iroha\/deep\/deep-demo/);
+  assert.match(response.text, /Developer向けのdeep応答/);
+  assert.equal(response.emotion, "focused");
+  assert.equal(response.debug.route, "deep");
+  assert.deepEqual(response.debug.permissions, ["chat_public", "deep_discussion"]);
+  assert.equal(response.debug.ticketCount, 1);
+});
+
 test("package exposes TypeScript declarations for public entrypoints", () => {
   const pkg = JSON.parse(readFileSync("package.json", "utf8"));
 
