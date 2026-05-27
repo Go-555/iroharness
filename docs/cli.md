@@ -52,6 +52,65 @@ safe testing.
 Set `IROHARNESS_ADMIN_TOKEN` before exposing the server beyond a trusted local
 machine.
 
+## Audience Setup
+
+The generated app stores local audience data in `.iroharness/users.json`.
+Use `iroharness audience` before a stream to link platform IDs and grant scoped
+permissions without opening the admin UI.
+
+Register a user and link YouTube/Discord IDs:
+
+```bash
+npx iroharness audience user ./my-companion \
+  --id owner \
+  --display-name "Owner" \
+  --role owner \
+  --youtube UCxxx \
+  --discord 123456
+```
+
+Link another platform identity to the same user:
+
+```bash
+npx iroharness audience link ./my-companion \
+  --user owner \
+  --platform slack \
+  --platform-user-id U123
+```
+
+Register a trusted fan or moderator, then grant a temporary stream operation
+permission:
+
+```bash
+npx iroharness audience user ./my-companion \
+  --id trusted-fan \
+  --display-name "Trusted Fan" \
+  --role fan \
+  --discord 999999
+
+npx iroharness audience grant ./my-companion \
+  --user trusted-fan \
+  --permission manage_stream \
+  --scope stream:youtube \
+  --reason "guest moderator"
+```
+
+Register a live stream session for scoped permissions:
+
+```bash
+npx iroharness audience stream ./my-companion \
+  --id youtube-live \
+  --platform youtube \
+  --channel "$YOUTUBE_LIVE_CHAT_ID" \
+  --host owner
+```
+
+Inspect the file-backed registry:
+
+```bash
+npx iroharness audience list ./my-companion --json
+```
+
 ## Doctor
 
 Validate that a generated app still has the expected local shape:

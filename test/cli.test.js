@@ -158,6 +158,81 @@ test("CLI doctor validates generated companion app shape", () => {
   assert.equal(parsed.checks.some((check) => check.label === "SOUL.md" && check.ok), true);
 });
 
+test("CLI audience manages users, platform identities, permissions, and streams", () => {
+  const dir = mkdtempSync(join(tmpdir(), "iroharness-audience-"));
+  const appDir = join(dir, "companion");
+  const init = runCli(["init", appDir, "--character", "Iroha"]);
+  const user = runCli([
+    "audience",
+    "user",
+    appDir,
+    "--id",
+    "owner",
+    "--display-name",
+    "Owner",
+    "--role",
+    "owner",
+    "--youtube",
+    "UCOWNER",
+    "--discord",
+    "DOWNER"
+  ]);
+  const link = runCli([
+    "audience",
+    "link",
+    appDir,
+    "--user",
+    "owner",
+    "--platform",
+    "slack",
+    "--platform-user-id",
+    "UOWNER"
+  ]);
+  const grant = runCli([
+    "audience",
+    "grant",
+    appDir,
+    "--user",
+    "owner",
+    "--permission",
+    "manage_stream",
+    "--scope",
+    "stream:youtube"
+  ]);
+  const stream = runCli([
+    "audience",
+    "stream",
+    appDir,
+    "--id",
+    "youtube-live",
+    "--platform",
+    "youtube",
+    "--channel",
+    "live-chat-id",
+    "--host",
+    "owner"
+  ]);
+  const list = runCli(["audience", "list", appDir, "--json"]);
+  const snapshot = JSON.parse(list.stdout);
+
+  assert.equal(init.status, 0, init.stderr);
+  assert.equal(user.status, 0, user.stderr);
+  assert.equal(link.status, 0, link.stderr);
+  assert.equal(grant.status, 0, grant.stderr);
+  assert.equal(stream.status, 0, stream.stderr);
+  assert.equal(list.status, 0, list.stderr);
+  assert.match(user.stdout, /registered user owner/);
+  assert.match(link.stdout, /linked slack:UOWNER -> owner/);
+  assert.match(grant.stdout, /allow manage_stream for owner in stream:youtube/);
+  assert.match(stream.stdout, /registered stream youtube-live/);
+  assert.equal(snapshot.users[0].id, "owner");
+  assert.equal(snapshot.users[0].identities.youtube, "UCOWNER");
+  assert.equal(snapshot.users[0].identities.discord, "DOWNER");
+  assert.equal(snapshot.users[0].identities.slack, "UOWNER");
+  assert.equal(snapshot.permissionOverrides[0].permission, "manage_stream");
+  assert.equal(snapshot.streamSessions[0].platformChannelId, "live-chat-id");
+});
+
 test("CLI doctor production profile requires a strong admin token", () => {
   const dir = mkdtempSync(join(tmpdir(), "iroharness-doctor-production-"));
   const appDir = join(dir, "companion");

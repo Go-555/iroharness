@@ -2,15 +2,24 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
 
+import { createFileUserRegistry } from "../src/index.js";
+
 const usage = `IroHarness
 
 Usage:
   iroharness init [dir] [--name <package-name>] [--character <character-name>] [--force]
+  iroharness audience user [dir] --id <user-id> [--display-name <name>] [--role <role>] [--youtube <id>] [--discord <id>]
+  iroharness audience link [dir] --user <user-id> --platform <platform> --platform-user-id <id>
+  iroharness audience grant [dir] --user <user-id> --permission <permission> [--scope <scope>]
+  iroharness audience stream [dir] --id <stream-id> --platform <platform> --channel <channel-id>
+  iroharness audience list [dir] [--json]
   iroharness doctor [dir] [--production] [--json]
   iroharness --help
 
 Examples:
   iroharness init ./my-companion --character Iroha
+  iroharness audience user ./my-companion --id keita --display-name Keita --role developer --youtube UCxxx --discord 123456
+  iroharness audience grant ./my-companion --user keita --permission manage_stream --scope stream:youtube
   iroharness doctor ./my-companion
   IROHARNESS_ADMIN_TOKEN=... iroharness doctor ./my-companion --production
   iroharness doctor ./my-companion --production --json
@@ -24,6 +33,22 @@ const parseArgs = (argv) => {
   let force = false;
   let production = false;
   let json = false;
+  let action = null;
+  let userId = null;
+  let displayName = null;
+  let role = "fan";
+  let relationship = null;
+  let platform = null;
+  let platformUserId = null;
+  let permission = null;
+  let scope = "global";
+  let effect = "allow";
+  let reason = null;
+  let channel = null;
+  let title = null;
+  let hostUserId = null;
+  const identities = {};
+  const positional = [];
 
   for (let index = 0; index < rest.length; index += 1) {
     const value = rest[index];
@@ -49,19 +74,114 @@ const parseArgs = (argv) => {
       json = true;
       continue;
     }
-    if (!value.startsWith("-")) {
-      dir = value;
+    if (value === "--id") {
+      userId = rest[index + 1];
+      index += 1;
+      continue;
     }
+    if (value === "--user") {
+      userId = rest[index + 1];
+      index += 1;
+      continue;
+    }
+    if (value === "--display-name") {
+      displayName = rest[index + 1];
+      index += 1;
+      continue;
+    }
+    if (value === "--role") {
+      role = rest[index + 1] || role;
+      index += 1;
+      continue;
+    }
+    if (value === "--relationship") {
+      relationship = rest[index + 1];
+      index += 1;
+      continue;
+    }
+    if (value === "--platform") {
+      platform = rest[index + 1];
+      index += 1;
+      continue;
+    }
+    if (value === "--platform-user-id") {
+      platformUserId = rest[index + 1];
+      index += 1;
+      continue;
+    }
+    if (value === "--permission") {
+      permission = rest[index + 1];
+      index += 1;
+      continue;
+    }
+    if (value === "--scope") {
+      scope = rest[index + 1] || scope;
+      index += 1;
+      continue;
+    }
+    if (value === "--effect") {
+      effect = rest[index + 1] || effect;
+      index += 1;
+      continue;
+    }
+    if (value === "--reason") {
+      reason = rest[index + 1];
+      index += 1;
+      continue;
+    }
+    if (value === "--channel") {
+      channel = rest[index + 1];
+      index += 1;
+      continue;
+    }
+    if (value === "--title") {
+      title = rest[index + 1];
+      index += 1;
+      continue;
+    }
+    if (value === "--host") {
+      hostUserId = rest[index + 1];
+      index += 1;
+      continue;
+    }
+    if (["--youtube", "--discord", "--slack", "--vscode", "--browser", "--m5stack", "--even-g2"].includes(value)) {
+      identities[value.slice(2)] = rest[index + 1];
+      index += 1;
+      continue;
+    }
+    if (!value.startsWith("-")) {
+      positional.push(value);
+    }
+  }
+  if (command === "audience") {
+    [action = null, dir = "."] = positional;
+  } else if (positional.length > 0) {
+    dir = positional[positional.length - 1];
   }
 
   return {
     command,
+    action,
     dir,
     name,
     character,
     force,
     production,
-    json
+    json,
+    userId,
+    displayName,
+    role,
+    relationship,
+    platform,
+    platformUserId,
+    permission,
+    scope,
+    effect,
+    reason,
+    channel,
+    title,
+    hostUserId,
+    identities
   };
 };
 
@@ -380,6 +500,16 @@ adapters are engines or interfaces. They do not replace the character.
 
 Edit SOUL.md, IDENTITY.md, MEMORY.md, and VOICE.md to change the character
 profile.
+
+## Audience Setup
+
+Link the same person across YouTube and Discord before going live:
+
+\`\`\`bash
+npx iroharness audience user . --id owner --display-name "Owner" --role owner --youtube UCxxx --discord 123456
+npx iroharness audience stream . --id youtube-live --platform youtube --channel "$YOUTUBE_LIVE_CHAT_ID" --host owner
+npx iroharness audience grant . --user owner --permission manage_stream --scope stream:youtube
+\`\`\`
 `;
 
 const init = ({ dir, name, character, force }) => {
@@ -530,6 +660,106 @@ const doctor = ({ dir, production = false }) => {
   };
 };
 
+const audienceRegistry = (dir) =>
+  createFileUserRegistry({
+    path: join(resolve(dir), ".iroharness", "users.json")
+  });
+
+const requireValue = (value, label) => {
+  if (!value) {
+    throw new Error(`${label} is required`);
+  }
+  return value;
+};
+
+const printAudienceResult = ({ json, result, summary }) => {
+  if (json) {
+    console.log(JSON.stringify(result, null, 2));
+    return;
+  }
+  console.log(summary);
+};
+
+const audience = (args) => {
+  const registry = audienceRegistry(args.dir);
+  if (args.action === "user") {
+    const user = registry.registerUser({
+      id: requireValue(args.userId, "--id"),
+      displayName: args.displayName || args.userId,
+      role: args.role,
+      relationship: args.relationship || args.role,
+      identities: Object.fromEntries(
+        Object.entries(args.identities).filter(([, value]) => Boolean(value))
+      )
+    });
+    printAudienceResult({
+      json: args.json,
+      result: user,
+      summary: `registered user ${user.id} (${user.role})`
+    });
+    return;
+  }
+  if (args.action === "link") {
+    const identity = registry.linkIdentity({
+      userId: requireValue(args.userId, "--user"),
+      platform: requireValue(args.platform, "--platform"),
+      platformUserId: requireValue(args.platformUserId, "--platform-user-id"),
+      displayName: args.displayName
+    });
+    printAudienceResult({
+      json: args.json,
+      result: identity,
+      summary: `linked ${identity.platform}:${identity.platformUserId} -> ${identity.userId}`
+    });
+    return;
+  }
+  if (args.action === "grant") {
+    const override = registry.setPermissionOverride({
+      userId: requireValue(args.userId, "--user"),
+      permission: requireValue(args.permission, "--permission"),
+      effect: args.effect,
+      scope: args.scope,
+      reason: args.reason
+    });
+    printAudienceResult({
+      json: args.json,
+      result: override,
+      summary: `${override.effect} ${override.permission} for ${override.userId} in ${override.scope}`
+    });
+    return;
+  }
+  if (args.action === "stream") {
+    const stream = registry.createStreamSession({
+      id: requireValue(args.userId, "--id"),
+      platform: requireValue(args.platform, "--platform"),
+      platformChannelId: requireValue(args.channel, "--channel"),
+      title: args.title,
+      hostUserId: args.hostUserId
+    });
+    printAudienceResult({
+      json: args.json,
+      result: stream,
+      summary: `registered stream ${stream.id} (${stream.platform}:${stream.platformChannelId})`
+    });
+    return;
+  }
+  if (args.action === "list") {
+    const snapshot = registry.snapshot();
+    printAudienceResult({
+      json: args.json,
+      result: snapshot,
+      summary: [
+        `users: ${snapshot.users.length}`,
+        `identities: ${snapshot.userIdentities.length}`,
+        `permission overrides: ${snapshot.permissionOverrides.length}`,
+        `stream sessions: ${snapshot.streamSessions.length}`
+      ].join("\n")
+    });
+    return;
+  }
+  throw new Error(`Unknown audience action: ${args.action || "(missing)"}\n\n${usage}`);
+};
+
 const main = () => {
   const args = parseArgs(process.argv.slice(2));
   if (args.command === "--help" || args.command === "-h" || args.command === "help") {
@@ -553,6 +783,10 @@ const main = () => {
       throw new Error(`IroHarness project check failed in ${result.targetDir}`);
     }
     console.log(`IroHarness project looks ready: ${result.targetDir}`);
+    return;
+  }
+  if (args.command === "audience") {
+    audience(args);
     return;
   }
   if (args.command !== "init") {
