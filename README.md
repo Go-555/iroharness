@@ -619,6 +619,10 @@ iroharness_audit_log
 This is the table layer for OBS/YouTube streams, Discord fan chats, and
 developer-only work delegation. The audit table keeps privileged audience
 changes reviewable without turning chat logs into the source of truth.
+For backup and restore, use
+[docs/postgres-backup-restore.md](./docs/postgres-backup-restore.md) and the
+`examples/postgres-audience-backup.sh` /
+`examples/postgres-audience-restore.sh` scripts.
 
 Use it from the core with a `pg`-style query function:
 

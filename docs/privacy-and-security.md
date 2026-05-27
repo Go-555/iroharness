@@ -135,6 +135,14 @@ deployment secret manager rather than project files. The schema includes
 `iroharness_audit_log` so production user, identity, permission, and stream
 session changes can be reviewed without relying on chat history.
 
+For production backup and restore recipes, see:
+
+```text
+docs/postgres-backup-restore.md
+examples/postgres-audience-backup.sh
+examples/postgres-audience-restore.sh
+```
+
 For concrete launchd, systemd, Tailscale, Caddy, and nginx examples, see:
 
 ```text

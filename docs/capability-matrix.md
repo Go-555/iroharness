@@ -69,6 +69,7 @@ Status labels:
 | File-backed local app | built-in | `iroharness init` | Generates a runnable local companion app. |
 | Doctor checks | built-in | `iroharness doctor --production --json` | CI/deployment preflight for generated apps. |
 | PostgreSQL/Supabase audience schema | contract | `protocols/sql/postgres-audience.sql` | Production table layer for users, identities, permissions, stream sessions, and audit logs. |
+| PostgreSQL audience backup/restore | guide | `docs/postgres-backup-restore.md`, `examples/postgres-audience-backup.sh`, `examples/postgres-audience-restore.sh` | `pg_dump` and `pg_restore` recipes scoped to audience tables. |
 | Deployment examples | guide | `docs/deployment.md`, `examples/deployment/` | Mac mini launchd, Linux systemd, Tailscale exposure, and reverse proxy templates. |
 | OpenAPI | contract | `protocols/openapi.json`, `GET /openapi.json` | Local server route contract. |
 | GitHub CI | built-in | `.github/workflows/ci.yml` | Node, packaging, and Rust checks. |

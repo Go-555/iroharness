@@ -29,6 +29,8 @@ Initial OSS skeleton for a character macro harness.
   stream permissions
 - deployment guide and templates for Mac mini `launchd`, Linux `systemd`,
   Tailscale-only exposure, and Caddy/nginx reverse proxies
+- PostgreSQL/Supabase audience backup and restore recipes using `pg_dump` and
+  `pg_restore`
 
 ### Platforms, Bodies, And Harness Interop
 
