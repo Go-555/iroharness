@@ -66,12 +66,15 @@ test("CLI init creates a minimal IroHarness app", () => {
   assert.equal(existsSync(join(appDir, "IDENTITY.md")), true);
   assert.equal(existsSync(join(appDir, "MEMORY.md")), true);
   assert.equal(existsSync(join(appDir, "VOICE.md")), true);
+  assert.equal(existsSync(join(appDir, ".env.example")), true);
   assert.equal(existsSync(join(appDir, ".iroharness")), true);
 
   const packageJson = JSON.parse(readFileSync(join(appDir, "package.json"), "utf8"));
   const app = readFileSync(join(appDir, "src", "app.mjs"), "utf8");
 
   assert.equal(packageJson.dependencies.iroharness, "^0.1.0");
+  assert.equal(packageJson.scripts.doctor, "iroharness doctor .");
+  assert.equal(packageJson.scripts["doctor:production"], "iroharness doctor . --production");
   assert.match(app, /createFileCharacterProfile/);
   assert.match(app, /createIroHarness/);
   assert.match(app, /name: "Iroha"/);
@@ -86,7 +89,15 @@ test("CLI init creates a minimal IroHarness app", () => {
   assert.match(readme, /\?view=overlay/);
   assert.match(readme, /\?view=admin/);
   assert.match(readme, /\/openapi\.json/);
+  assert.match(readme, /npm run doctor/);
+  assert.match(readme, /IROHARNESS_ADMIN_TOKEN/);
   assert.match(readme, /VOICE\.md/);
+
+  const envExample = readFileSync(join(appDir, ".env.example"), "utf8");
+  assert.match(envExample, /PORT=4178/);
+  assert.match(envExample, /IROHARNESS_ADMIN_TOKEN=/);
+  assert.match(envExample, /DISCORD_BOT_TOKEN=/);
+  assert.match(envExample, /OBS_WEBSOCKET_URL=/);
 });
 
 test("CLI init refuses to overwrite generated files without force", () => {
@@ -110,6 +121,7 @@ test("CLI doctor validates generated companion app shape", () => {
   assert.match(doctor.stdout, /ok package\.json/);
   assert.match(doctor.stdout, /ok SOUL\.md/);
   assert.match(doctor.stdout, /ok VOICE\.md/);
+  assert.match(doctor.stdout, /ok \.env\.example/);
   assert.match(doctor.stdout, /IroHarness project looks ready/);
 });
 

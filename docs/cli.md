@@ -20,6 +20,7 @@ Generated files:
 - `IDENTITY.md`
 - `MEMORY.md`
 - `VOICE.md`
+- `.env.example`
 - `.iroharness/`
 - `.gitignore`
 - `README.md`
@@ -37,6 +38,8 @@ Use `--force` only when you want to overwrite generated files.
 
 `src/app.mjs` loads the character through `createFileCharacterProfile`, so the
 generated markdown files are the local identity and memory source of truth.
+`package.json` includes `npm run doctor` and `npm run doctor:production`, and
+`.env.example` lists the common local, YouTube, Discord, and OBS settings.
 Set `IROHARNESS_ADMIN_TOKEN` before exposing the server beyond a trusted local
 machine.
 
@@ -49,7 +52,7 @@ npx iroharness doctor ./my-companion
 ```
 
 The doctor command checks for `package.json`, `src/app.mjs`, `.iroharness/`,
-`SOUL.md`, `IDENTITY.md`, `MEMORY.md`, and `VOICE.md`.
+`SOUL.md`, `IDENTITY.md`, `MEMORY.md`, `VOICE.md`, and `.env.example`.
 
 Before exposing the companion server through Tailscale, a tunnel, a reverse
 proxy, Discord, YouTube, or OBS tooling, run the production profile:

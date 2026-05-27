@@ -73,7 +73,9 @@ const packageJson = ({ name }) =>
       private: true,
       type: "module",
       scripts: {
-        start: "node src/app.mjs"
+        start: "node src/app.mjs",
+        doctor: "iroharness doctor .",
+        "doctor:production": "iroharness doctor . --production"
       },
       dependencies: {
         iroharness: "^0.1.0"
@@ -197,6 +199,16 @@ The app starts a local browser companion server:
 - \`/?view=admin\` for audience, identity, permission, and stream setup
 - \`/openapi.json\` for the local HTTP API contract
 
+## Safety Check
+
+\`\`\`bash
+npm run doctor
+IROHARNESS_ADMIN_TOKEN="replace-with-a-long-random-token" npm run doctor:production
+\`\`\`
+
+Set \`IROHARNESS_ADMIN_TOKEN\` before exposing this server through Tailscale,
+a tunnel, reverse proxy, Discord, YouTube, or OBS tooling.
+
 ## Character
 
 ${character} is the macro harness identity. Models, micro harnesses, and body
@@ -248,9 +260,25 @@ const init = ({ dir, name, character, force }) => {
     content: "# Voice\n\nShort, natural, responsive, and consistent across text and speech.\n"
   });
   writeFile({
+    path: join(targetDir, ".env.example"),
+    force,
+    content: [
+      "PORT=4178",
+      "IROHARNESS_ADMIN_TOKEN=",
+      "YOUTUBE_API_KEY=",
+      "YOUTUBE_LIVE_CHAT_ID=",
+      "DISCORD_BOT_TOKEN=",
+      "DISCORD_BOT_USER_ID=",
+      "OBS_WEBSOCKET_URL=ws://127.0.0.1:4455",
+      "OBS_WEBSOCKET_PASSWORD=",
+      "OBS_OVERLAY_INPUT=IroHarness Overlay",
+      ""
+    ].join("\n")
+  });
+  writeFile({
     path: join(targetDir, ".gitignore"),
     force,
-    content: "node_modules\n.iroharness/*.json\n"
+    content: "node_modules\n.env\n.iroharness/*.json\n"
   });
 
   return {
@@ -286,6 +314,10 @@ const doctor = ({ dir, production = false }) => {
     {
       label: "VOICE.md",
       path: join(targetDir, "VOICE.md")
+    },
+    {
+      label: ".env.example",
+      path: join(targetDir, ".env.example")
     },
     {
       label: ".iroharness",

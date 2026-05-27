@@ -80,8 +80,8 @@ Create a local companion app:
 ```bash
 npx iroharness init ./my-companion --character Iroha
 cd my-companion
-npx iroharness doctor .
 npm install
+npm run doctor
 npm start
 ```
 
@@ -89,7 +89,7 @@ Before exposing the server beyond a trusted local machine, set an admin token
 and run the production doctor:
 
 ```bash
-IROHARNESS_ADMIN_TOKEN="$(openssl rand -hex 24)" npx iroharness doctor . --production
+IROHARNESS_ADMIN_TOKEN="$(openssl rand -hex 24)" npm run doctor:production
 ```
 
 Or run the repository examples:
