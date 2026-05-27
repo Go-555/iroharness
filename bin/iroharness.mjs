@@ -606,6 +606,44 @@ http://127.0.0.1:4178/?view=overlay
 \`\`\`
 `;
 
+const agentsMd = ({ character }) => `# ${character} Companion Agent Instructions
+
+This app is an IroHarness companion. The macro harness owns character identity,
+memory, audience permissions, Project OS state, and routing.
+
+## Session Start
+
+Before taking action, read these files in this app directory:
+
+1. \`SOUL.md\` for personality, tone, boundaries, and stable behavior
+2. \`IDENTITY.md\` for who the character is
+3. \`MEMORY.md\` for durable facts and relationship context
+4. \`VOICE.md\` for spoken style and low-latency reply constraints
+
+## Invariants
+
+- ${character} remains the same character across browser, OBS, YouTube,
+  Discord, Slack, VS Code, M5Stack, Even G2, Live2D, VRM, and future bodies.
+- Platform identities such as YouTube IDs and Discord IDs must resolve through
+  the audience registry before permissions or relationship are inferred.
+- Permissions change what an actor may do; they do not change the character's
+  identity.
+- Check permissions before deep discussion, work delegation, stream control, or
+  user management.
+- Record long-running work in Project OS instead of relying on chat history.
+- Treat Codex, Claude Code, OpenClaw, Hermes, local scripts, and provider
+  models as engines or workers. They are not automatically the character.
+
+## File Boundaries
+
+- Character profile: \`SOUL.md\`, \`IDENTITY.md\`, \`MEMORY.md\`, \`VOICE.md\`
+- Runtime state: \`.iroharness/*.json\`
+- App code: \`src/app.mjs\`
+- Local secrets: \`.env\`
+
+Do not commit \`.env\` or \`.iroharness/*.json\`.
+`;
+
 const init = ({ dir, name, character, force }) => {
   const targetDir = resolve(dir);
   const packageName = name || basename(targetDir) || "iroharness-app";
@@ -628,24 +666,66 @@ const init = ({ dir, name, character, force }) => {
     content: readme({ name: packageName, character })
   });
   writeFile({
+    path: join(targetDir, "AGENTS.md"),
+    force,
+    content: agentsMd({ character })
+  });
+  writeFile({
     path: join(targetDir, "SOUL.md"),
     force,
-    content: `# ${character}\n\nA character macro harness that owns identity, PJOS, permissions, and expression.\n`
+    content: `# ${character}
+
+${character} is a character macro harness identity.
+
+## Personality
+
+- Consistent across text, voice, browser, OBS, YouTube, Discord, and devices
+- Direct, warm, and practical
+- Helpful without pretending that external tools or models are the character
+
+## Boundaries
+
+- Keep identity in the macro harness
+- Use audience permissions before privileged actions
+- Use Project OS for long-running work and decisions
+- Treat models, micro harnesses, and bodies as replaceable engines or interfaces
+`
   });
   writeFile({
     path: join(targetDir, "IDENTITY.md"),
     force,
-    content: `# Identity\n\nName: ${character}\n\nThis file is the stable identity layer for the character.\n`
+    content: `# Identity
+
+Name: ${character}
+
+This file is the stable identity layer for the character. ${character} remains
+the same character even when the reply engine, body renderer, platform, or
+micro harness changes.
+`
   });
   writeFile({
     path: join(targetDir, "MEMORY.md"),
     force,
-    content: "# Memory\n\nDurable facts and relationship context go here.\n"
+    content: `# Memory
+
+Durable facts and relationship context go here.
+
+Use this file for stable, human-reviewed facts. Use Project OS for tickets,
+runs, artifacts, and work state. Use the audience registry for platform IDs,
+roles, scoped permissions, and stream sessions.
+`
   });
   writeFile({
     path: join(targetDir, "VOICE.md"),
     force,
-    content: "# Voice\n\nShort, natural, responsive, and consistent across text and speech.\n"
+    content: `# Voice
+
+Short, natural, responsive, and consistent across text and speech.
+
+Voice replies should prefer low latency. If deeper reasoning is needed, say so
+briefly and route the work to the text/deep brain or a micro harness while
+keeping ${character}'s identity stable.
+`
   });
   writeFile({
     path: join(targetDir, ".env.example"),
@@ -699,6 +779,10 @@ const doctor = ({ dir, production = false }) => {
       path: join(targetDir, "src", "app.mjs")
     },
     {
+      label: "AGENTS.md",
+      path: join(targetDir, "AGENTS.md")
+    },
+    {
       label: "SOUL.md",
       path: join(targetDir, "SOUL.md")
     },
@@ -728,6 +812,8 @@ const doctor = ({ dir, production = false }) => {
   }));
   const appPath = join(targetDir, "src", "app.mjs");
   const appSourceText = existsSync(appPath) ? readFileSync(appPath, "utf8") : "";
+  const agentsPath = join(targetDir, "AGENTS.md");
+  const agentsText = existsSync(agentsPath) ? readFileSync(agentsPath, "utf8") : "";
   const gitignorePath = join(targetDir, ".gitignore");
   const gitignoreText = existsSync(gitignorePath) ? readFileSync(gitignorePath, "utf8") : "";
   const appSourceChecks = [
@@ -736,6 +822,13 @@ const doctor = ({ dir, production = false }) => {
       ok:
         appSourceText.includes("createHttpBrain") &&
         appSourceText.includes("IROHARNESS_VOICE_BRAIN_ENDPOINT")
+    },
+    {
+      label: "agent boundary instructions",
+      ok:
+        agentsText.includes("macro harness owns character identity") &&
+        agentsText.includes("Check permissions before deep discussion") &&
+        agentsText.includes("Record long-running work in Project OS")
     }
   ];
   const env = {

@@ -144,6 +144,7 @@ test("design principles document locks the macro harness boundary", () => {
 
 test("OSS contribution metadata is present and aligned with harness boundaries", () => {
   const pkg = JSON.parse(readFileSync("package.json", "utf8"));
+  const agents = readFileSync("AGENTS.md", "utf8");
   const readme = readFileSync("README.md", "utf8");
   const changelog = readFileSync("CHANGELOG.md", "utf8");
   const roadmap = readFileSync("ROADMAP.md", "utf8");
@@ -168,9 +169,12 @@ test("OSS contribution metadata is present and aligned with harness boundaries",
   const postgresBackup = readFileSync(join("examples", "postgres-audience-backup.sh"), "utf8");
   const postgresRestore = readFileSync(join("examples", "postgres-audience-restore.sh"), "utf8");
 
-  ["CONTRIBUTING.md", "CODE_OF_CONDUCT.md"].forEach((file) => {
+  ["AGENTS.md", "CONTRIBUTING.md", "CODE_OF_CONDUCT.md"].forEach((file) => {
     assert.equal(pkg.files.includes(file), true);
   });
+  assert.match(agents, /The macro harness owns character identity/);
+  assert.match(agents, /Permissions gate deep discussion/);
+  assert.match(agents, /Long-running work belongs in Project OS/);
   [
     join(".github", "ISSUE_TEMPLATE", "bug_report.yml"),
     join(".github", "ISSUE_TEMPLATE", "feature_request.yml"),

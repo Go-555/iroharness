@@ -57,6 +57,8 @@ Initial OSS skeleton for a character macro harness.
 
 - CLI `init`, `doctor`, `doctor --json`, and `audience`
   `user/link/grant/revoke/stream/export/import/list`
+- generated `AGENTS.md` companion instructions for character, permission, and
+  Project OS boundaries
 - protocol schemas, golden fixtures, contract tests, and CI
 - browser screenshot E2E workflow for chat, OBS overlay, and audience admin
   views

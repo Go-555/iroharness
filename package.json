@@ -85,6 +85,7 @@
     "examples",
     "Cargo.toml",
     "README.md",
+    "AGENTS.md",
     "ROADMAP.md",
     "CONTRIBUTING.md",
     "CODE_OF_CONDUCT.md",

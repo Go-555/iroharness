@@ -71,6 +71,7 @@ test("CLI init creates a minimal IroHarness app", () => {
   assert.match(result.stdout, /Created companion-app/);
   assert.equal(existsSync(join(appDir, "package.json")), true);
   assert.equal(existsSync(join(appDir, "src", "app.mjs")), true);
+  assert.equal(existsSync(join(appDir, "AGENTS.md")), true);
   assert.equal(existsSync(join(appDir, "SOUL.md")), true);
   assert.equal(existsSync(join(appDir, "IDENTITY.md")), true);
   assert.equal(existsSync(join(appDir, "MEMORY.md")), true);
@@ -80,6 +81,11 @@ test("CLI init creates a minimal IroHarness app", () => {
 
   const packageJson = JSON.parse(readFileSync(join(appDir, "package.json"), "utf8"));
   const app = readFileSync(join(appDir, "src", "app.mjs"), "utf8");
+  const agents = readFileSync(join(appDir, "AGENTS.md"), "utf8");
+  const soul = readFileSync(join(appDir, "SOUL.md"), "utf8");
+  const identity = readFileSync(join(appDir, "IDENTITY.md"), "utf8");
+  const memory = readFileSync(join(appDir, "MEMORY.md"), "utf8");
+  const voice = readFileSync(join(appDir, "VOICE.md"), "utf8");
 
   assert.equal(packageJson.dependencies.iroharness, "^0.1.0");
   assert.equal(packageJson.scripts.doctor, "iroharness doctor .");
@@ -112,6 +118,15 @@ test("CLI init creates a minimal IroHarness app", () => {
   assert.match(app, /IROHARNESS_ADMIN_TOKEN/);
   assert.match(app, /\/health/);
   assert.match(app, /\/openapi\.json/);
+  assert.match(agents, /macro harness owns character identity/);
+  assert.match(agents, /Platform identities/);
+  assert.match(agents, /Check permissions before deep discussion/);
+  assert.match(agents, /Record long-running work in Project OS/);
+  assert.match(agents, /They are not automatically the character/);
+  assert.match(soul, /Consistent across text, voice, browser, OBS, YouTube, Discord, and devices/);
+  assert.match(identity, /reply engine, body renderer, platform, or/);
+  assert.match(memory, /Use Project OS for tickets/);
+  assert.match(voice, /prefer low latency/);
 
   const readme = readFileSync(join(appDir, "README.md"), "utf8");
   assert.match(readme, /\?view=overlay/);
@@ -125,6 +140,7 @@ test("CLI init creates a minimal IroHarness app", () => {
   assert.match(readme, /IROHARNESS_DEEP_BRAIN_ENDPOINT/);
   assert.match(readme, /actor, audience, route, state, and/);
   assert.match(readme, /VOICE\.md/);
+  assert.match(readme, /SOUL\.md, IDENTITY\.md, MEMORY\.md, and VOICE\.md/);
   assert.match(readme, /npx iroharness audience user/);
   assert.match(readme, /npx iroharness audience list \. --json/);
   assert.match(readme, /OBS Browser Source URL/);

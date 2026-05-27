@@ -108,6 +108,7 @@ micro harnesses.
 - [x] PostgreSQL/Supabase backup and restore recipes
 - [x] browser screenshot E2E workflow
 - [x] Rust native/WASM realtime C ABI path
+- [x] generated companion AGENTS.md instructions for coding agents
 
 ## Guiding Principle
 

@@ -57,9 +57,9 @@ To add a new integration, see
 
 ## Status
 
-This repository is an early OSS skeleton. It intentionally starts with a small
-dependency-free Node.js core so the protocols can stabilize before a Rust
-realtime core is introduced.
+This repository is an OSS foundation for character macro harnesses. It keeps a
+small dependency-free Node.js core for inspectable protocols and includes a Rust
+realtime core path for native/WASM fast loops.
 
 CI validates Node checks, Node tests, package contents, and the Rust realtime
 core crate. See [docs/ci.md](./docs/ci.md).
@@ -223,9 +223,12 @@ npx iroharness audience export . --file ./audience-backup.json
 IROHARNESS_ADMIN_TOKEN="$(openssl rand -hex 24)" npm run doctor:production
 ```
 
+Generated apps include `AGENTS.md` so coding agents and micro harnesses can
+enter the repository without taking ownership of the character identity.
+
 Then confirm:
 
-- the character profile files are edited: `SOUL.md`, `IDENTITY.md`,
+- `AGENTS.md` and the character profile files are edited: `SOUL.md`, `IDENTITY.md`,
   `MEMORY.md`, `VOICE.md`
 - OBS uses `http://127.0.0.1:4178/?view=overlay` as a Browser Source
 - YouTube users and Discord users resolve to the same person when appropriate
