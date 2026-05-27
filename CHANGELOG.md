@@ -45,6 +45,8 @@ Initial OSS skeleton for a character macro harness.
   machine's Codex OAuth session
 - Slack + StackChan companion recipe with M5Stack face JSON polling and SSE
   body output
+- StackChan firmware strategy using AIAvatarStackChan as the reference while
+  keeping macro identity in IroHarness
 - OBS browser overlay and OBS WebSocket stream controller
 - adapter authoring guide, runnable adapter skeleton, and capability matrix
 

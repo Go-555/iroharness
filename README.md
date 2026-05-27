@@ -385,6 +385,8 @@ npm run example:slack-stackchan
 
 StackChan側はまず `GET /stackchan/face` をpollするだけで試せます。
 詳細は [docs/slack-stackchan.md](./docs/slack-stackchan.md) を見てください。
+実機ファームウェアの吸収方針は
+[docs/stackchan-firmware.md](./docs/stackchan-firmware.md) にまとめています。
 
 ## Brain Routing
 

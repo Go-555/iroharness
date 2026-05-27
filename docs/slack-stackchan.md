@@ -30,6 +30,9 @@ Still early:
 - no device-side reconnect/backoff helper yet
 - no OTA or provisioning flow yet
 
+For the firmware plan and how AIAvatarStackChan will be used as the main
+reference, see [stackchan-firmware.md](./stackchan-firmware.md).
+
 ## Run Locally
 
 ```bash

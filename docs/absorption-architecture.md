@@ -129,6 +129,7 @@ Keep as adapter/example when:
 | Device config schema | AIAvatarStackChan | contract | `protocols/device-config.schema.json` |
 | Touch/PTT/VAD/vision invoke | AIAvatarStackChan | contract | `protocols/device-invoke.schema.json` |
 | Device simulator | AIAvatarStackChan | simulator | `examples/device-simulator.mjs` |
+| StackChan firmware plan | AIAvatarStackChan | guide | `docs/stackchan-firmware.md` |
 
 ## Monorepo Boundary
 
