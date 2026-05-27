@@ -92,7 +92,8 @@ npx iroharness audience grant ./my-companion \
   --user trusted-fan \
   --permission manage_stream \
   --scope stream:youtube \
-  --reason "guest moderator"
+  --reason "guest moderator" \
+  --expires-at 2099-01-01T00:00:00Z
 ```
 
 Register a live stream session for scoped permissions:

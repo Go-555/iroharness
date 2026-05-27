@@ -484,6 +484,38 @@ test("permission overrides can grant delegate work for a specific trusted fan", 
   assert.equal(harness.projectOs().tickets.length, 1);
 });
 
+test("expired permission overrides do not grant privileged work", async () => {
+  const registry = createInMemoryUserRegistry();
+  registry.registerUser({
+    id: "fan_operator",
+    displayName: "Fan Operator",
+    role: "fan",
+    identities: { discord: "expired-fan-operator" }
+  });
+  registry.setPermissionOverride({
+    userId: "fan_operator",
+    permission: "delegate_work",
+    effect: "allow",
+    expiresAt: "2000-01-01T00:00:00.000Z",
+    reason: "expired operator window"
+  });
+  const harness = createBaseHarness({ userRegistry: registry });
+
+  const result = await harness.receive({
+    source: "discord",
+    modality: "text",
+    text: "Codexでコードをレビューして",
+    actor: {
+      platform: "discord",
+      platformUserId: "expired-fan-operator",
+      displayName: "Fan Operator"
+    }
+  });
+
+  assert.equal(result.kind, "permission_denied");
+  assert.equal(harness.projectOs().tickets.length, 0);
+});
+
 test("scoped permission overrides apply only to matching platform context", async () => {
   const registry = createInMemoryUserRegistry();
   registry.registerUser({

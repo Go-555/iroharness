@@ -71,11 +71,12 @@ npx iroharness audience grant . \
   --user trusted-fan \
   --permission manage_stream \
   --scope streamSession:youtube-live \
-  --reason "guest moderator"
+  --reason "guest moderator" \
+  --expires-at 2099-01-01T00:00:00Z
 ```
 
-After the stream, remove or expire temporary privileges in the backing registry.
-The current file registry supports setting overrides; production deployments
+Use `--expires-at` for temporary privileges. After the stream, review and remove
+or expire temporary privileges in the backing registry. Production deployments
 should use PostgreSQL/Supabase and cleanup workflows.
 
 ## Issue And PR Hygiene

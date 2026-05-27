@@ -10,7 +10,7 @@ Usage:
   iroharness init [dir] [--name <package-name>] [--character <character-name>] [--force]
   iroharness audience user [dir] --id <user-id> [--display-name <name>] [--role <role>] [--youtube <id>] [--discord <id>]
   iroharness audience link [dir] --user <user-id> --platform <platform> --platform-user-id <id>
-  iroharness audience grant [dir] --user <user-id> --permission <permission> [--scope <scope>]
+  iroharness audience grant [dir] --user <user-id> --permission <permission> [--scope <scope>] [--expires-at <iso-date>]
   iroharness audience stream [dir] --id <stream-id> --platform <platform> --channel <channel-id>
   iroharness audience list [dir] [--json]
   iroharness doctor [dir] [--production] [--json]
@@ -44,6 +44,7 @@ const parseArgs = (argv) => {
   let scope = "global";
   let effect = "allow";
   let reason = null;
+  let expiresAt = null;
   let channel = null;
   let title = null;
   let hostUserId = null;
@@ -129,6 +130,11 @@ const parseArgs = (argv) => {
       index += 1;
       continue;
     }
+    if (value === "--expires-at") {
+      expiresAt = rest[index + 1];
+      index += 1;
+      continue;
+    }
     if (value === "--channel") {
       channel = rest[index + 1];
       index += 1;
@@ -178,6 +184,7 @@ const parseArgs = (argv) => {
     scope,
     effect,
     reason,
+    expiresAt,
     channel,
     title,
     hostUserId,
@@ -689,6 +696,17 @@ const requireValue = (value, label) => {
   return value;
 };
 
+const optionalIsoDate = (value, label) => {
+  if (!value) {
+    return null;
+  }
+  const time = new Date(value).getTime();
+  if (Number.isNaN(time)) {
+    throw new Error(`${label} must be a valid ISO date`);
+  }
+  return new Date(time).toISOString();
+};
+
 const printAudienceResult = ({ json, result, summary }) => {
   if (json) {
     console.log(JSON.stringify(result, null, 2));
@@ -736,12 +754,14 @@ const audience = (args) => {
       permission: requireValue(args.permission, "--permission"),
       effect: args.effect,
       scope: args.scope,
-      reason: args.reason
+      reason: args.reason,
+      expiresAt: optionalIsoDate(args.expiresAt, "--expires-at")
     });
+    const expiry = override.expiresAt ? ` until ${override.expiresAt}` : "";
     printAudienceResult({
       json: args.json,
       result: override,
-      summary: `${override.effect} ${override.permission} for ${override.userId} in ${override.scope}`
+      summary: `${override.effect} ${override.permission} for ${override.userId} in ${override.scope}${expiry}`
     });
     return;
   }

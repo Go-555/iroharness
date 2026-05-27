@@ -200,7 +200,9 @@ test("CLI audience manages users, platform identities, permissions, and streams"
     "--permission",
     "manage_stream",
     "--scope",
-    "stream:youtube"
+    "stream:youtube",
+    "--expires-at",
+    "2099-01-01T00:00:00Z"
   ]);
   const stream = runCli([
     "audience",
@@ -227,12 +229,14 @@ test("CLI audience manages users, platform identities, permissions, and streams"
   assert.match(user.stdout, /registered user owner/);
   assert.match(link.stdout, /linked slack:UOWNER -> owner/);
   assert.match(grant.stdout, /allow manage_stream for owner in stream:youtube/);
+  assert.match(grant.stdout, /2099-01-01T00:00:00.000Z/);
   assert.match(stream.stdout, /registered stream youtube-live/);
   assert.equal(snapshot.users[0].id, "owner");
   assert.equal(snapshot.users[0].identities.youtube, "UCOWNER");
   assert.equal(snapshot.users[0].identities.discord, "DOWNER");
   assert.equal(snapshot.users[0].identities.slack, "UOWNER");
   assert.equal(snapshot.permissionOverrides[0].permission, "manage_stream");
+  assert.equal(snapshot.permissionOverrides[0].expiresAt, "2099-01-01T00:00:00.000Z");
   assert.equal(snapshot.streamSessions[0].platformChannelId, "live-chat-id");
 });
 

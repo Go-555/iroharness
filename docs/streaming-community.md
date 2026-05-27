@@ -93,7 +93,8 @@ registry.setPermissionOverride({
   permission: "manage_stream",
   effect: "allow",
   scope: "streamSession:youtube_stream_1",
-  reason: "guest moderator for one stream"
+  reason: "guest moderator for one stream",
+  expiresAt: "2099-01-01T00:00:00.000Z"
 });
 ```
 
