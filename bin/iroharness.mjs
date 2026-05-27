@@ -6,13 +6,14 @@ const usage = `IroHarness
 
 Usage:
   iroharness init [dir] [--name <package-name>] [--character <character-name>] [--force]
-  iroharness doctor [dir] [--production]
+  iroharness doctor [dir] [--production] [--json]
   iroharness --help
 
 Examples:
   iroharness init ./my-companion --character Iroha
   iroharness doctor ./my-companion
   IROHARNESS_ADMIN_TOKEN=... iroharness doctor ./my-companion --production
+  iroharness doctor ./my-companion --production --json
 `;
 
 const parseArgs = (argv) => {
@@ -22,6 +23,7 @@ const parseArgs = (argv) => {
   let character = "Iroha";
   let force = false;
   let production = false;
+  let json = false;
 
   for (let index = 0; index < rest.length; index += 1) {
     const value = rest[index];
@@ -43,6 +45,10 @@ const parseArgs = (argv) => {
       production = true;
       continue;
     }
+    if (value === "--json") {
+      json = true;
+      continue;
+    }
     if (!value.startsWith("-")) {
       dir = value;
     }
@@ -54,7 +60,8 @@ const parseArgs = (argv) => {
     name,
     character,
     force,
-    production
+    production,
+    json
   };
 };
 
@@ -531,6 +538,13 @@ const main = () => {
   }
   if (args.command === "doctor") {
     const result = doctor(args);
+    if (args.json) {
+      console.log(JSON.stringify(result, null, 2));
+      if (!result.ok) {
+        process.exitCode = 1;
+      }
+      return;
+    }
     result.checks.forEach((check) => {
       const status = check.ok ? "ok" : check.path ? "missing" : "failed";
       console.log(`${status} ${check.label}`);

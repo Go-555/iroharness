@@ -142,14 +142,20 @@ test("CLI doctor validates generated companion app shape", () => {
   const appDir = join(dir, "companion");
   const init = runCli(["init", appDir, "--character", "Iroha"]);
   const doctor = runCli(["doctor", appDir]);
+  const jsonDoctor = runCli(["doctor", appDir, "--json"]);
+  const parsed = JSON.parse(jsonDoctor.stdout);
 
   assert.equal(init.status, 0, init.stderr);
   assert.equal(doctor.status, 0, doctor.stderr);
+  assert.equal(jsonDoctor.status, 0, jsonDoctor.stderr);
   assert.match(doctor.stdout, /ok package\.json/);
   assert.match(doctor.stdout, /ok SOUL\.md/);
   assert.match(doctor.stdout, /ok VOICE\.md/);
   assert.match(doctor.stdout, /ok \.env\.example/);
   assert.match(doctor.stdout, /IroHarness project looks ready/);
+  assert.equal(parsed.ok, true);
+  assert.equal(parsed.production, false);
+  assert.equal(parsed.checks.some((check) => check.label === "SOUL.md" && check.ok), true);
 });
 
 test("CLI doctor production profile requires a strong admin token", () => {
@@ -232,9 +238,15 @@ test("CLI generated app starts a local companion server", async (context) => {
 test("CLI doctor fails when character profile files are missing", () => {
   const dir = mkdtempSync(join(tmpdir(), "iroharness-doctor-missing-"));
   const doctor = runCli(["doctor", dir]);
+  const jsonDoctor = runCli(["doctor", dir, "--json"]);
+  const parsed = JSON.parse(jsonDoctor.stdout);
 
   assert.notEqual(doctor.status, 0);
+  assert.notEqual(jsonDoctor.status, 0);
   assert.match(doctor.stdout, /missing package\.json/);
   assert.match(doctor.stdout, /missing SOUL\.md/);
   assert.match(doctor.stderr, /project check failed/);
+  assert.equal(parsed.ok, false);
+  assert.equal(parsed.missing.some((check) => check.label === "package.json"), true);
+  assert.equal(jsonDoctor.stderr.trim(), "");
 });

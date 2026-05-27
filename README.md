@@ -96,6 +96,7 @@ and run the production doctor:
 
 ```bash
 IROHARNESS_ADMIN_TOKEN="$(openssl rand -hex 24)" npm run doctor:production
+npx iroharness doctor . --production --json
 ```
 
 Or run the repository examples:

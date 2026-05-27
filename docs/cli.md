@@ -58,10 +58,13 @@ Validate that a generated app still has the expected local shape:
 
 ```bash
 npx iroharness doctor ./my-companion
+npx iroharness doctor ./my-companion --json
 ```
 
 The doctor command checks for `package.json`, `src/app.mjs`, `.iroharness/`,
 `SOUL.md`, `IDENTITY.md`, `MEMORY.md`, `VOICE.md`, and `.env.example`.
+Use `--json` for CI, deployment scripts, or stream preflight checks. It prints a
+single JSON object to stdout and exits non-zero when `ok` is false.
 
 Before exposing the companion server through Tailscale, a tunnel, a reverse
 proxy, Discord, YouTube, or OBS tooling, run the production profile:
