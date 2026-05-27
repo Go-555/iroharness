@@ -145,6 +145,7 @@ Or run the repository examples:
 npm run example
 npm run example:audience
 npm run example:audience-admin
+npm run example:adapter
 npm run example:bodies
 npm run example:brains
 npm run example:pjos
@@ -649,6 +650,7 @@ docs/
   vscode.md
   protocols.md
 examples/
+  adapter-skeleton.mjs
   audience-registry.mjs
   basic.mjs
   body-mappers.mjs

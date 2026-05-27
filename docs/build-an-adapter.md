@@ -24,6 +24,18 @@ adapter owns transport, translation, and provider-specific errors
 If the integration changes who the character is, the boundary is wrong. Put
 personality in `SOUL.md`, memory, or macro harness configuration instead.
 
+## Run The Skeleton
+
+The repository includes a runnable skeleton for all three main adapter contracts:
+
+```bash
+npm run example:adapter
+```
+
+It validates `createSkeletonMicroHarness`, `createSkeletonBodyDevice`, and
+`createSkeletonBrain` against the golden fixtures in `fixtures/golden/`. Use it
+as the starting point for a new adapter PR.
+
 ## Micro Harness Adapter
 
 Use a micro harness when the external system performs work. The adapter receives

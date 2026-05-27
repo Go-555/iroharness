@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import test from "node:test";
@@ -150,6 +151,7 @@ test("OSS contribution metadata is present and aligned with harness boundaries",
   const codeOfConduct = readFileSync("CODE_OF_CONDUCT.md", "utf8");
   const prTemplate = readFileSync(join(".github", "pull_request_template.md"), "utf8");
   const releaseWorkflow = readFileSync(join(".github", "workflows", "release.yml"), "utf8");
+  const adapterSkeleton = readFileSync(join("examples", "adapter-skeleton.mjs"), "utf8");
 
   ["CONTRIBUTING.md", "CODE_OF_CONDUCT.md"].forEach((file) => {
     assert.equal(pkg.files.includes(file), true);
@@ -175,6 +177,11 @@ test("OSS contribution metadata is present and aligned with harness boundaries",
   assert.match(readme, /capability-matrix/);
   assert.match(readme, /build-an-adapter/);
   assert.match(contributing, /build-an-adapter/);
+  assert.match(pkg.scripts["example:adapter"], /adapter-skeleton/);
+  assert.match(pkg.scripts.check, /examples\/adapter-skeleton\.mjs/);
+  assert.match(adapterSkeleton, /createSkeletonMicroHarness/);
+  assert.match(adapterSkeleton, /createSkeletonBodyDevice/);
+  assert.match(adapterSkeleton, /createSkeletonBrain/);
   [
     "Micro Harness Adapter",
     "Body Or Device Adapter",
@@ -201,6 +208,21 @@ test("OSS contribution metadata is present and aligned with harness boundaries",
   ].forEach((capability) => {
     assert.match(matrix, new RegExp(capability));
   });
+});
+
+test("adapter skeleton example runs all public adapter contracts", () => {
+  const result = spawnSync(process.execPath, ["examples/adapter-skeleton.mjs"], {
+    cwd: process.cwd(),
+    encoding: "utf8"
+  });
+  const output = JSON.parse(result.stdout);
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(output.ok, true);
+  assert.equal(output.microHarness.status, "completed");
+  assert.equal(output.body.eventCount, 3);
+  assert.equal(output.body.sentCount, 3);
+  assert.equal(output.brain.emotion, "attentive");
 });
 
 test("package exposes TypeScript declarations for public entrypoints", () => {
