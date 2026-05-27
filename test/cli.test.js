@@ -204,6 +204,30 @@ test("CLI audience manages users, platform identities, permissions, and streams"
     "--expires-at",
     "2099-01-01T00:00:00Z"
   ]);
+  const revoke = runCli([
+    "audience",
+    "revoke",
+    appDir,
+    "--user",
+    "owner",
+    "--permission",
+    "manage_stream",
+    "--scope",
+    "stream:youtube"
+  ]);
+  const grantAgain = runCli([
+    "audience",
+    "grant",
+    appDir,
+    "--user",
+    "owner",
+    "--permission",
+    "manage_stream",
+    "--scope",
+    "stream:youtube",
+    "--expires-at",
+    "2099-01-01T00:00:00Z"
+  ]);
   const stream = runCli([
     "audience",
     "stream",
@@ -224,12 +248,15 @@ test("CLI audience manages users, platform identities, permissions, and streams"
   assert.equal(user.status, 0, user.stderr);
   assert.equal(link.status, 0, link.stderr);
   assert.equal(grant.status, 0, grant.stderr);
+  assert.equal(revoke.status, 0, revoke.stderr);
+  assert.equal(grantAgain.status, 0, grantAgain.stderr);
   assert.equal(stream.status, 0, stream.stderr);
   assert.equal(list.status, 0, list.stderr);
   assert.match(user.stdout, /registered user owner/);
   assert.match(link.stdout, /linked slack:UOWNER -> owner/);
   assert.match(grant.stdout, /allow manage_stream for owner in stream:youtube/);
   assert.match(grant.stdout, /2099-01-01T00:00:00.000Z/);
+  assert.match(revoke.stdout, /revoked manage_stream for owner in stream:youtube/);
   assert.match(stream.stdout, /registered stream youtube-live/);
   assert.equal(snapshot.users[0].id, "owner");
   assert.equal(snapshot.users[0].identities.youtube, "UCOWNER");

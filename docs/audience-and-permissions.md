@@ -208,6 +208,14 @@ curl -X POST http://127.0.0.1:4178/audience/users/dev_1/permissions \
   }'
 ```
 
+Revoke a scoped permission override:
+
+```bash
+curl -X DELETE \
+  "http://127.0.0.1:4178/audience/users/dev_1/permissions?permission=manage_stream&scope=stream%3Ayoutube" \
+  -H "authorization: Bearer $IROHARNESS_ADMIN_TOKEN"
+```
+
 Set `adminToken` whenever the dev server is reachable beyond a trusted local
 machine. Requests may send either `authorization: Bearer <token>` or
 `x-iroharness-admin-token: <token>`.

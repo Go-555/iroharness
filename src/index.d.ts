@@ -176,6 +176,7 @@ export interface UserRegistry {
   updateUser(userId: string, patch: JsonObject): UserRecord | Promise<UserRecord>;
   linkIdentity(input: JsonObject): JsonObject | Promise<JsonObject>;
   setPermissionOverride(input: JsonObject): JsonObject | Promise<JsonObject>;
+  deletePermissionOverride(input: JsonObject): JsonObject | Promise<JsonObject>;
   createStreamSession(input: JsonObject): JsonObject | Promise<JsonObject>;
   updateStreamSession(sessionId: string, patch: JsonObject): JsonObject | Promise<JsonObject>;
   findByIdentity(actor: ActorInput): UserRecord | null | Promise<UserRecord | null>;

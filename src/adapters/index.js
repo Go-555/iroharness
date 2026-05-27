@@ -1853,6 +1853,26 @@ export const createIroHarnessDevServerHandler = ({
         sendJson(response, 201, { permissionOverride });
         return;
       }
+      if (request.method === "DELETE" && permissionMatch) {
+        const permission = url.searchParams.get("permission");
+        const scope = url.searchParams.get("scope") || "global";
+        if (!permission) {
+          sendJson(response, 400, {
+            error: "invalid_permission_override",
+            message: "permission query parameter is required"
+          });
+          return;
+        }
+        const result = await requireAudienceRegistry(
+          "deletePermissionOverride"
+        ).deletePermissionOverride({
+          userId: permissionMatch[1],
+          permission,
+          scope
+        });
+        sendJson(response, 200, { permissionOverride: result });
+        return;
+      }
       if (request.method === "POST" && url.pathname === "/audience/stream-sessions") {
         const payload = await readRequestJson(request);
         const streamSession =

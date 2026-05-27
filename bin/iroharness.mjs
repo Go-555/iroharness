@@ -11,6 +11,7 @@ Usage:
   iroharness audience user [dir] --id <user-id> [--display-name <name>] [--role <role>] [--youtube <id>] [--discord <id>]
   iroharness audience link [dir] --user <user-id> --platform <platform> --platform-user-id <id>
   iroharness audience grant [dir] --user <user-id> --permission <permission> [--scope <scope>] [--expires-at <iso-date>]
+  iroharness audience revoke [dir] --user <user-id> --permission <permission> [--scope <scope>]
   iroharness audience stream [dir] --id <stream-id> --platform <platform> --channel <channel-id>
   iroharness audience list [dir] [--json]
   iroharness doctor [dir] [--production] [--json]
@@ -20,6 +21,7 @@ Examples:
   iroharness init ./my-companion --character Iroha
   iroharness audience user ./my-companion --id keita --display-name Keita --role developer --youtube UCxxx --discord 123456
   iroharness audience grant ./my-companion --user keita --permission manage_stream --scope stream:youtube
+  iroharness audience revoke ./my-companion --user keita --permission manage_stream --scope stream:youtube
   iroharness doctor ./my-companion
   IROHARNESS_ADMIN_TOKEN=... iroharness doctor ./my-companion --production
   iroharness doctor ./my-companion --production --json
@@ -762,6 +764,19 @@ const audience = (args) => {
       json: args.json,
       result: override,
       summary: `${override.effect} ${override.permission} for ${override.userId} in ${override.scope}${expiry}`
+    });
+    return;
+  }
+  if (args.action === "revoke") {
+    const result = registry.deletePermissionOverride({
+      userId: requireValue(args.userId, "--user"),
+      permission: requireValue(args.permission, "--permission"),
+      scope: args.scope
+    });
+    printAudienceResult({
+      json: args.json,
+      result,
+      summary: `${result.deleted ? "revoked" : "not found"} ${result.permission} for ${result.userId} in ${result.scope}`
     });
     return;
   }

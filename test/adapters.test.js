@@ -856,6 +856,20 @@ test("dev server manages audience users, identities, permissions, and stream ses
       reason: "trusted stream host"
     }
   });
+  const revoked = await callHandler(handler, {
+    method: "DELETE",
+    url: "/audience/users/dev_1/permissions?permission=manage_stream&scope=stream%3Ayoutube"
+  });
+  const permissionAgain = await callHandler(handler, {
+    method: "POST",
+    url: "/audience/users/dev_1/permissions",
+    json: {
+      permission: "manage_stream",
+      effect: "allow",
+      scope: "stream:youtube",
+      reason: "trusted stream host"
+    }
+  });
   const stream = await callHandler(handler, {
     method: "POST",
     url: "/audience/stream-sessions",
@@ -885,6 +899,9 @@ test("dev server manages audience users, identities, permissions, and stream ses
   assert.equal(identity.json.identity.platform, "youtube");
   assert.equal(permission.statusCode, 201);
   assert.equal(permission.json.permissionOverride.permission, "manage_stream");
+  assert.equal(revoked.statusCode, 200);
+  assert.equal(revoked.json.permissionOverride.deleted, true);
+  assert.equal(permissionAgain.statusCode, 201);
   assert.equal(stream.statusCode, 201);
   assert.equal(stream.json.streamSession.id, "stream_1");
   assert.equal(paused.statusCode, 200);

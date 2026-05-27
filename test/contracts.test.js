@@ -339,6 +339,12 @@ test("OpenAPI document covers dev server and audience management routes", () => 
     ].schema.$ref,
     "#/components/schemas/PermissionOverrideWrite"
   );
+  assert.equal(
+    openapi.paths["/audience/users/{userId}/permissions"].delete.parameters.some(
+      (parameter) => parameter.name === "permission" && parameter.required
+    ),
+    true
+  );
   assert.deepEqual(
     openapi.components.schemas.AudienceSnapshot.required,
     ["users", "userIdentities", "permissionOverrides", "streamSessions"]

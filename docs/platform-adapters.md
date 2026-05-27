@@ -275,6 +275,7 @@ POST  /audience/users
 PATCH /audience/users/:userId
 POST  /audience/users/:userId/identities
 POST  /audience/users/:userId/permissions
+DELETE /audience/users/:userId/permissions?permission=...&scope=...
 POST  /audience/stream-sessions
 PATCH /audience/stream-sessions/:sessionId
 ```

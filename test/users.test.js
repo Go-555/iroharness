@@ -132,6 +132,25 @@ const createFakePostgresAudienceQuery = () => {
       return { rows: [row] };
     }
 
+    if (normalized.startsWith("delete from iroharness_permission_overrides")) {
+      const [userId, permission, scope] = params;
+      const deleted = overrides.filter(
+        (override) =>
+          override.user_id === userId &&
+          override.permission === permission &&
+          override.scope === scope
+      );
+      overrides = overrides.filter(
+        (override) =>
+          !(
+            override.user_id === userId &&
+            override.permission === permission &&
+            override.scope === scope
+          )
+      );
+      return { rows: deleted };
+    }
+
     if (
       normalized.startsWith("select * from iroharness_permission_overrides where user_id = $1")
     ) {
@@ -296,6 +315,30 @@ test("permission overrides can grant a member stream management without changing
   assert.equal(actor.user.permissionOverrides[0].permission, "manage_stream");
 });
 
+test("permission overrides can be revoked from the file registry", () => {
+  const registry = createInMemoryUserRegistry();
+  registry.registerUser({
+    id: "member_1",
+    displayName: "Member",
+    role: "member",
+    identities: { discord: "member-discord" }
+  });
+  registry.setPermissionOverride({
+    userId: "member_1",
+    permission: "manage_stream",
+    effect: "allow",
+    scope: "stream:youtube"
+  });
+  const deleted = registry.deletePermissionOverride({
+    userId: "member_1",
+    permission: "manage_stream",
+    scope: "stream:youtube"
+  });
+
+  assert.equal(deleted.deleted, true);
+  assert.equal(registry.snapshot().permissionOverrides.length, 0);
+});
+
 test("file user registry persists stream sessions and permission overrides", () => {
   const path = join(mkdtempSync(join(tmpdir(), "iroharness-users-")), "users.json");
   const first = createFileUserRegistry({ path });
@@ -386,6 +429,31 @@ test("Postgres user registry resolves linked platform identities and scoped perm
   assert.equal(snapshot.userIdentities.length, 2);
   assert.equal(snapshot.streamSessions[0].status, "paused");
   assert.equal(snapshot.streamSessions[0].metadata.reason, "break");
+});
+
+test("Postgres user registry can revoke scoped permission overrides", async () => {
+  const query = createFakePostgresAudienceQuery();
+  const registry = createPostgresUserRegistry({ query });
+  await registry.registerUser({
+    id: "dev_1",
+    displayName: "Developer",
+    role: "developer"
+  });
+  await registry.setPermissionOverride({
+    userId: "dev_1",
+    permission: "manage_stream",
+    effect: "allow",
+    scope: "stream:youtube"
+  });
+  const deleted = await registry.deletePermissionOverride({
+    userId: "dev_1",
+    permission: "manage_stream",
+    scope: "stream:youtube"
+  });
+  const snapshot = await registry.snapshot();
+
+  assert.equal(deleted.deleted, true);
+  assert.equal(snapshot.permissionOverrides.length, 0);
 });
 
 test("IroHarness can use an async Postgres user registry for developer delegation", async () => {

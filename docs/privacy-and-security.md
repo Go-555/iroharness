@@ -73,6 +73,11 @@ npx iroharness audience grant . \
   --scope streamSession:youtube-live \
   --reason "guest moderator" \
   --expires-at 2099-01-01T00:00:00Z
+
+npx iroharness audience revoke . \
+  --user trusted-fan \
+  --permission manage_stream \
+  --scope streamSession:youtube-live
 ```
 
 Use `--expires-at` for temporary privileges. After the stream, review and remove

@@ -136,7 +136,9 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": ["platforms"],
+                  "required": [
+                    "platforms"
+                  ],
                   "properties": {
                     "platforms": {
                       "type": "array",
@@ -446,6 +448,47 @@
             "$ref": "#/components/responses/AdminTokenRequired"
           }
         }
+      },
+      "delete": {
+        "summary": "Delete a scoped permission override for a user",
+        "security": [
+          {
+            "adminToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/UserId"
+          },
+          {
+            "name": "permission",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "scope",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "global"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Permission override deletion result"
+          },
+          "400": {
+            "description": "Missing permission query parameter"
+          },
+          "401": {
+            "$ref": "#/components/responses/AdminTokenRequired"
+          }
+        }
       }
     },
     "/audience/stream-sessions": {
@@ -577,7 +620,12 @@
           },
           "service": {
             "type": "object",
-            "required": ["name", "version", "startedAt", "uptimeMs"],
+            "required": [
+              "name",
+              "version",
+              "startedAt",
+              "uptimeMs"
+            ],
             "properties": {
               "name": {
                 "type": "string"
@@ -625,7 +673,10 @@
             "type": "array",
             "items": {
               "type": "object",
-              "required": ["id", "state"],
+              "required": [
+                "id",
+                "state"
+              ],
               "properties": {
                 "id": {
                   "type": "string"
@@ -635,19 +686,31 @@
                   "additionalProperties": true
                 },
                 "lastReadyAt": {
-                  "type": ["string", "null"],
+                  "type": [
+                    "string",
+                    "null"
+                  ],
                   "format": "date-time"
                 },
                 "lastResultAt": {
-                  "type": ["string", "null"],
+                  "type": [
+                    "string",
+                    "null"
+                  ],
                   "format": "date-time"
                 },
                 "lastErrorAt": {
-                  "type": ["string", "null"],
+                  "type": [
+                    "string",
+                    "null"
+                  ],
                   "format": "date-time"
                 },
                 "lastError": {
-                  "type": ["string", "null"]
+                  "type": [
+                    "string",
+                    "null"
+                  ]
                 }
               },
               "additionalProperties": true
@@ -655,7 +718,11 @@
           },
           "projectOs": {
             "type": "object",
-            "required": ["tickets", "runs", "artifacts"],
+            "required": [
+              "tickets",
+              "runs",
+              "artifacts"
+            ],
             "properties": {
               "tickets": {
                 "type": "integer",
@@ -692,7 +759,9 @@
       },
       "TurnInput": {
         "type": "object",
-        "required": ["text"],
+        "required": [
+          "text"
+        ],
         "properties": {
           "source": {
             "type": "string",
@@ -701,7 +770,10 @@
           "modality": {
             "type": "string",
             "default": "text",
-            "enum": ["text", "voice"]
+            "enum": [
+              "text",
+              "voice"
+            ]
           },
           "text": {
             "type": "string"
@@ -718,7 +790,11 @@
       },
       "CharacterState": {
         "type": "object",
-        "required": ["characterId", "mode", "emotion"],
+        "required": [
+          "characterId",
+          "mode",
+          "emotion"
+        ],
         "properties": {
           "characterId": {
             "type": "string"
@@ -730,10 +806,16 @@
             "type": "string"
           },
           "speechText": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "taskRef": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "mouth": {
             "type": "string"
@@ -753,7 +835,11 @@
       },
       "ProjectOsSnapshot": {
         "type": "object",
-        "required": ["tickets", "runs", "artifacts"],
+        "required": [
+          "tickets",
+          "runs",
+          "artifacts"
+        ],
         "properties": {
           "tickets": {
             "type": "array",
@@ -780,7 +866,12 @@
       },
       "User": {
         "type": "object",
-        "required": ["id", "displayName", "role", "identities"],
+        "required": [
+          "id",
+          "displayName",
+          "role",
+          "identities"
+        ],
         "properties": {
           "id": {
             "type": "string"
@@ -815,7 +906,9 @@
       },
       "UserWrite": {
         "type": "object",
-        "required": ["displayName"],
+        "required": [
+          "displayName"
+        ],
         "properties": {
           "id": {
             "type": "string"
@@ -877,7 +970,10 @@
       },
       "IdentityWrite": {
         "type": "object",
-        "required": ["platform", "platformUserId"],
+        "required": [
+          "platform",
+          "platformUserId"
+        ],
         "properties": {
           "platform": {
             "type": "string"
@@ -897,15 +993,26 @@
       },
       "PermissionOverrideWrite": {
         "type": "object",
-        "required": ["permission"],
+        "required": [
+          "permission"
+        ],
         "properties": {
           "permission": {
             "type": "string",
-            "enum": ["chat_public", "deep_discussion", "delegate_work", "manage_stream", "manage_users"]
+            "enum": [
+              "chat_public",
+              "deep_discussion",
+              "delegate_work",
+              "manage_stream",
+              "manage_users"
+            ]
           },
           "effect": {
             "type": "string",
-            "enum": ["allow", "deny"],
+            "enum": [
+              "allow",
+              "deny"
+            ],
             "default": "allow"
           },
           "scope": {
@@ -913,10 +1020,16 @@
             "default": "global"
           },
           "reason": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "expiresAt": {
-            "type": ["string", "null"],
+            "type": [
+              "string",
+              "null"
+            ],
             "format": "date-time"
           },
           "metadata": {
@@ -928,7 +1041,10 @@
       },
       "StreamSessionWrite": {
         "type": "object",
-        "required": ["platform", "platformChannelId"],
+        "required": [
+          "platform",
+          "platformChannelId"
+        ],
         "properties": {
           "id": {
             "type": "string"
@@ -940,10 +1056,16 @@
             "type": "string"
           },
           "title": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "hostUserId": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "status": {
             "type": "string",
@@ -960,10 +1082,16 @@
         "type": "object",
         "properties": {
           "title": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "hostUserId": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "status": {
             "type": "string"
@@ -973,7 +1101,10 @@
             "additionalProperties": true
           },
           "endedAt": {
-            "type": ["string", "null"],
+            "type": [
+              "string",
+              "null"
+            ],
             "format": "date-time"
           }
         },
@@ -981,7 +1112,12 @@
       },
       "AudienceSnapshot": {
         "type": "object",
-        "required": ["users", "userIdentities", "permissionOverrides", "streamSessions"],
+        "required": [
+          "users",
+          "userIdentities",
+          "permissionOverrides",
+          "streamSessions"
+        ],
         "properties": {
           "users": {
             "type": "array",
@@ -1014,7 +1150,11 @@
       },
       "AudienceResolution": {
         "type": "object",
-        "required": ["known", "user", "identity"],
+        "required": [
+          "known",
+          "user",
+          "identity"
+        ],
         "properties": {
           "known": {
             "type": "boolean"
@@ -1024,7 +1164,11 @@
           },
           "identity": {
             "type": "object",
-            "required": ["platform", "platformUserId", "displayName"],
+            "required": [
+              "platform",
+              "platformUserId",
+              "displayName"
+            ],
             "properties": {
               "platform": {
                 "type": "string"
@@ -1043,7 +1187,9 @@
       },
       "Error": {
         "type": "object",
-        "required": ["error"],
+        "required": [
+          "error"
+        ],
         "properties": {
           "error": {
             "type": "string"

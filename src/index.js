@@ -431,6 +431,26 @@ const createUserRegistryStore = (initialState = {}, persist = () => {}) => {
     return override;
   };
 
+  const deletePermissionOverride = ({ userId, permission, scope = "global" }) => {
+    if (!userId || !permission) {
+      throw new Error("deletePermissionOverride requires userId and permission");
+    }
+    const before = permissionOverrides.length;
+    permissionOverrides = Object.freeze(
+      permissionOverrides.filter(
+        (candidate) =>
+          !(candidate.userId === userId && candidate.permission === permission && candidate.scope === scope)
+      )
+    );
+    save();
+    return freezeCopy({
+      userId,
+      permission,
+      scope,
+      deleted: before !== permissionOverrides.length
+    });
+  };
+
   const createStreamSession = ({
     id = createId("stream"),
     platform,
@@ -558,6 +578,7 @@ const createUserRegistryStore = (initialState = {}, persist = () => {}) => {
     updateUser,
     linkIdentity,
     setPermissionOverride,
+    deletePermissionOverride,
     createStreamSession,
     updateStreamSession,
     findByIdentity,
@@ -860,6 +881,26 @@ export const createPostgresUserRegistry = ({ query }) => {
     return fromDbPermissionOverride(dbOne(result));
   };
 
+  const deletePermissionOverride = async ({ userId, permission, scope = "global" }) => {
+    if (!userId || !permission) {
+      throw new Error("deletePermissionOverride requires userId and permission");
+    }
+    const result = await run(
+      [
+        "delete from iroharness_permission_overrides",
+        "where user_id = $1 and permission = $2 and scope = $3",
+        "returning *"
+      ].join(" "),
+      [userId, permission, scope]
+    );
+    return freezeCopy({
+      userId,
+      permission,
+      scope,
+      deleted: dbRows(result).length > 0
+    });
+  };
+
   const createStreamSession = async ({
     id = createId("stream"),
     platform,
@@ -1005,6 +1046,7 @@ export const createPostgresUserRegistry = ({ query }) => {
     updateUser,
     linkIdentity,
     setPermissionOverride,
+    deletePermissionOverride,
     createStreamSession,
     updateStreamSession,
     findByIdentity,
