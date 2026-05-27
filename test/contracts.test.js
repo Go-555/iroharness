@@ -160,6 +160,7 @@ test("OSS contribution metadata is present and aligned with harness boundaries",
   const ciWorkflow = readFileSync(join(".github", "workflows", "ci.yml"), "utf8");
   const releaseWorkflow = readFileSync(join(".github", "workflows", "release.yml"), "utf8");
   const browserWorkflow = readFileSync(join(".github", "workflows", "browser-e2e.yml"), "utf8");
+  const smokeTest = readFileSync(join("examples", "generated-app-smoke-test.mjs"), "utf8");
   const adapterSkeleton = readFileSync(join("examples", "adapter-skeleton.mjs"), "utf8");
   const launchd = readFileSync(join("examples", "deployment", "launchd.plist"), "utf8");
   const systemd = readFileSync(join("examples", "deployment", "systemd.service"), "utf8");
@@ -191,6 +192,7 @@ test("OSS contribution metadata is present and aligned with harness boundaries",
   assert.match(releaseWorkflow, /id-token: write/);
   assert.match(releaseWorkflow, /cargo test -p iroharness-realtime-core/);
   assert.match(releaseWorkflow, /wasm32-unknown-unknown/);
+  assert.match(releaseWorkflow, /npm run smoke:generated-app/);
   assert.match(readme, /Generated App Checklist/);
   assert.match(readme, /npx iroharness audience user/);
   assert.match(readme, /\?view=overlay/);
@@ -210,6 +212,7 @@ test("OSS contribution metadata is present and aligned with harness boundaries",
     "provider brain gateway recipe",
     "PostgreSQL/Supabase audience backup and restore recipes",
     "native/WASM C ABI",
+    "generated app smoke test",
     "browser screenshot E2E workflow",
     "browser admin UI",
     "HTTP brain gateway demo",
@@ -227,6 +230,7 @@ test("OSS contribution metadata is present and aligned with harness boundaries",
     "PostgreSQL audience backup/restore recipes",
     "end-to-end browser screenshots outside sandboxed CI port restrictions",
     "Rust native/WASM C ABI implementation",
+    "generated app smoke test for OSS package consumers",
     "browser admin UI for users, identities, permissions, revoke, and streams",
     "Production Hardening"
   ].forEach((entry) => {
@@ -250,6 +254,10 @@ test("OSS contribution metadata is present and aligned with harness boundaries",
   assert.match(browserWorkflow, /npm run e2e:browser-screenshots/);
   assert.match(browserWorkflow, /playwright install --with-deps chromium/);
   assert.match(browserWorkflow, /upload-artifact/);
+  assert.match(ciWorkflow, /npm run smoke:generated-app/);
+  assert.match(smokeTest, /iroharness\.mjs/);
+  assert.match(smokeTest, /doctor/);
+  assert.match(smokeTest, /audience/);
   assert.match(ciWorkflow, /cargo build -p iroharness-realtime-core --lib/);
   assert.match(ciWorkflow, /wasm32-unknown-unknown/);
   [
@@ -322,6 +330,17 @@ test("adapter skeleton example runs all public adapter contracts", () => {
   assert.equal(output.body.eventCount, 3);
   assert.equal(output.body.sentCount, 3);
   assert.equal(output.brain.emotion, "attentive");
+});
+
+test("generated app smoke test runs package-consumer checks", () => {
+  const result = spawnSync(process.execPath, ["examples/generated-app-smoke-test.mjs"], {
+    cwd: process.cwd(),
+    encoding: "utf8"
+  });
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /"ok": true/);
+  assert.match(result.stdout, /doctor:production/);
 });
 
 test("brain gateway example documents the generated app HTTP brain contract", () => {

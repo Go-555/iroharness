@@ -11,7 +11,12 @@ examples, and packaging surface.
 npm install
 npm run verify
 npm run package:dry-run
+npm run smoke:generated-app
 ```
+
+The generated app smoke test creates a temporary companion with `iroharness
+init`, verifies `AGENTS.md` and character files, runs local and production
+doctor checks, and exercises the audience CLI against the generated app.
 
 ## Rust
 

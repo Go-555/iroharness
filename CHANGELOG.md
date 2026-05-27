@@ -59,6 +59,8 @@ Initial OSS skeleton for a character macro harness.
   `user/link/grant/revoke/stream/export/import/list`
 - generated `AGENTS.md` companion instructions for character, permission, and
   Project OS boundaries
+- generated app smoke test for `init`, doctor, production checks, and audience
+  setup
 - protocol schemas, golden fixtures, contract tests, and CI
 - browser screenshot E2E workflow for chat, OBS overlay, and audience admin
   views

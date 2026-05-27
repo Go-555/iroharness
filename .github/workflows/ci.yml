@@ -31,6 +31,9 @@ jobs:
       - name: Package dry run
         run: npm run package:dry-run
 
+      - name: Generated app smoke test
+        run: npm run smoke:generated-app
+
   rust:
     name: Rust realtime core
     runs-on: ubuntu-latest

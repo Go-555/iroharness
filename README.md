@@ -166,6 +166,7 @@ npm run example:youtube
 npm run example:obs
 npm run example:realtime-core
 npm run e2e:browser-screenshots
+npm run smoke:generated-app
 npm run demo:browser
 ```
 

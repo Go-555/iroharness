@@ -54,6 +54,9 @@ jobs:
       - name: Package dry run
         run: npm run package:dry-run
 
+      - name: Generated app smoke test
+        run: npm run smoke:generated-app
+
       - name: Publish dry run
         if: github.event_name == 'workflow_dispatch' && inputs.dry_run == 'true'
         run: npm publish --dry-run --provenance --access public

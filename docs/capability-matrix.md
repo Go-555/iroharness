@@ -72,6 +72,7 @@ Status labels:
 | PostgreSQL audience backup/restore | guide | `docs/postgres-backup-restore.md`, `examples/postgres-audience-backup.sh`, `examples/postgres-audience-restore.sh` | `pg_dump` and `pg_restore` recipes scoped to audience tables. |
 | Deployment examples | guide | `docs/deployment.md`, `examples/deployment/` | Mac mini launchd, Linux systemd, Tailscale exposure, and reverse proxy templates. |
 | Browser screenshot E2E | workflow | `.github/workflows/browser-e2e.yml`, `npm run e2e:browser-screenshots` | Captures chat, OBS overlay, and audience admin views with Playwright. |
+| Generated app smoke test | built-in | `npm run smoke:generated-app` | Verifies `iroharness init`, doctor, production checks, AGENTS.md, and audience setup as a package consumer. |
 | OpenAPI | contract | `protocols/openapi.json`, `GET /openapi.json` | Local server route contract. |
 | GitHub CI | built-in | `.github/workflows/ci.yml` | Node, packaging, and Rust checks. |
 | npm release workflow | built-in | `.github/workflows/release.yml` | Publishes with provenance after Node/Rust gates. |

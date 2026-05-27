@@ -109,6 +109,7 @@ micro harnesses.
 - [x] browser screenshot E2E workflow
 - [x] Rust native/WASM realtime C ABI path
 - [x] generated companion AGENTS.md instructions for coding agents
+- [x] generated app smoke test for OSS package consumers
 
 ## Guiding Principle
 
