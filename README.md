@@ -86,10 +86,43 @@ npm run doctor
 npm start
 ```
 
+Open the printed URL, usually:
+
+```text
+http://127.0.0.1:4178/
+```
+
+Useful generated routes:
+
+- `/` for browser chat
+- `/?view=overlay` for an OBS Browser Source
+- `/?view=admin` for audience users, platform IDs, permissions, and streams
+- `/health` for readiness and optional runtime status
+- `/openapi.json` for the local HTTP API contract
+
 The generated app reads `.env` directly. Setting `YOUTUBE_API_KEY` plus
 `YOUTUBE_LIVE_CHAT_ID` starts YouTube live chat polling, setting
 `DISCORD_BOT_TOKEN` starts the Discord runtime, and `IROHARNESS_ENABLE_OBS=1`
 enables OBS WebSocket stream control.
+
+For a stream or Discord fan community, link platform IDs before going live:
+
+```bash
+npx iroharness audience user . \
+  --id owner \
+  --display-name "Owner" \
+  --role owner \
+  --youtube UCxxx \
+  --discord 123456
+
+npx iroharness audience stream . \
+  --id youtube-live \
+  --platform youtube \
+  --channel "$YOUTUBE_LIVE_CHAT_ID" \
+  --host owner
+
+npx iroharness audience list . --json
+```
 
 Before exposing the server beyond a trusted local machine, set an admin token
 and run the production doctor:
@@ -160,6 +193,26 @@ await iroha.receive({
   text: "この機能をCodexで実装して"
 });
 ```
+
+## Generated App Checklist
+
+Use this checklist before inviting fans or collaborators:
+
+```bash
+npm run doctor
+npx iroharness audience list . --json
+IROHARNESS_ADMIN_TOKEN="$(openssl rand -hex 24)" npm run doctor:production
+```
+
+Then confirm:
+
+- the character profile files are edited: `SOUL.md`, `IDENTITY.md`,
+  `MEMORY.md`, `VOICE.md`
+- OBS uses `http://127.0.0.1:4178/?view=overlay` as a Browser Source
+- YouTube users and Discord users resolve to the same person when appropriate
+- only trusted users have `delegate_work`, `manage_stream`, or `manage_users`
+- `IROHARNESS_ADMIN_TOKEN` is set before using Tailscale, tunnels, or a reverse
+  proxy
 
 ## Adapter Examples
 

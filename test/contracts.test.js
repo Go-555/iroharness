@@ -143,6 +143,7 @@ test("design principles document locks the macro harness boundary", () => {
 
 test("OSS contribution metadata is present and aligned with harness boundaries", () => {
   const pkg = JSON.parse(readFileSync("package.json", "utf8"));
+  const readme = readFileSync("README.md", "utf8");
   const contributing = readFileSync("CONTRIBUTING.md", "utf8");
   const codeOfConduct = readFileSync("CODE_OF_CONDUCT.md", "utf8");
   const prTemplate = readFileSync(join(".github", "pull_request_template.md"), "utf8");
@@ -166,6 +167,9 @@ test("OSS contribution metadata is present and aligned with harness boundaries",
   assert.match(releaseWorkflow, /npm publish --provenance --access public/);
   assert.match(releaseWorkflow, /id-token: write/);
   assert.match(releaseWorkflow, /cargo test -p iroharness-realtime-core/);
+  assert.match(readme, /Generated App Checklist/);
+  assert.match(readme, /npx iroharness audience user/);
+  assert.match(readme, /\?view=overlay/);
 });
 
 test("package exposes TypeScript declarations for public entrypoints", () => {

@@ -117,6 +117,9 @@ test("CLI init creates a minimal IroHarness app", () => {
   assert.match(readme, /npm run doctor/);
   assert.match(readme, /IROHARNESS_ADMIN_TOKEN/);
   assert.match(readme, /VOICE\.md/);
+  assert.match(readme, /npx iroharness audience user/);
+  assert.match(readme, /npx iroharness audience list \. --json/);
+  assert.match(readme, /OBS Browser Source URL/);
 
   const envExample = readFileSync(join(appDir, ".env.example"), "utf8");
   assert.match(envExample, /PORT=4178/);

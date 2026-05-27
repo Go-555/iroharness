@@ -509,6 +509,13 @@ Link the same person across YouTube and Discord before going live:
 npx iroharness audience user . --id owner --display-name "Owner" --role owner --youtube UCxxx --discord 123456
 npx iroharness audience stream . --id youtube-live --platform youtube --channel "$YOUTUBE_LIVE_CHAT_ID" --host owner
 npx iroharness audience grant . --user owner --permission manage_stream --scope stream:youtube
+npx iroharness audience list . --json
+\`\`\`
+
+OBS Browser Source URL:
+
+\`\`\`text
+http://127.0.0.1:4178/?view=overlay
 \`\`\`
 `;
 
