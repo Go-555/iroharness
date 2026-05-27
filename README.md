@@ -154,6 +154,7 @@ npm run example:audience-admin
 npm run example:adapter
 npm run example:bodies
 npm run example:brain-gateway
+npm run example:provider-brain-gateway
 npm run example:brains
 npm run example:pjos
 npm run example:codex
@@ -326,6 +327,7 @@ For voice/text/deep model switching:
 ```bash
 npm run example:brains
 npm run example:brain-gateway
+npm run example:provider-brain-gateway
 ```
 
 Generated companion apps can also route each brain slot to a model gateway from
@@ -341,6 +343,9 @@ IROHARNESS_BRAIN_AUTH_TOKEN=optional-bearer-token
 `example:brain-gateway` is a dependency-free local HTTP gateway that implements
 the same request/response shape as `createHttpBrain`, so generated apps can test
 slot routing before you connect a real model provider.
+`example:provider-brain-gateway` keeps that same contract but routes slots to
+OpenAI Responses, Anthropic Messages, or a local OpenAI-compatible chat
+completions server.
 
 See [docs/brains.md](./docs/brains.md).
 

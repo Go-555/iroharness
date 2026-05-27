@@ -33,6 +33,7 @@
     "example:adapter": "node examples/adapter-skeleton.mjs",
     "example:bodies": "node examples/body-mappers.mjs",
     "example:brain-gateway": "node examples/brain-gateway.mjs",
+    "example:provider-brain-gateway": "node examples/provider-brain-gateway.mjs",
     "example:brains": "node examples/brain-switching.mjs",
     "example:pjos": "node examples/file-pjos.mjs",
     "example:codex": "node examples/codex-app-server.mjs",
@@ -44,7 +45,7 @@
     "example:obs": "node examples/obs-overlay-control.mjs",
     "example:realtime-core": "node examples/realtime-core-process.mjs",
     "demo:browser": "node examples/browser-server.mjs",
-    "check": "node --check bin/iroharness.mjs && node --check src/index.js && node --check src/adapters/index.js && node --check src/testing/index.js && node --check examples/basic.mjs && node --check examples/audience-registry.mjs && node --check examples/audience-admin-client.mjs && node --check examples/adapter-skeleton.mjs && node --check examples/body-mappers.mjs && node --check examples/brain-gateway.mjs && node --check examples/brain-switching.mjs && node --check examples/external-bridges.mjs && node --check examples/file-pjos.mjs && node --check examples/browser-server.mjs && node --check examples/codex-app-server.mjs && node --check examples/claude-code-cli.mjs && node --check examples/youtube-live-poller.mjs && node --check examples/discord-bot.mjs && node --check examples/slack-events.mjs && node --check examples/obs-overlay-control.mjs && node --check examples/realtime-core-process.mjs && node --check examples/realtime-core-worker.mjs && node --check examples/vscode-companion/extension.cjs"
+    "check": "node --check bin/iroharness.mjs && node --check src/index.js && node --check src/adapters/index.js && node --check src/testing/index.js && node --check examples/basic.mjs && node --check examples/audience-registry.mjs && node --check examples/audience-admin-client.mjs && node --check examples/adapter-skeleton.mjs && node --check examples/body-mappers.mjs && node --check examples/brain-gateway.mjs && node --check examples/provider-brain-gateway.mjs && node --check examples/brain-switching.mjs && node --check examples/external-bridges.mjs && node --check examples/file-pjos.mjs && node --check examples/browser-server.mjs && node --check examples/codex-app-server.mjs && node --check examples/claude-code-cli.mjs && node --check examples/youtube-live-poller.mjs && node --check examples/discord-bot.mjs && node --check examples/slack-events.mjs && node --check examples/obs-overlay-control.mjs && node --check examples/realtime-core-process.mjs && node --check examples/realtime-core-worker.mjs && node --check examples/vscode-companion/extension.cjs"
   },
   "keywords": [
     "ai-agent",

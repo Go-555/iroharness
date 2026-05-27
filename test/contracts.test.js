@@ -196,6 +196,7 @@ test("OSS contribution metadata is present and aligned with harness boundaries",
     "file-backed audience audit log plus export/import",
     "persisted audit logs",
     "deployment guide and templates",
+    "provider brain gateway recipe",
     "browser admin UI",
     "HTTP brain gateway demo",
     "npm release workflow"
@@ -208,6 +209,7 @@ test("OSS contribution metadata is present and aligned with harness boundaries",
     "file-backed audit log for privileged audience changes",
     "PostgreSQL persisted audit log for privileged audience changes",
     "deployment examples for Tailscale, reverse proxy, systemd, and launchd",
+    "provider brain gateway recipes for OpenAI, Claude, and local models",
     "browser admin UI for users, identities, permissions, revoke, and streams",
     "Production Hardening"
   ].forEach((entry) => {
@@ -291,17 +293,32 @@ test("brain gateway example documents the generated app HTTP brain contract", ()
   const readme = readFileSync("README.md", "utf8");
   const brains = readFileSync(join("docs", "brains.md"), "utf8");
   const gateway = readFileSync(join("examples", "brain-gateway.mjs"), "utf8");
+  const providerGateway = readFileSync(join("examples", "provider-brain-gateway.mjs"), "utf8");
 
   assert.match(pkg.scripts["example:brain-gateway"], /brain-gateway/);
+  assert.match(pkg.scripts["example:provider-brain-gateway"], /provider-brain-gateway/);
   assert.match(pkg.scripts.check, /examples\/brain-gateway\.mjs/);
+  assert.match(pkg.scripts.check, /examples\/provider-brain-gateway\.mjs/);
   assert.match(readme, /example:brain-gateway/);
+  assert.match(readme, /example:provider-brain-gateway/);
   assert.match(brains, /127\.0\.0\.1:8788/);
+  assert.match(brains, /127\.0\.0\.1:8789/);
+  assert.match(brains, /OpenAI Responses/);
+  assert.match(brains, /Anthropic Messages/);
+  assert.match(brains, /OpenAI-compatible/);
   assert.match(gateway, /POST \/voice/);
   assert.match(gateway, /POST \/text/);
   assert.match(gateway, /POST \/deep/);
   assert.match(gateway, /payload\.audience/);
   assert.match(gateway, /export const responseFor/);
+  assert.match(providerGateway, /POST \/voice/);
+  assert.match(providerGateway, /POST \/text/);
+  assert.match(providerGateway, /POST \/deep/);
+  assert.match(providerGateway, /OPENAI_API_KEY/);
+  assert.match(providerGateway, /ANTHROPIC_API_KEY/);
+  assert.match(providerGateway, /chat\/completions/);
   assert.doesNotMatch(gateway, /innerHTML/);
+  assert.doesNotMatch(providerGateway, /innerHTML/);
 });
 
 test("brain gateway example returns slot-specific replies from macro context", async () => {
@@ -328,6 +345,117 @@ test("brain gateway example returns slot-specific replies from macro context", a
   assert.equal(response.debug.route, "deep");
   assert.deepEqual(response.debug.permissions, ["chat_public", "deep_discussion"]);
   assert.equal(response.debug.ticketCount, 1);
+});
+
+test("provider brain gateway maps macro context to OpenAI, Claude, and local providers", async () => {
+  const {
+    callProvider,
+    createBrainPrompt,
+    createProviderConfig
+  } = await import("../examples/provider-brain-gateway.mjs");
+  const payload = {
+    character: {
+      name: "Iroha",
+      soul: "Stable macro-harness identity."
+    },
+    actor: { displayName: "Developer" },
+    audience: {
+      relationship: "developer",
+      responseDepth: "deep",
+      permissions: ["chat_public", "deep_discussion"]
+    },
+    input: { text: "設計を整理して" },
+    route: { kind: "deep" },
+    projectOs: { tickets: [{ id: "ticket_1" }] }
+  };
+
+  const prompt = createBrainPrompt({ slot: "deep", payload });
+  assert.match(prompt.system, /Stable macro-harness identity/);
+  assert.match(prompt.user, /responseDepth: deep/);
+
+  const openaiConfig = createProviderConfig({
+    slot: "deep",
+    env: {
+      IROHARNESS_DEEP_BRAIN_PROVIDER: "openai",
+      IROHARNESS_DEEP_BRAIN_MODEL: "openai-deep",
+      OPENAI_API_KEY: "test-openai-key"
+    }
+  });
+  const openaiCalls = [];
+  const openai = await callProvider({
+    slot: "deep",
+    payload,
+    config: openaiConfig,
+    fetchImpl: async (url, options) => {
+      openaiCalls.push({ url, body: JSON.parse(options.body), headers: options.headers });
+      return {
+        ok: true,
+        async text() {
+          return JSON.stringify({ output_text: "openai response" });
+        }
+      };
+    }
+  });
+  assert.equal(openai.text, "openai response");
+  assert.match(openaiCalls[0].url, /\/responses$/);
+  assert.equal(openaiCalls[0].body.model, "openai-deep");
+  assert.match(openaiCalls[0].body.instructions, /Iroha/);
+
+  const anthropicConfig = createProviderConfig({
+    slot: "text",
+    env: {
+      IROHARNESS_TEXT_BRAIN_PROVIDER: "anthropic",
+      IROHARNESS_TEXT_BRAIN_MODEL: "claude-text",
+      ANTHROPIC_API_KEY: "test-anthropic-key"
+    }
+  });
+  const anthropicCalls = [];
+  const anthropic = await callProvider({
+    slot: "text",
+    payload,
+    config: anthropicConfig,
+    fetchImpl: async (url, options) => {
+      anthropicCalls.push({ url, body: JSON.parse(options.body), headers: options.headers });
+      return {
+        ok: true,
+        async text() {
+          return JSON.stringify({ content: [{ type: "text", text: "claude response" }] });
+        }
+      };
+    }
+  });
+  assert.equal(anthropic.text, "claude response");
+  assert.match(anthropicCalls[0].url, /\/messages$/);
+  assert.equal(anthropicCalls[0].body.model, "claude-text");
+  assert.equal(anthropicCalls[0].headers["anthropic-version"], "2023-06-01");
+
+  const localConfig = createProviderConfig({
+    slot: "voice",
+    env: {
+      IROHARNESS_VOICE_BRAIN_PROVIDER: "openai-compatible",
+      IROHARNESS_VOICE_BRAIN_MODEL: "local-fast",
+      LOCAL_OPENAI_BASE_URL: "http://127.0.0.1:11434/v1"
+    }
+  });
+  const localCalls = [];
+  const local = await callProvider({
+    slot: "voice",
+    payload,
+    config: localConfig,
+    fetchImpl: async (url, options) => {
+      localCalls.push({ url, body: JSON.parse(options.body), headers: options.headers });
+      return {
+        ok: true,
+        async text() {
+          return JSON.stringify({ choices: [{ message: { content: "local response" } }] });
+        }
+      };
+    }
+  });
+  assert.equal(local.text, "local response");
+  assert.match(localCalls[0].url, /\/chat\/completions$/);
+  assert.equal(localCalls[0].body.model, "local-fast");
+  assert.equal(localCalls[0].body.messages[0].role, "system");
 });
 
 test("package exposes TypeScript declarations for public entrypoints", () => {

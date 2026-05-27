@@ -53,6 +53,7 @@ micro harnesses.
 - [x] voice/text model switch demo
 - [x] configurable voice/text/deep HTTP brain slots
 - [x] local HTTP brain gateway demo
+- [x] provider brain gateway recipes for OpenAI, Claude, and local models
 - [x] Codex app-server adapter
 - [x] file-backed PJOS
 - [x] MotionPNGTuber renderer bridge
@@ -100,7 +101,6 @@ micro harnesses.
 
 ## Milestone 5: Production Hardening
 
-- [ ] real provider recipes for OpenAI, Claude, and local model brain gateways
 - [ ] PostgreSQL audience backup/restore recipes
 - [ ] end-to-end browser screenshots outside sandboxed CI port restrictions
 

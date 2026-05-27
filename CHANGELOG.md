@@ -47,6 +47,8 @@ Initial OSS skeleton for a character macro harness.
 - Rust realtime core crate scaffold and JSONL process binary
 - browser avatar demo with configurable voice/text/deep HTTP brain slots
 - dependency-free HTTP brain gateway demo for local model-slot routing
+- provider brain gateway recipe for OpenAI Responses, Anthropic Messages, and
+  local OpenAI-compatible chat completions
 
 ### OSS Operations
 
