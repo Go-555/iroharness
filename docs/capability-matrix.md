@@ -46,6 +46,7 @@ Status labels:
 | Browser companion | runtime | `createIroHarnessDevServer`, `npm run demo:browser` | Local chat, overlay, admin UI, state, events, OpenAPI. |
 | Discord | runtime | `createDiscordMessageAdapter`, `createDiscordBotRuntime` | Multi-person fan rooms and developer channels. |
 | Slack | runtime | `createSlackMessageAdapter`, `createSlackEventsRuntime` | Events API payload handling and replies. |
+| Slack + StackChan companion | example | `examples/slack-stackchan-companion.mjs`, `docs/slack-stackchan.md` | Slack text interface plus StackChan/M5Stack face JSON and SSE body output. |
 | YouTube Live Chat | runtime | `createYouTubeLiveChatAdapter`, `createYouTubeLiveChatPollingRuntime` | Polling runtime for live chat turns. |
 | VS Code | adapter | `createVsCodeCompanionAdapter`, `examples/vscode-companion` | Companion panel and developer turns. |
 | Audience CLI | built-in | `iroharness audience user/link/grant/revoke/stream/export/import/list` | Sets up users, platform IDs, permissions, streams, audit logs, and file-backed backups before going live. |

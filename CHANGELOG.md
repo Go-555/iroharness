@@ -43,6 +43,8 @@ Initial OSS skeleton for a character macro harness.
   runtime
 - Slack + Codex companion recipe that uses Slack Events API plus the host
   machine's Codex OAuth session
+- Slack + StackChan companion recipe with M5Stack face JSON polling and SSE
+  body output
 - OBS browser overlay and OBS WebSocket stream controller
 - adapter authoring guide, runnable adapter skeleton, and capability matrix
 

@@ -76,6 +76,13 @@ The payload shape is:
 The bridge is intentionally tiny so a Raspberry Pi or M5Stack relay can poll
 JSON or subscribe to SSE and draw the face locally.
 
+For a Slack + StackChan prototype, see
+[slack-stackchan.md](./slack-stackchan.md). The quickest device-side contract is:
+
+```text
+GET /stackchan/face
+```
+
 ## Even G2
 
 ```js

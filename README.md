@@ -78,6 +78,8 @@ IroHarness が中心に置くものは少し違います。
 見てください。
 SlackからCodexへ委譲する最初の実運用形は
 [docs/slack-codex.md](./docs/slack-codex.md) にあります。
+SlackとStackChanを同じ人格につなぐ最初のハードウェア実験は
+[docs/slack-stackchan.md](./docs/slack-stackchan.md) にあります。
 
 近いOSSから何を学び、何を取り込まないかは
 [docs/inspiration-map.md](./docs/inspiration-map.md) と
@@ -207,6 +209,7 @@ npm run example:codex
 npm run example:claude
 npm run example:discord
 npm run example:slack-codex
+npm run example:slack-stackchan
 npm run example:bridges
 npm run example:slack
 npm run example:youtube
@@ -369,6 +372,19 @@ npm run example:slack-codex
 ```
 
 詳細は [docs/slack-codex.md](./docs/slack-codex.md) を見てください。
+
+Slackで話しかけると同じcharacter stateをStackChan風のM5Stack faceへ出す例です。
+
+```bash
+SLACK_BOT_TOKEN=xoxb-... \
+SLACK_SIGNING_SECRET=... \
+SLACK_BOT_USER_ID=UIROHA \
+IROHARNESS_SLACK_OWNER_USER_ID=UOWNER \
+npm run example:slack-stackchan
+```
+
+StackChan側はまず `GET /stackchan/face` をpollするだけで試せます。
+詳細は [docs/slack-stackchan.md](./docs/slack-stackchan.md) を見てください。
 
 ## Brain Routing
 
