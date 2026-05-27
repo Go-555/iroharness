@@ -30,6 +30,23 @@
         }
       }
     },
+    "/health": {
+      "get": {
+        "summary": "Read dev server health and public operational metadata",
+        "responses": {
+          "200": {
+            "description": "Health status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthStatus"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/events": {
       "get": {
         "summary": "Subscribe to macro harness events",
@@ -540,6 +557,69 @@
       }
     },
     "schemas": {
+      "HealthStatus": {
+        "type": "object",
+        "required": [
+          "ok",
+          "characterId",
+          "mode",
+          "audienceRegistry",
+          "adminProtected",
+          "bodies",
+          "platforms",
+          "projectOs"
+        ],
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "characterId": {
+            "type": "string"
+          },
+          "mode": {
+            "type": "string"
+          },
+          "audienceRegistry": {
+            "type": "boolean"
+          },
+          "adminProtected": {
+            "type": "boolean"
+          },
+          "bodies": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          },
+          "platforms": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "projectOs": {
+            "type": "object",
+            "required": ["tickets", "runs", "artifacts"],
+            "properties": {
+              "tickets": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "runs": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "artifacts": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": true
+      },
       "Actor": {
         "type": "object",
         "properties": {

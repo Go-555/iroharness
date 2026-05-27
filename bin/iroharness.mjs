@@ -248,6 +248,7 @@ const { url } = await app.listen({
 
 console.log(\`${character.name} companion server: \${url}\`);
 console.log(\`Audience admin: \${url}/?view=admin\`);
+console.log(\`Health: \${url}/health\`);
 console.log(\`OpenAPI: \${url}/openapi.json\`);
 
 const runtimes = [];
@@ -323,6 +324,7 @@ The app starts a local browser companion server:
 - \`/\` for browser chat
 - \`/?view=overlay\` for OBS Browser Source
 - \`/?view=admin\` for audience, identity, permission, and stream setup
+- \`/health\` for process, character, body, platform, and PJOS readiness
 - \`/openapi.json\` for the local HTTP API contract
 
 ## Safety Check

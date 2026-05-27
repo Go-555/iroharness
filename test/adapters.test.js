@@ -731,12 +731,61 @@ test("dev server exposes the OpenAPI document", async () => {
 
   assert.equal(response.statusCode, 200);
   assert.equal(response.json.openapi, "3.1.0");
+  assert.equal(Boolean(response.json.paths["/health"]), true);
   assert.equal(
     response.json.paths["/turn"].post.summary,
     "Send a normalized turn to the macro harness"
   );
   assert.equal(Boolean(response.json.paths["/audience/resolve"]), true);
   assert.equal(Boolean(response.json.paths["/audience/users/{userId}/permissions"]), true);
+});
+
+test("dev server exposes public health metadata without audience records", async () => {
+  const eventStream = createEventStreamDevice("events");
+  const userRegistry = createInMemoryUserRegistry();
+  userRegistry.registerUser({
+    id: "owner",
+    displayName: "Owner",
+    role: "owner",
+    identities: {
+      youtube: "UCOWNER"
+    }
+  });
+  const handler = createIroHarnessDevServerHandler({
+    eventStream,
+    userRegistry,
+    adminToken: "secret",
+    bodyDevices: [createMotionPngTuberRendererBridge()],
+    harness: {
+      state() {
+        return { characterId: "iroha", mode: "idle" };
+      },
+      projectOs() {
+        return {
+          tickets: [{ id: "ticket_1" }],
+          runs: [{ id: "run_1" }],
+          artifacts: []
+        };
+      },
+      async receive() {
+        return { kind: "response", text: "ok" };
+      }
+    },
+    publicDir: process.cwd()
+  });
+
+  const response = await callHandler(handler, { url: "/health" });
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.json.ok, true);
+  assert.equal(response.json.characterId, "iroha");
+  assert.equal(response.json.audienceRegistry, true);
+  assert.equal(response.json.adminProtected, true);
+  assert.equal(response.json.bodies[0].id, "motionpngtuber");
+  assert.equal(response.json.platforms.includes("youtube"), true);
+  assert.equal(response.json.projectOs.tickets, 1);
+  assert.equal(response.json.users, undefined);
+  assert.equal(response.json.userIdentities, undefined);
 });
 
 test("dev server manages audience users, identities, permissions, and stream sessions", async () => {

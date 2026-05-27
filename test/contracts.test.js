@@ -215,6 +215,7 @@ test("OpenAPI document covers dev server and audience management routes", () => 
   assert.equal(openapi.openapi, "3.1.0");
   [
     "/openapi.json",
+    "/health",
     "/events",
     "/state",
     "/pjos",
@@ -236,6 +237,10 @@ test("OpenAPI document covers dev server and audience management routes", () => 
     assert.equal(Boolean(openapi.paths[path]), true, path);
   });
   assert.equal(openapi.components.securitySchemes.adminToken.type, "http");
+  assert.equal(
+    openapi.paths["/health"].get.responses["200"].content["application/json"].schema.$ref,
+    "#/components/schemas/HealthStatus"
+  );
   assert.equal(
     openapi.paths["/audience/resolve"].get.responses["200"].content["application/json"].schema
       .$ref,

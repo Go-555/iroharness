@@ -100,11 +100,13 @@ test("CLI init creates a minimal IroHarness app", () => {
   assert.match(app, /createIroHarnessDevServer/);
   assert.match(app, /createMotionPngTuberRendererBridge/);
   assert.match(app, /IROHARNESS_ADMIN_TOKEN/);
+  assert.match(app, /\/health/);
   assert.match(app, /\/openapi\.json/);
 
   const readme = readFileSync(join(appDir, "README.md"), "utf8");
   assert.match(readme, /\?view=overlay/);
   assert.match(readme, /\?view=admin/);
+  assert.match(readme, /\/health/);
   assert.match(readme, /\/openapi\.json/);
   assert.match(readme, /cp \.env\.example \.env/);
   assert.match(readme, /npm run doctor/);
@@ -201,13 +203,15 @@ test("CLI generated app starts a local companion server", async (context) => {
 
   try {
     const url = await waitForServerUrl(child);
-    const [openapi, state] = await Promise.all([
+    const [openapi, state, health] = await Promise.all([
       fetch(`${url}/openapi.json`).then((response) => response.json()),
-      fetch(`${url}/state`).then((response) => response.json())
+      fetch(`${url}/state`).then((response) => response.json()),
+      fetch(`${url}/health`).then((response) => response.json())
     ]);
 
     assert.equal(openapi.openapi, "3.1.0");
     assert.equal(state.characterId, "iroha");
+    assert.equal(health.characterId, "iroha");
     assert.equal(existsSync(join(appDir, ".iroharness", "users.json")), true);
   } catch (error) {
     if (String(error.message).includes("listen EPERM")) {

@@ -1706,12 +1706,40 @@ export const createIroHarnessDevServerHandler = ({
   };
   const audiencePath = (pathname) =>
     pathname === "/audience" || pathname.startsWith("/audience/");
+  const bodySummary = () =>
+    bodyDevices.map((body) => ({
+      id: body.id,
+      kind: body.kind,
+      capabilities: body.capabilities || []
+    }));
 
   return async (request, response) => {
     const url = new URL(request.url, "http://127.0.0.1");
     try {
       if (audiencePath(url.pathname) && !hasAdminAccess(request)) {
         sendJson(response, 401, { error: "admin_token_required" });
+        return;
+      }
+      if (request.method === "GET" && url.pathname === "/health") {
+        const state = harness.state();
+        const projectOs =
+          typeof harness.projectOs === "function"
+            ? harness.projectOs()
+            : { tickets: [], runs: [], artifacts: [] };
+        sendJson(response, 200, {
+          ok: true,
+          characterId: state.characterId,
+          mode: state.mode,
+          audienceRegistry: Boolean(audienceRegistry),
+          adminProtected: Boolean(adminToken),
+          bodies: bodySummary(),
+          platforms: platformAdapters.platforms(),
+          projectOs: {
+            tickets: Array.isArray(projectOs.tickets) ? projectOs.tickets.length : 0,
+            runs: Array.isArray(projectOs.runs) ? projectOs.runs.length : 0,
+            artifacts: Array.isArray(projectOs.artifacts) ? projectOs.artifacts.length : 0
+          }
+        });
         return;
       }
       if (request.method === "GET" && url.pathname === "/events") {
@@ -1823,11 +1851,7 @@ export const createIroHarnessDevServerHandler = ({
       }
       if (request.method === "GET" && url.pathname === "/bodies") {
         sendJson(response, 200, {
-          bodies: bodyDevices.map((body) => ({
-            id: body.id,
-            kind: body.kind,
-            capabilities: body.capabilities || []
-          }))
+          bodies: bodySummary()
         });
         return;
       }

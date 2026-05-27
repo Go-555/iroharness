@@ -100,6 +100,7 @@ The dev server exposes platform-normalized webhook endpoints:
 
 ```text
 GET  /openapi.json
+GET  /health
 POST /platform/discord/message
 POST /platform/slack/message
 POST /platform/youtube/message
@@ -108,6 +109,9 @@ GET  /platforms
 
 `/openapi.json` returns the OpenAPI 3.1 contract stored at
 `protocols/openapi.json`.
+`/health` returns public readiness metadata: current character id/mode, body
+bridges, platform adapters, Project OS counts, and whether audience admin routes
+are token-protected. It does not expose audience records.
 
 Platform adapters convert each payload into the same IroHarness turn shape. From
 there, user registry lookup and permission policy are identical.

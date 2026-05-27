@@ -33,6 +33,7 @@ Use `--force` only when you want to overwrite generated files.
 - browser chat at `/`
 - OBS Browser Source mode at `/?view=overlay`
 - audience admin at `/?view=admin`
+- health/readiness metadata at `/health`
 - OpenAPI at `/openapi.json`
 - file-backed Project OS at `.iroharness/pjos.json`
 - file-backed audience registry at `.iroharness/users.json`
