@@ -1,5 +1,12 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  symlinkSync,
+  writeFileSync
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawn, spawnSync } from "node:child_process";
@@ -8,10 +15,12 @@ import test from "node:test";
 const runCli = (args, { env = {} } = {}) =>
   spawnSync(process.execPath, [join(process.cwd(), "bin", "iroharness.mjs"), ...args], {
     cwd: process.cwd(),
-    env: {
-      ...process.env,
-      ...env
-    },
+    env: Object.fromEntries(
+      Object.entries({
+        ...process.env,
+        ...env
+      }).filter(([, value]) => value !== undefined)
+    ),
     encoding: "utf8"
   });
 
@@ -80,6 +89,11 @@ test("CLI init creates a minimal IroHarness app", () => {
   assert.match(app, /loadEnvFile/);
   assert.match(app, /existsSync/);
   assert.match(app, /process\.env\[key\] === undefined/);
+  assert.match(app, /createYouTubeLiveChatPollingRuntime/);
+  assert.match(app, /createDiscordBotRuntime/);
+  assert.match(app, /createObsStreamController/);
+  assert.match(app, /IROHARNESS_ENABLE_OBS/);
+  assert.match(app, /turnEnricher: enrichTurn/);
   assert.match(app, /name: "Iroha"/);
   assert.match(app, /createFileProjectOs/);
   assert.match(app, /createFileUserRegistry/);
@@ -100,7 +114,9 @@ test("CLI init creates a minimal IroHarness app", () => {
   const envExample = readFileSync(join(appDir, ".env.example"), "utf8");
   assert.match(envExample, /PORT=4178/);
   assert.match(envExample, /IROHARNESS_ADMIN_TOKEN=/);
+  assert.match(envExample, /YOUTUBE_API_KEY=/);
   assert.match(envExample, /DISCORD_BOT_TOKEN=/);
+  assert.match(envExample, /IROHARNESS_ENABLE_OBS=0/);
   assert.match(envExample, /OBS_WEBSOCKET_URL=/);
 });
 
@@ -143,6 +159,12 @@ test("CLI doctor production profile requires a strong admin token", () => {
       IROHARNESS_ADMIN_TOKEN: "short"
     }
   });
+  writeFileSync(join(appDir, ".env"), "IROHARNESS_ADMIN_TOKEN=env-file-token-123\n", "utf8");
+  const readyFromEnvFile = runCli(["doctor", appDir, "--production"], {
+    env: {
+      IROHARNESS_ADMIN_TOKEN: undefined
+    }
+  });
   const ready = runCli(["doctor", appDir, "--production"], {
     env: {
       IROHARNESS_ADMIN_TOKEN: "production-token-123"
@@ -154,6 +176,7 @@ test("CLI doctor production profile requires a strong admin token", () => {
   assert.match(missingToken.stdout, /failed IROHARNESS_ADMIN_TOKEN/);
   assert.notEqual(shortToken.status, 0);
   assert.match(shortToken.stdout, /failed IROHARNESS_ADMIN_TOKEN length >= 16/);
+  assert.equal(readyFromEnvFile.status, 0, readyFromEnvFile.stderr);
   assert.equal(ready.status, 0, ready.stderr);
   assert.match(ready.stdout, /ok audience admin token wiring/);
 });

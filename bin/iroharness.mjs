@@ -65,6 +65,28 @@ const writeFile = ({ path, content, force }) => {
   writeFileSync(path, content, "utf8");
 };
 
+const parseEnvText = (text) =>
+  Object.fromEntries(
+    text
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => line && !line.startsWith("#") && line.includes("="))
+      .map((line) => {
+        const separator = line.indexOf("=");
+        return [
+          line.slice(0, separator).trim(),
+          line
+            .slice(separator + 1)
+            .trim()
+            .replace(/^['"]|['"]$/g, "")
+        ];
+      })
+      .filter(([key]) => key)
+  );
+
+const readEnvFile = (path) =>
+  existsSync(path) ? parseEnvText(readFileSync(path, "utf8")) : {};
+
 const packageJson = ({ name }) =>
   `${JSON.stringify(
     {
@@ -103,16 +125,24 @@ import {
   createHeuristicRouter,
   createIroHarness,
   createRecorderDevice,
+  createRecorderStreamController,
   createStubMicroHarness
 } from "iroharness";
 import {
+  createDiscordBotRuntime,
+  createDiscordMessageAdapter,
   createEventStreamDevice,
   createIroHarnessDevServer,
+  createObsStreamController,
+  createObsWebSocketAdapter,
   createMotionPngTuberRendererBridge,
   createM5StackBodyBridge,
   createEvenG2DisplayBridge,
   createLive2DBodyBridge,
-  createVrmBodyBridge
+  createVrmBodyBridge,
+  createSnapshotStreamSessionResolver,
+  createStreamContextEnricher,
+  createYouTubeLiveChatPollingRuntime
 } from "iroharness/adapters";
 
 const loadEnvFile = (path = ".env") => {
@@ -150,6 +180,23 @@ const bodyDevices = [
   createLive2DBodyBridge(),
   createVrmBodyBridge()
 ];
+const streamController =
+  process.env.IROHARNESS_ENABLE_OBS === "1"
+    ? createObsStreamController({
+        obs: createObsWebSocketAdapter({
+          url: process.env.OBS_WEBSOCKET_URL || "ws://127.0.0.1:4455",
+          password: process.env.OBS_WEBSOCKET_PASSWORD || null
+        }),
+        overlayInputName: process.env.OBS_OVERLAY_INPUT || "IroHarness Overlay",
+        overlayUrl: process.env.IROHARNESS_OVERLAY_URL || "http://127.0.0.1:4178/?view=overlay",
+        defaultSceneName: process.env.OBS_SCENE_NAME || null
+      })
+    : createRecorderStreamController("stream-recorder");
+const enrichTurn = createStreamContextEnricher({
+  resolveStreamSession: createSnapshotStreamSessionResolver({
+    snapshot: () => userRegistry.snapshot()
+  })
+});
 
 const character = createFileCharacterProfile({
   dir: ".",
@@ -178,6 +225,7 @@ const companion = createIroHarness({
     text: createEchoBrain("text-deep")
   },
   devices: [eventStream, recorder, ...bodyDevices],
+  streamController,
   microHarnesses: [
     createStubMicroHarness("codex", ["code", "files", "review"]),
     createStubMicroHarness("openclaw", ["assistant", "tools"]),
@@ -190,7 +238,8 @@ const app = createIroHarnessDevServer({
   userRegistry,
   adminToken: process.env.IROHARNESS_ADMIN_TOKEN || null,
   eventStream,
-  bodyDevices
+  bodyDevices,
+  turnEnricher: enrichTurn
 });
 
 const { url } = await app.listen({
@@ -200,6 +249,60 @@ const { url } = await app.listen({
 console.log(\`${character.name} companion server: \${url}\`);
 console.log(\`Audience admin: \${url}/?view=admin\`);
 console.log(\`OpenAPI: \${url}/openapi.json\`);
+
+const runtimes = [];
+
+if (process.env.YOUTUBE_API_KEY && process.env.YOUTUBE_LIVE_CHAT_ID) {
+  userRegistry.createStreamSession({
+    id: \`youtube_\${process.env.YOUTUBE_LIVE_CHAT_ID}\`,
+    platform: "youtube",
+    platformChannelId: process.env.YOUTUBE_LIVE_CHAT_ID,
+    title: process.env.YOUTUBE_STREAM_TITLE || \`${character.name} YouTube Live\`,
+    status: "live"
+  });
+  const youtube = createYouTubeLiveChatPollingRuntime({
+    apiKey: process.env.YOUTUBE_API_KEY,
+    liveChatId: process.env.YOUTUBE_LIVE_CHAT_ID,
+    harness: companion,
+    turnEnricher: enrichTurn,
+    onResult({ turn, result }) {
+      console.log(\`youtube \${turn.actor.displayName}: \${result.kind}\`);
+    },
+    onError(error) {
+      console.error(\`youtube runtime error: \${error.message}\`);
+    }
+  });
+  youtube.start();
+  runtimes.push(youtube);
+  console.log("YouTube live chat runtime started");
+}
+
+if (process.env.DISCORD_BOT_TOKEN) {
+  const discord = createDiscordBotRuntime({
+    token: process.env.DISCORD_BOT_TOKEN,
+    harness: companion,
+    adapter: createDiscordMessageAdapter({
+      mentionOnly: process.env.DISCORD_MENTION_ONLY !== "0",
+      botUserId: process.env.DISCORD_BOT_USER_ID || null
+    }),
+    turnEnricher: enrichTurn,
+    onReady({ botUserId }) {
+      console.log(\`Discord runtime ready: \${botUserId}\`);
+    },
+    onError(error) {
+      console.error(\`discord runtime error: \${error.message}\`);
+    }
+  });
+  discord.start();
+  runtimes.push(discord);
+  console.log("Discord runtime started");
+}
+
+process.once("SIGINT", async () => {
+  runtimes.forEach((runtime) => runtime.stop?.());
+  await app.close();
+  process.exit(0);
+});
 `;
 };
 
@@ -292,9 +395,13 @@ const init = ({ dir, name, character, force }) => {
       "YOUTUBE_LIVE_CHAT_ID=",
       "DISCORD_BOT_TOKEN=",
       "DISCORD_BOT_USER_ID=",
+      "DISCORD_MENTION_ONLY=1",
+      "IROHARNESS_ENABLE_OBS=0",
       "OBS_WEBSOCKET_URL=ws://127.0.0.1:4455",
       "OBS_WEBSOCKET_PASSWORD=",
       "OBS_OVERLAY_INPUT=IroHarness Overlay",
+      "IROHARNESS_OVERLAY_URL=http://127.0.0.1:4178/?view=overlay",
+      "OBS_SCENE_NAME=",
       ""
     ].join("\n")
   });
@@ -352,15 +459,19 @@ const doctor = ({ dir, production = false }) => {
   }));
   const appPath = join(targetDir, "src", "app.mjs");
   const appSourceText = existsSync(appPath) ? readFileSync(appPath, "utf8") : "";
+  const env = {
+    ...readEnvFile(join(targetDir, ".env")),
+    ...process.env
+  };
   const productionChecks = production
     ? [
         {
           label: "IROHARNESS_ADMIN_TOKEN",
-          ok: Boolean(process.env.IROHARNESS_ADMIN_TOKEN)
+          ok: Boolean(env.IROHARNESS_ADMIN_TOKEN)
         },
         {
           label: "IROHARNESS_ADMIN_TOKEN length >= 16",
-          ok: String(process.env.IROHARNESS_ADMIN_TOKEN || "").length >= 16
+          ok: String(env.IROHARNESS_ADMIN_TOKEN || "").length >= 16
         },
         {
           label: "audience admin token wiring",

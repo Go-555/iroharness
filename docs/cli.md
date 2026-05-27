@@ -43,6 +43,11 @@ generated markdown files are the local identity and memory source of truth.
 `.env.example` lists the common local, YouTube, Discord, and OBS settings.
 The generated app reads `.env` on startup without adding a runtime dependency;
 real environment variables still take precedence over `.env` values.
+If `YOUTUBE_API_KEY` and `YOUTUBE_LIVE_CHAT_ID` are set, the generated app starts
+the YouTube live chat polling runtime. If `DISCORD_BOT_TOKEN` is set, it starts
+the Discord Gateway runtime. OBS WebSocket control is opt-in with
+`IROHARNESS_ENABLE_OBS=1`; otherwise stream operations are recorded locally for
+safe testing.
 Set `IROHARNESS_ADMIN_TOKEN` before exposing the server beyond a trusted local
 machine.
 
@@ -65,7 +70,8 @@ IROHARNESS_ADMIN_TOKEN="$(openssl rand -hex 24)" \
   npx iroharness doctor ./my-companion --production
 ```
 
-`--production` fails unless `IROHARNESS_ADMIN_TOKEN` is present, at least 16
-characters long, and the generated app wires that token into the audience admin
-routes. This protects user, identity, permission, and stream-session management
-while leaving public chat and overlay routes usable.
+`--production` reads `.env` plus real environment variables and fails unless
+`IROHARNESS_ADMIN_TOKEN` is present, at least 16 characters long, and the
+generated app wires that token into the audience admin routes. This protects
+user, identity, permission, and stream-session management while leaving public
+chat and overlay routes usable.

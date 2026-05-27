@@ -86,6 +86,11 @@ npm run doctor
 npm start
 ```
 
+The generated app reads `.env` directly. Setting `YOUTUBE_API_KEY` plus
+`YOUTUBE_LIVE_CHAT_ID` starts YouTube live chat polling, setting
+`DISCORD_BOT_TOKEN` starts the Discord runtime, and `IROHARNESS_ENABLE_OBS=1`
+enables OBS WebSocket stream control.
+
 Before exposing the server beyond a trusted local machine, set an admin token
 and run the production doctor:
 
