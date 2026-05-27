@@ -112,7 +112,8 @@ micro harnesses.
 - [x] generated app smoke test for OSS package consumers
 - [x] OSS readiness check for package and repository publication
 - [x] publish preflight check for GitHub and npm credentials
-- [x] inspiration map for adjacent avatar, game SDK, and robot projects
+- [x] inspiration map and HTML comparison view for adjacent avatar, game SDK,
+  and robot projects
 
 ## Guiding Principle
 

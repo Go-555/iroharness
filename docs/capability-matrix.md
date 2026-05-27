@@ -78,7 +78,7 @@ Status labels:
 | OpenAPI | contract | `protocols/openapi.json`, `GET /openapi.json` | Local server route contract. |
 | GitHub CI | built-in | `.github/workflows/ci.yml` | Node, packaging, and Rust checks. |
 | npm release workflow | built-in | `.github/workflows/release.yml` | Publishes with provenance after Node/Rust gates. |
-| Inspiration map | guide | `docs/inspiration-map.md` | Explains what IroHarness borrows from CursorTuberKit, Neuro SDK, and AIAvatarStackChan. |
+| Inspiration map | guide | `docs/inspiration-map.md`, `docs/inspiration-map.html` | Explains what IroHarness borrows from CursorTuberKit, Neuro SDK, and AIAvatarStackChan. |
 
 ## Current Non-Goals
 
