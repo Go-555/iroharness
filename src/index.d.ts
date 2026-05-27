@@ -254,6 +254,7 @@ export function createRealtimeLatencyTracker(input?: JsonObject): JsonObject;
 export function createRealtimeEventBus(input?: JsonObject): JsonObject;
 export function createRealtimeBargeInGate(input?: JsonObject): JsonObject;
 export function createJavascriptRealtimeCore(input?: JsonObject): JsonObject;
+export function createRustRealtimeCoreCabiAdapter(input?: JsonObject): JsonObject;
 export function createRustRealtimeCoreBinding(input?: JsonObject): JsonObject;
 export function createTextStreamingStt(input?: JsonObject): JsonObject;
 export function createTextStreamingTts(input?: JsonObject): JsonObject;

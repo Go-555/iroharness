@@ -18,6 +18,7 @@ test("Rust workspace includes realtime core crate", () => {
   assert.match(workspaceToml(), /members = \["crates\/realtime-core"\]/);
   assert.match(coreToml(), /name = "iroharness-realtime-core"/);
   assert.match(coreToml(), /edition = "2021"/);
+  assert.match(coreToml(), /crate-type = \["rlib", "cdylib"\]/);
 });
 
 test("Rust realtime core defines event, audio, device, latency, and barge-in contracts", () => {
@@ -29,16 +30,22 @@ test("Rust realtime core defines event, audio, device, latency, and barge-in con
     "AudioChunk",
     "DeviceCommand",
     "RealtimeBus",
+    "RealtimeCore",
     "BargeInGate",
     "LatencyTracker"
   ].forEach((symbol) => {
     assert.match(source, new RegExp(`(?:struct|enum) ${symbol}`));
   });
 
+  assert.match(source, /from_code/);
   assert.match(source, /TtsInterrupted/);
   assert.match(source, /observe_stt_partial/);
+  assert.match(source, /iroharness_realtime_core_new/);
+  assert.match(source, /iroharness_realtime_core_publish/);
+  assert.match(source, /iroharness_realtime_core_observe_stt_partial_len/);
   assert.match(source, /bus_keeps_bounded_events/);
   assert.match(source, /barge_in_gate_interrupts_speaking_on_partial_text/);
+  assert.match(source, /native_core_c_abi_keeps_realtime_state/);
 });
 
 test("Rust realtime core exposes a JSONL process binary", () => {

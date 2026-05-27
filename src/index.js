@@ -1710,6 +1710,169 @@ export const createJavascriptRealtimeCore = ({
   });
 };
 
+const rustRealtimeCoreEventKindCode = (event) => {
+  const eventType = event?.type || "";
+  if (eventType === "audio.received" || eventType === "realtime.listening") {
+    return 0;
+  }
+  if (eventType === "stt.partial") {
+    return 1;
+  }
+  if (eventType === "stt.final") {
+    return 2;
+  }
+  if (eventType === "llm.first_token") {
+    return 3;
+  }
+  if (eventType === "tts.first_audio") {
+    return 4;
+  }
+  if (eventType === "tts.audio") {
+    return 5;
+  }
+  if (eventType === "tts.interrupted" || eventType === "realtime.interrupted") {
+    return 6;
+  }
+  if (eventType === "realtime.barge_in") {
+    return 8;
+  }
+  return 7;
+};
+
+const rustRealtimeCoreCabiExports = (candidate) =>
+  candidate?.exports || candidate?.instance?.exports || candidate;
+
+const isRustRealtimeCoreCabi = (candidate) => {
+  const exports = rustRealtimeCoreCabiExports(candidate);
+  return (
+    typeof exports?.iroharness_realtime_core_new === "function" &&
+    typeof exports?.iroharness_realtime_core_publish === "function" &&
+    typeof exports?.iroharness_realtime_core_events_len === "function"
+  );
+};
+
+export const createRustRealtimeCoreCabiAdapter = ({
+  id = "rust-realtime-core-cabi",
+  exports,
+  handle = null,
+  eventCapacity = 256,
+  implementation = "rust-cabi",
+  clock = () => Date.now(),
+  timestamp = nowIso
+} = {}) => {
+  const nativeExports = rustRealtimeCoreCabiExports(exports);
+  if (!isRustRealtimeCoreCabi(nativeExports)) {
+    throw new Error("createRustRealtimeCoreCabiAdapter requires iroharness realtime core C ABI exports");
+  }
+
+  const nativeHandle =
+    handle === null ? nativeExports.iroharness_realtime_core_new(eventCapacity) : handle;
+  const latency = createRealtimeLatencyTracker({ clock });
+  let events = Object.freeze([]);
+  let closed = false;
+
+  const assertOpen = () => {
+    if (closed) {
+      throw new Error(`Rust realtime core C ABI adapter is closed: ${id}`);
+    }
+  };
+
+  const interrupted = () =>
+    typeof nativeExports.iroharness_realtime_core_interrupted === "function"
+      ? Boolean(nativeExports.iroharness_realtime_core_interrupted(nativeHandle))
+      : false;
+
+  const publish = (event) => {
+    assertOpen();
+    const nativeSequence = nativeExports.iroharness_realtime_core_publish(
+      nativeHandle,
+      rustRealtimeCoreEventKindCode(event)
+    );
+    const nextEvent = freezeCopy({
+      ...event,
+      busId: id,
+      timestamp: event?.timestamp || timestamp(),
+      nativeSequence: Number(nativeSequence)
+    });
+    events = Object.freeze([...events, nextEvent].slice(-eventCapacity));
+    return nextEvent;
+  };
+
+  return Object.freeze({
+    id,
+    kind: "realtime-core",
+    implementation,
+    capabilities: Object.freeze(["event-bus", "barge-in", "latency", "native-cabi", "wasm-cabi"]),
+    publish,
+    push: publish,
+    drain() {
+      assertOpen();
+      const drained = Object.freeze([...events]);
+      events = Object.freeze([]);
+      return drained;
+    },
+    mark: latency.mark,
+    measure: latency.measure,
+    startSpeaking() {
+      assertOpen();
+      if (typeof nativeExports.iroharness_realtime_core_start_speaking === "function") {
+        nativeExports.iroharness_realtime_core_start_speaking(nativeHandle);
+      }
+      return freezeCopy({ speaking: true, interrupted: false });
+    },
+    finishSpeaking() {
+      assertOpen();
+      if (typeof nativeExports.iroharness_realtime_core_finish_speaking === "function") {
+        nativeExports.iroharness_realtime_core_finish_speaking(nativeHandle);
+      }
+      return freezeCopy({ speaking: false, interrupted: interrupted() });
+    },
+    shouldInterrupt(event) {
+      assertOpen();
+      if (event?.type !== "stt.partial") {
+        return false;
+      }
+      if (typeof nativeExports.iroharness_realtime_core_observe_stt_partial_len !== "function") {
+        return false;
+      }
+      const text = String(event.delta || event.text || "");
+      return Boolean(
+        nativeExports.iroharness_realtime_core_observe_stt_partial_len(
+          nativeHandle,
+          text.trim().length
+        )
+      );
+    },
+    snapshot() {
+      assertOpen();
+      return freezeCopy({
+        id,
+        implementation,
+        native: freezeCopy({
+          eventsLen: Number(nativeExports.iroharness_realtime_core_events_len(nativeHandle)),
+          interrupted: interrupted()
+        }),
+        events: Object.freeze([...events]),
+        latency: latency.snapshot(),
+        bargeIn: freezeCopy({
+          interrupted: interrupted()
+        })
+      });
+    },
+    close() {
+      if (
+        !closed &&
+        handle === null &&
+        typeof nativeExports.iroharness_realtime_core_free === "function"
+      ) {
+        nativeExports.iroharness_realtime_core_free(nativeHandle);
+      }
+      closed = true;
+      return freezeCopy({ id, closed });
+    }
+  });
+};
+
 const createNativeRealtimeCoreFacade = ({ core, id, implementation }) =>
   Object.freeze({
     id: core.id || id,
@@ -1785,8 +1948,15 @@ export const createRustRealtimeCoreBinding = ({
       return resolved;
     }
     const loaded = native || (typeof loadNative === "function" ? loadNative() : null);
-    const core =
-      typeof loaded?.createRealtimeCore === "function" ? loaded.createRealtimeCore({ id }) : loaded;
+    const core = isRustRealtimeCoreCabi(loaded)
+      ? createRustRealtimeCoreCabiAdapter({
+          id,
+          exports: loaded,
+          implementation: loaded?.implementation || "rust-cabi"
+        })
+      : typeof loaded?.createRealtimeCore === "function"
+        ? loaded.createRealtimeCore({ id })
+        : loaded;
     if (core) {
       resolved = createNativeRealtimeCoreFacade({
         core,

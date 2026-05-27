@@ -40,9 +40,17 @@ jobs:
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
 
       - name: Test realtime core
         run: cargo test -p iroharness-realtime-core
+
+      - name: Build native realtime core library
+        run: cargo build -p iroharness-realtime-core --lib
+
+      - name: Build WASM realtime core library
+        run: cargo build -p iroharness-realtime-core --lib --target wasm32-unknown-unknown
 
       - name: Build JSONL realtime core binary
         run: cargo build -p iroharness-realtime-core --bin iroharness-realtime-core-jsonl

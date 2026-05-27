@@ -35,6 +35,8 @@ jobs:
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
 
       - name: Install
         run: npm install
@@ -45,6 +47,8 @@ jobs:
       - name: Verify Rust realtime core
         run: |
           cargo test -p iroharness-realtime-core
+          cargo build -p iroharness-realtime-core --lib
+          cargo build -p iroharness-realtime-core --lib --target wasm32-unknown-unknown
           cargo build -p iroharness-realtime-core --bin iroharness-realtime-core-jsonl
 
       - name: Package dry run

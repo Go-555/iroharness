@@ -131,6 +131,7 @@ Rust native/WASM/process implementation later.
 import {
   createJavascriptRealtimeCore,
   createRealtimeVoiceSession,
+  createRustRealtimeCoreCabiAdapter,
   createRustRealtimeCoreBinding
 } from "iroharness";
 
@@ -153,6 +154,19 @@ Core contract:
 
 This keeps the macro harness API stable while the fast path underneath can move
 to Rust incrementally.
+
+If a native addon or WebAssembly instance exposes the IroHarness Rust C ABI, use
+it directly:
+
+```js
+const wasm = await WebAssembly.instantiate(bytes, {});
+const realtimeCore = createRustRealtimeCoreCabiAdapter({
+  exports: wasm.instance.exports
+});
+```
+
+The C ABI path is synchronous, so barge-in decisions can stay in the realtime
+loop while model, memory, and permission policy stay in the macro harness.
 
 ## External JSONL Realtime Core
 

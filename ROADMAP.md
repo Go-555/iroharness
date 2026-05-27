@@ -99,7 +99,7 @@ micro harnesses.
 - [x] Rust event/audio/device runtime binding contract
 - [x] external realtime core JSONL process adapter
 - [x] Rust JSONL process binary scaffold
-- [ ] Rust native/WASM implementation
+- [x] Rust native/WASM C ABI implementation
 
 ## Milestone 5: Production Hardening
 
@@ -107,6 +107,7 @@ micro harnesses.
 - [x] deployment examples
 - [x] PostgreSQL/Supabase backup and restore recipes
 - [x] browser screenshot E2E workflow
+- [x] Rust native/WASM realtime C ABI path
 
 ## Guiding Principle
 

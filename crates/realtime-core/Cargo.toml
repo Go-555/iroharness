@@ -9,6 +9,7 @@ repository = "https://github.com/iroharness/iroharness"
 [lib]
 name = "iroharness_realtime_core"
 path = "src/lib.rs"
+crate-type = ["rlib", "cdylib"]
 
 [[bin]]
 name = "iroharness-realtime-core-jsonl"

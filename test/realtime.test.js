@@ -6,6 +6,7 @@ import {
   createRealtimeEventBus,
   createRealtimeLatencyTracker,
   createRealtimeVoiceSession,
+  createRustRealtimeCoreCabiAdapter,
   createRustRealtimeCoreBinding,
   createTextStreamingStt,
   createTextStreamingTts
@@ -181,6 +182,101 @@ test("Rust realtime core binding delegates to native core when available", () =>
   assert.equal(interrupted, true);
   assert.deepEqual(calls[0], ["publish", "realtime.speaking"]);
   assert.deepEqual(calls[1], ["mark", "tts.start", 42]);
+});
+
+test("Rust realtime core C ABI adapter wraps native or WASM exports", () => {
+  let nextHandle = 40;
+  const handles = new Map();
+  const exports = {
+    iroharness_realtime_core_new(capacity) {
+      nextHandle += 1;
+      handles.set(nextHandle, {
+        capacity,
+        events: [],
+        speaking: false,
+        interrupted: false,
+        freed: false
+      });
+      return nextHandle;
+    },
+    iroharness_realtime_core_publish(handle, kindCode) {
+      const state = handles.get(handle);
+      const sequence = state.events.length;
+      state.events.push(kindCode);
+      state.events = state.events.slice(-state.capacity);
+      return sequence;
+    },
+    iroharness_realtime_core_events_len(handle) {
+      return handles.get(handle).events.length;
+    },
+    iroharness_realtime_core_start_speaking(handle) {
+      const state = handles.get(handle);
+      state.speaking = true;
+      state.interrupted = false;
+    },
+    iroharness_realtime_core_finish_speaking(handle) {
+      handles.get(handle).speaking = false;
+    },
+    iroharness_realtime_core_observe_stt_partial_len(handle, textLen) {
+      const state = handles.get(handle);
+      const shouldInterrupt = state.speaking && textLen > 0;
+      if (shouldInterrupt) {
+        state.interrupted = true;
+        state.speaking = false;
+      }
+      return shouldInterrupt;
+    },
+    iroharness_realtime_core_interrupted(handle) {
+      return handles.get(handle).interrupted;
+    },
+    iroharness_realtime_core_free(handle) {
+      handles.get(handle).freed = true;
+    }
+  };
+
+  const core = createRustRealtimeCoreCabiAdapter({
+    id: "rust-cabi-test",
+    exports,
+    eventCapacity: 2,
+    timestamp: () => "2026-05-27T00:00:00.000Z"
+  });
+
+  core.publish({ type: "realtime.listening" });
+  core.publish({ type: "tts.audio" });
+  core.startSpeaking();
+  const interrupted = core.shouldInterrupt({ type: "stt.partial", delta: "待って" });
+  const snapshot = core.snapshot();
+  core.close();
+
+  assert.equal(core.implementation, "rust-cabi");
+  assert.equal(interrupted, true);
+  assert.equal(snapshot.native.eventsLen, 2);
+  assert.equal(snapshot.native.interrupted, true);
+  assert.deepEqual(
+    snapshot.events.map((event) => event.nativeSequence),
+    [0, 1]
+  );
+  assert.equal([...handles.values()][0].freed, true);
+});
+
+test("Rust realtime core binding auto-wraps C ABI exports", () => {
+  const exports = {
+    iroharness_realtime_core_new() {
+      return 1;
+    },
+    iroharness_realtime_core_publish() {
+      return 0;
+    },
+    iroharness_realtime_core_events_len() {
+      return 1;
+    }
+  };
+  const binding = createRustRealtimeCoreBinding({ native: { exports } });
+
+  binding.publish({ type: "tts.audio" });
+
+  assert.equal(binding.resolve().implementation, "rust-cabi");
+  assert.equal(binding.snapshot().native.eventsLen, 1);
 });
 
 test("realtime voice session can publish through a Rust core binding", async () => {

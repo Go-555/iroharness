@@ -43,15 +43,36 @@ machines:
 - `RealtimeBus`
 - `BargeInGate`
 - `LatencyTracker`
+- `RealtimeCore`
 
 It intentionally has no external dependencies yet. That keeps it portable while
 the Node.js layer and protocol tests settle.
+
+The crate builds both an `rlib` and a `cdylib`, so the same core can be compiled
+as a native dynamic library or a `wasm32` module. The exported C ABI is small on
+purpose:
+
+```text
+iroharness_realtime_core_new(max_events)
+iroharness_realtime_core_free(handle)
+iroharness_realtime_core_publish(handle, event_kind_code)
+iroharness_realtime_core_events_len(handle)
+iroharness_realtime_core_start_speaking(handle)
+iroharness_realtime_core_finish_speaking(handle)
+iroharness_realtime_core_observe_stt_partial_len(handle, text_len)
+iroharness_realtime_core_interrupted(handle)
+```
+
+This avoids a hard dependency on N-API, wasm-bindgen, or a specific host. A Node
+addon, WebAssembly instance, or embedded device host can expose those functions
+and let IroHarness wrap them.
 
 ## Node Binding Contract
 
 Node runtime bindings start in `src/index.js`:
 
 - `createJavascriptRealtimeCore`: dependency-free fallback implementation
+- `createRustRealtimeCoreCabiAdapter`: wraps native or WebAssembly C ABI exports
 - `createRustRealtimeCoreBinding`: optional Rust native/WASM/process binding
 - `createRealtimeVoiceSession({ realtimeCore })`: publishes voice events and
   latency marks through the runtime core
@@ -73,6 +94,28 @@ The binding expects the native side to expose some or all of this shape:
 Missing optional methods degrade gracefully. If no Rust implementation is
 available, `createRustRealtimeCoreBinding` can fall back to
 `createJavascriptRealtimeCore` so app code does not fork.
+
+For C ABI exports, pass a native addon, WebAssembly instance, or raw exports
+object:
+
+```js
+import { createRustRealtimeCoreBinding } from "iroharness";
+
+const wasm = await WebAssembly.instantiate(bytes, {});
+const realtimeCore = createRustRealtimeCoreBinding({
+  native: wasm.instance
+});
+```
+
+`createRustRealtimeCoreBinding` detects the IroHarness C ABI and wraps it with
+the same synchronous core contract used by `createRealtimeVoiceSession`.
+
+Build the native and WASM library targets:
+
+```bash
+cargo build -p iroharness-realtime-core --lib
+cargo build -p iroharness-realtime-core --lib --target wasm32-unknown-unknown
+```
 
 ## JSONL Process Fast Path
 

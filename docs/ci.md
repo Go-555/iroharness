@@ -15,11 +15,13 @@ npm run package:dry-run
 
 ## Rust
 
-The Rust lane validates the realtime core crate and the JSONL process binary
-that can be used as the first fast path before native or WASM bindings exist.
+The Rust lane validates the realtime core crate, native/WASM C ABI library, and
+the JSONL process binary that can be used as a process-isolated fast path.
 
 ```bash
 cargo test -p iroharness-realtime-core
+cargo build -p iroharness-realtime-core --lib
+cargo build -p iroharness-realtime-core --lib --target wasm32-unknown-unknown
 cargo build -p iroharness-realtime-core --bin iroharness-realtime-core-jsonl
 ```
 
