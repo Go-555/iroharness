@@ -61,6 +61,8 @@ Initial OSS skeleton for a character macro harness.
   Project OS boundaries
 - generated app smoke test for `init`, doctor, production checks, and audience
   setup
+- OSS readiness check for package metadata, workflows, tracked secrets, and
+  public-file coverage
 - protocol schemas, golden fixtures, contract tests, and CI
 - browser screenshot E2E workflow for chat, OBS overlay, and audience admin
   views

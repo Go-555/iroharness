@@ -12,11 +12,20 @@ npm install
 npm run verify
 npm run package:dry-run
 npm run smoke:generated-app
+npm run oss:ready
 ```
 
 The generated app smoke test creates a temporary companion with `iroharness
 init`, verifies `AGENTS.md` and character files, runs local and production
 doctor checks, and exercises the audience CLI against the generated app.
+
+The OSS readiness check verifies package metadata, required public files,
+workflow coverage, npm package file inclusions, and that `.env` /
+`.iroharness` state is not tracked. For final GitHub publication checks, run:
+
+```bash
+IROHARNESS_REQUIRE_GIT_REMOTE=1 npm run oss:ready
+```
 
 ## Rust
 

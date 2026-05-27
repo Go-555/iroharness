@@ -9,12 +9,16 @@ inside the npm tarball.
 npm install
 npm run verify
 npm run package:dry-run
+npm run smoke:generated-app
+npm run oss:ready
 ```
 
 If Rust is installed:
 
 ```bash
 cargo test -p iroharness-realtime-core
+cargo build -p iroharness-realtime-core --lib
+cargo build -p iroharness-realtime-core --lib --target wasm32-unknown-unknown
 cargo build -p iroharness-realtime-core --bin iroharness-realtime-core-jsonl
 ```
 
@@ -22,9 +26,16 @@ cargo build -p iroharness-realtime-core --bin iroharness-realtime-core-jsonl
 
 1. Update `CHANGELOG.md`.
 2. Update `package.json` version.
-3. Run the local checklist.
-4. Confirm GitHub Actions is green on `main`.
-5. Create a GitHub Release for the version tag, or run the `Release` workflow
+3. Confirm the GitHub remote points to the public repository:
+
+   ```bash
+   git remote -v
+   IROHARNESS_REQUIRE_GIT_REMOTE=1 npm run oss:ready
+   ```
+
+4. Run the local checklist.
+5. Confirm GitHub Actions is green on `main`.
+6. Create a GitHub Release for the version tag, or run the `Release` workflow
    manually with `dry_run=false`.
 
 The release workflow runs Node checks, Rust checks, package dry-run, and

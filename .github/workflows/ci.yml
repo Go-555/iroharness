@@ -34,6 +34,9 @@ jobs:
       - name: Generated app smoke test
         run: npm run smoke:generated-app
 
+      - name: OSS readiness check
+        run: npm run oss:ready
+
   rust:
     name: Rust realtime core
     runs-on: ubuntu-latest

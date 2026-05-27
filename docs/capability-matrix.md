@@ -73,6 +73,7 @@ Status labels:
 | Deployment examples | guide | `docs/deployment.md`, `examples/deployment/` | Mac mini launchd, Linux systemd, Tailscale exposure, and reverse proxy templates. |
 | Browser screenshot E2E | workflow | `.github/workflows/browser-e2e.yml`, `npm run e2e:browser-screenshots` | Captures chat, OBS overlay, and audience admin views with Playwright. |
 | Generated app smoke test | built-in | `npm run smoke:generated-app` | Verifies `iroharness init`, doctor, production checks, AGENTS.md, and audience setup as a package consumer. |
+| OSS readiness check | built-in | `npm run oss:ready` | Verifies public files, package metadata, workflow coverage, package inclusions, and tracked secret/state exclusions. |
 | OpenAPI | contract | `protocols/openapi.json`, `GET /openapi.json` | Local server route contract. |
 | GitHub CI | built-in | `.github/workflows/ci.yml` | Node, packaging, and Rust checks. |
 | npm release workflow | built-in | `.github/workflows/release.yml` | Publishes with provenance after Node/Rust gates. |

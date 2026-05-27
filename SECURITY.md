@@ -1,8 +1,7 @@
 # Security Policy
 
-IroHarness is an early OSS skeleton for character macro harnesses. Please avoid
-posting exploitable vulnerabilities publicly before maintainers have had time to
-respond.
+IroHarness is an OSS character macro harness. Please avoid posting exploitable
+vulnerabilities publicly before maintainers have had time to respond.
 
 ## Supported Versions
 

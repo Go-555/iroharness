@@ -32,12 +32,16 @@ Before opening a PR:
 ```bash
 npm run verify
 npm run package:dry-run
+npm run smoke:generated-app
+npm run oss:ready
 ```
 
 If Rust is installed:
 
 ```bash
 cargo test -p iroharness-realtime-core
+cargo build -p iroharness-realtime-core --lib
+cargo build -p iroharness-realtime-core --lib --target wasm32-unknown-unknown
 cargo build -p iroharness-realtime-core --bin iroharness-realtime-core-jsonl
 ```
 
