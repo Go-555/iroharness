@@ -65,6 +65,7 @@ Initial OSS skeleton for a character macro harness.
   public-file coverage
 - publish preflight check for GitHub remote, clean tree, version tag, GitHub
   auth, and npm auth
+- inspiration map for CursorTuberKit, Neuro SDK, and AIAvatarStackChan
 - protocol schemas, golden fixtures, contract tests, and CI
 - browser screenshot E2E workflow for chat, OBS overlay, and audience admin
   views

@@ -149,6 +149,7 @@ test("OSS contribution metadata is present and aligned with harness boundaries",
   const changelog = readFileSync("CHANGELOG.md", "utf8");
   const roadmap = readFileSync("ROADMAP.md", "utf8");
   const matrix = readFileSync(join("docs", "capability-matrix.md"), "utf8");
+  const inspirationMap = readFileSync(join("docs", "inspiration-map.md"), "utf8");
   const adapterGuide = readFileSync(join("docs", "build-an-adapter.md"), "utf8");
   const privacyGuide = readFileSync(join("docs", "privacy-and-security.md"), "utf8");
   const deploymentGuide = readFileSync(join("docs", "deployment.md"), "utf8");
@@ -202,6 +203,7 @@ test("OSS contribution metadata is present and aligned with harness boundaries",
   assert.match(readme, /npx iroharness audience user/);
   assert.match(readme, /\?view=overlay/);
   assert.match(readme, /capability-matrix/);
+  assert.match(readme, /inspiration-map/);
   assert.match(readme, /build-an-adapter/);
   assert.match(readme, /docs\/deployment\.md/);
   assert.match(readme, /docs\/postgres-backup-restore\.md/);
@@ -220,6 +222,7 @@ test("OSS contribution metadata is present and aligned with harness boundaries",
     "generated app smoke test",
     "OSS readiness check",
     "publish preflight check",
+    "inspiration map",
     "browser screenshot E2E workflow",
     "browser admin UI",
     "HTTP brain gateway demo",
@@ -240,6 +243,7 @@ test("OSS contribution metadata is present and aligned with harness boundaries",
     "generated app smoke test for OSS package consumers",
     "OSS readiness check for package and repository publication",
     "publish preflight check for GitHub and npm credentials",
+    "inspiration map for adjacent avatar, game SDK, and robot projects",
     "browser admin UI for users, identities, permissions, revoke, and streams",
     "Production Hardening"
   ].forEach((entry) => {
@@ -285,6 +289,11 @@ test("OSS contribution metadata is present and aligned with harness boundaries",
     assert.match(postgresBackupGuide, new RegExp(entry));
   });
   assert.match(matrix, /PostgreSQL audience backup\/restore/);
+  assert.match(matrix, /Inspiration map/);
+  assert.match(inspirationMap, /CursorTuberKit/);
+  assert.match(inspirationMap, /Neuro SDK/);
+  assert.match(inspirationMap, /AIAvatarStackChan/);
+  assert.match(inspirationMap, /Use one main repository first/);
   assert.match(postgresBackup, /pg_dump/);
   assert.match(postgresBackup, /--table=public\.iroharness_audit_log/);
   assert.match(postgresRestore, /IROHARNESS_RESTORE_CONFIRM/);

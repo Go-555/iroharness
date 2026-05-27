@@ -54,6 +54,9 @@ deployment.
 
 To add a new integration, see
 [docs/build-an-adapter.md](./docs/build-an-adapter.md).
+For how IroHarness learns from CursorTuberKit, Neuro SDK, and
+AIAvatarStackChan without becoming a clone, see
+[docs/inspiration-map.md](./docs/inspiration-map.md).
 
 ## Status
 
