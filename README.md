@@ -1,10 +1,14 @@
 # IroHarness
 
-IroHarness is a character macro harness for building the "best AI companion":
-one character identity, many bodies, durable project state, and delegation to
-micro harnesses such as Codex, Claude Code, OpenClaw, Hermes, or OpenClaude.
+IroHarness は「最強の相棒AI」を作るための Character Macro Harness です。
 
-The core idea:
+ひとつの人格を中心に置き、その人格を Slack、Web、VS Code、OBS配信、
+Discord、YouTube、M5Stack、Even G2、Live2D、MotionPNGTuber、VRM/3D など
+複数の身体や入口に接続します。Codex、Claude Code、OpenClaw、Hermes、
+OpenClaude のような実働エージェントは、人格そのものではなく、
+必要な仕事を任せる micro harness として扱います。
+
+基本思想はこれです。
 
 ```text
 Character Macro Harness
@@ -12,7 +16,8 @@ Character Macro Harness
     + model routing + micro-harness delegation
 ```
 
-IroHarness is not trying to replace every agent runtime. It sits above them.
+IroHarness は、すべてのエージェント実行基盤を置き換えるものではありません。
+それらの上に立って、人格、状態、権限、身体表現、仕事の委譲をまとめる層です。
 
 ```text
 Slack / Web / VS Code / M5Stack / Even G2 / Live2D / MotionPNGTuber
@@ -27,70 +32,85 @@ Slack / Web / VS Code / M5Stack / Even G2 / Live2D / MotionPNGTuber
   micro harness        micro harness         learning agent
 ```
 
-## Why This Exists
+## いま何ができるか
 
-OpenClaw is strong as a personal AI gateway. Hermes is strong as a learning
-agent. AIAvatarKit is strong as a speech-to-speech avatar framework.
+現在の IroHarness は、まだ完成品の商用アプリではなく、OSSとして育てるための
+基盤パッケージです。ただし、すでに次の機能があります。
 
-IroHarness aims at a different center:
+| 領域 | できること |
+|---|---|
+| 人格の中心管理 | `SOUL.md`、`IDENTITY.md`、`MEMORY.md`、`VOICE.md` を読み込み、同じ人格を複数の入口で使える |
+| Project OS | goals、stories、specs、tickets、runs、artifacts を永続状態として扱える |
+| モデル切り替え | voice / text / deep / work の brain slot を分け、音声は軽量、テキストは高品質、深い議論は強いモデルにできる |
+| micro harness 委譲 | Codex app-server、Claude Code CLI、OpenClaw、Hermes、HTTP worker、JSONL process、text process に仕事を投げる adapter がある |
+| ブラウザ companion | ローカルWeb UI、OBS overlay、audience admin、SSE event stream、OpenAPI を持つ開発サーバーを起動できる |
+| 配信対応 | OBS Browser Source、OBS WebSocket、YouTube Live Chat polling、Discord bot、Slack Events の実装例がある |
+| ユーザー管理 | YouTube ID、Discord ID、Slack ID、browser user などを同一人物に紐づけられる |
+| 権限制御 | deep discussion、delegate_work、manage_stream、manage_users などを role と permission override で制御できる |
+| 身体 adapter | MotionPNGTuber、M5Stack、Even G2、Live2D、VRM/3D、AIAvatarKit への状態マッピングがある |
+| realtime 音声契約 | STT partial、TTS chunk、barge-in、latency tracking を扱う JS contract がある |
+| Rust fast path | `crates/realtime-core` に native/WASM C ABI 対応の realtime core がある |
+| 生成アプリ | `npx iroharness init` で相棒AIアプリのひな形を作れる |
+| 運用準備 | doctor、production doctor、OSS readiness、publish preflight、GitHub Actions、npm release workflow がある |
+| PostgreSQL/Supabase | audience、identity、permission、stream session、audit log 用のSQL schemaとbackup/restore例がある |
+| 吸収設計 | CursorTuberKit、Neuro SDK、AIAvatarStackChan などの思想を contract / adapter / simulator として吸収する設計がある |
 
-- the character is the primary product surface
-- the same character can appear as Live2D, MotionPNGTuber, VRM/3D, M5Stack dot
-  face, Even G2 display, VS Code panel, Slack text, or browser avatar
-- voice, text, and work modes can use different models without breaking identity
-- Project OS keeps goals, specs, tickets, runs, and artifacts as the durable state
-- micro harnesses do specialized work, while the macro harness owns the character
-  and the relationship with the user
-- YouTube, Discord, Slack, and browser identities can resolve to the same user
-  record, so fans, members, and developers get appropriate access without
-  changing the character's personality
+詳しい一覧は [docs/capability-matrix.md](./docs/capability-matrix.md) を見てください。
 
-See [docs/design-principles.md](./docs/design-principles.md) for the design
-rules behind these boundaries.
+## なぜ作るのか
 
-See [docs/capability-matrix.md](./docs/capability-matrix.md) for the current
-implementation matrix across micro harnesses, platforms, bodies, storage, and
-deployment.
+OpenClaw は personal AI gateway として強いです。Hermes は learning agent として
+強いです。AIAvatarKit は speech-to-speech avatar framework として強いです。
 
-To add a new integration, see
-[docs/build-an-adapter.md](./docs/build-an-adapter.md).
-For how IroHarness learns from CursorTuberKit, Neuro SDK, and
-AIAvatarStackChan without becoming a clone, see
-[docs/inspiration-map.md](./docs/inspiration-map.md). A browser-readable
-version is available at [docs/inspiration-map.html](./docs/inspiration-map.html).
-The concrete monorepo absorption process is documented in
-[docs/absorption-architecture.md](./docs/absorption-architecture.md).
+IroHarness が中心に置くものは少し違います。
 
-## Status
+- キャラクターそのものをプロダクトの中心にする
+- 同じ人格を Live2D、MotionPNGTuber、VRM/3D、M5Stack、Even G2、VS Code、
+  Slack、Discord、ブラウザ avatar に出せるようにする
+- 音声会話、テキスト会話、深い議論、作業実行でモデルを分けても人格が壊れないようにする
+- Project OS に goals、specs、tickets、runs、artifacts を残し、会話ログだけに依存しない
+- micro harness には専門作業を任せ、macro harness が人格と関係性を所有する
+- YouTube、Discord、Slack、ブラウザ上のIDを同じユーザーとして扱い、ファン、開発者、
+  管理者の権限を分ける
 
-This repository is an OSS foundation for character macro harnesses. It keeps a
-small dependency-free Node.js core for inspectable protocols and includes a Rust
-realtime core path for native/WASM fast loops.
+境界の考え方は [docs/design-principles.md](./docs/design-principles.md) にあります。
+新しい連携を追加したい場合は [docs/build-an-adapter.md](./docs/build-an-adapter.md) を
+見てください。
 
-CI validates Node checks, Node tests, package contents, and the Rust realtime
-core crate. See [docs/ci.md](./docs/ci.md).
+近いOSSから何を学び、何を取り込まないかは
+[docs/inspiration-map.md](./docs/inspiration-map.md) と
+[docs/inspiration-map.html](./docs/inspiration-map.html) にまとめています。
+モノレポ内でどう吸収するかは
+[docs/absorption-architecture.md](./docs/absorption-architecture.md) です。
 
-See [RELEASE.md](./RELEASE.md), [CHANGELOG.md](./CHANGELOG.md), and
-[SECURITY.md](./SECURITY.md) for OSS operation notes. See
-[CONTRIBUTING.md](./CONTRIBUTING.md) and
-[CODE_OF_CONDUCT.md](./CODE_OF_CONDUCT.md) before contributing.
-For handling character memory, user IDs, credentials, and stream permissions,
-see [docs/privacy-and-security.md](./docs/privacy-and-security.md).
+## ステータス
 
-## Install
+このリポジトリは、Character Macro Harness のOSS基盤です。
+Node.js の依存なしコアで protocol を読みやすく保ちつつ、低レイテンシーが必要な
+音声、デバイス、イベントループのために Rust realtime core も用意しています。
+
+CI は Node check、Node test、package contents、Rust realtime core crate を検証します。
+詳細は [docs/ci.md](./docs/ci.md) を見てください。
+
+OSS運用については [RELEASE.md](./RELEASE.md)、[CHANGELOG.md](./CHANGELOG.md)、
+[SECURITY.md](./SECURITY.md) を見てください。コントリビュート前には
+[CONTRIBUTING.md](./CONTRIBUTING.md) と
+[CODE_OF_CONDUCT.md](./CODE_OF_CONDUCT.md) も確認してください。
+人格メモリ、ユーザーID、認証情報、配信権限の扱いは
+[docs/privacy-and-security.md](./docs/privacy-and-security.md) にあります。
+
+## インストール
 
 ```bash
 npm install
 ```
 
-There are no runtime dependencies today.
-
-The package ships TypeScript declarations for the core, adapters, and testing
-contracts.
+現時点では runtime dependency はありません。
+core、adapters、testing contracts の TypeScript declarations を同梱しています。
 
 ## Quick Start
 
-Create a local companion app:
+ローカルで相棒AIアプリを作ります。
 
 ```bash
 npx iroharness init ./my-companion --character Iroha
@@ -101,30 +121,54 @@ npm run doctor
 npm start
 ```
 
-Open the printed URL, usually:
+通常は次のURLが表示されます。
 
 ```text
 http://127.0.0.1:4178/
 ```
 
-Useful generated routes:
+生成アプリの主な route です。
 
-- `/` for browser chat
-- `/?view=overlay` for an OBS Browser Source
-- `/?view=admin` for audience users, platform IDs, permissions, and streams
-- `/health` for readiness and optional runtime status
-- `/openapi.json` for the local HTTP API contract
+- `/`: ブラウザ chat
+- `/?view=overlay`: OBS Browser Source 用 overlay
+- `/?view=admin`: audience、platform IDs、permissions、streams の管理画面
+- `/health`: readiness と runtime status
+- `/openapi.json`: ローカルHTTP API contract
 
-Deployment examples for a Mac mini, Linux host, Tailscale exposure, and reverse
-proxies live in [docs/deployment.md](./docs/deployment.md) and
-[examples/deployment](./examples/deployment).
+Mac mini、Linux、Tailscale、reverse proxy で動かす例は
+[docs/deployment.md](./docs/deployment.md) と
+[examples/deployment](./examples/deployment) にあります。
 
-The generated app reads `.env` directly. Setting `YOUTUBE_API_KEY` plus
-`YOUTUBE_LIVE_CHAT_ID` starts YouTube live chat polling, setting
-`DISCORD_BOT_TOKEN` starts the Discord runtime, and `IROHARNESS_ENABLE_OBS=1`
-enables OBS WebSocket stream control.
+`.env` に `YOUTUBE_API_KEY` と `YOUTUBE_LIVE_CHAT_ID` を入れると YouTube live chat
+polling が動きます。`DISCORD_BOT_TOKEN` を入れると Discord runtime が動きます。
+`IROHARNESS_ENABLE_OBS=1` を入れると OBS WebSocket stream control が有効になります。
 
-For a stream or Discord fan community, link platform IDs before going live:
+## Generated App Checklist
+
+ファンや共同開発者を招待する前に確認してください。
+
+```bash
+npm run doctor
+npx iroharness audience list . --json
+npx iroharness audience export . --file ./audience-backup.json
+IROHARNESS_ADMIN_TOKEN="$(openssl rand -hex 24)" npm run doctor:production
+```
+
+生成アプリには `AGENTS.md` が含まれます。これにより、Codex や Claude Code のような
+coding agent / micro harness がリポジトリに入っても、人格そのものを勝手に所有しない
+前提を共有できます。
+
+確認項目です。
+
+- `AGENTS.md` と `SOUL.md`、`IDENTITY.md`、`MEMORY.md`、`VOICE.md` を編集する
+- OBS は `http://127.0.0.1:4178/?view=overlay` を Browser Source に設定する
+- YouTube user と Discord user が必要に応じて同じ人物に解決される
+- `delegate_work`、`manage_stream`、`manage_users` は信頼できるユーザーだけに付ける
+- audience backup は private に扱い、git に入れない
+- Tailscale、tunnel、reverse proxy で外に出す前に `IROHARNESS_ADMIN_TOKEN` を設定する
+- deployment は launchd、systemd、Tailscale、reverse proxy の例に従う
+
+配信やDiscordコミュニティで使う前に、platform ID を紐づけます。
 
 ```bash
 npx iroharness audience user . \
@@ -143,15 +187,9 @@ npx iroharness audience stream . \
 npx iroharness audience list . --json
 ```
 
-Before exposing the server beyond a trusted local machine, set an admin token
-and run the production doctor:
+## サンプル実行
 
-```bash
-IROHARNESS_ADMIN_TOKEN="$(openssl rand -hex 24)" npm run doctor:production
-npx iroharness doctor . --production --json
-```
-
-Or run the repository examples:
+リポジトリ内の例を実行できます。
 
 ```bash
 npm run example
@@ -178,10 +216,12 @@ npm run oss:publish-preflight
 npm run demo:browser
 ```
 
-See [docs/cli.md](./docs/cli.md) for the `iroharness init` command.
-For browser screenshot E2E, see [docs/ci.md](./docs/ci.md).
+CLIの詳細は [docs/cli.md](./docs/cli.md) を見てください。
+browser screenshot E2E は [docs/ci.md](./docs/ci.md) にあります。
 
-Or import the core:
+## Core API
+
+最小構成の例です。
 
 ```js
 import {
@@ -221,35 +261,9 @@ await iroha.receive({
 });
 ```
 
-## Generated App Checklist
-
-Use this checklist before inviting fans or collaborators:
-
-```bash
-npm run doctor
-npx iroharness audience list . --json
-npx iroharness audience export . --file ./audience-backup.json
-IROHARNESS_ADMIN_TOKEN="$(openssl rand -hex 24)" npm run doctor:production
-```
-
-Generated apps include `AGENTS.md` so coding agents and micro harnesses can
-enter the repository without taking ownership of the character identity.
-
-Then confirm:
-
-- `AGENTS.md` and the character profile files are edited: `SOUL.md`, `IDENTITY.md`,
-  `MEMORY.md`, `VOICE.md`
-- OBS uses `http://127.0.0.1:4178/?view=overlay` as a Browser Source
-- YouTube users and Discord users resolve to the same person when appropriate
-- only trusted users have `delegate_work`, `manage_stream`, or `manage_users`
-- audience backups are kept private and outside git
-- `IROHARNESS_ADMIN_TOKEN` is set before using Tailscale, tunnels, or a reverse
-  proxy
-- deployment follows the launchd/systemd/Tailscale/reverse-proxy examples
-
 ## Adapter Examples
 
-Connect an HTTP runtime such as an OpenClaw or Hermes bridge:
+OpenClaw や Hermes のようなHTTP runtimeをつなげます。
 
 ```js
 import { createHttpMicroHarness } from "iroharness/adapters";
@@ -261,7 +275,7 @@ const openclaw = createHttpMicroHarness({
 });
 ```
 
-Connect named external bridges:
+名前付きの外部bridgeもあります。
 
 ```js
 import {
@@ -283,9 +297,9 @@ const avatar = createAIAvatarKitBridgeDevice({
 });
 ```
 
-See [docs/external-bridges.md](./docs/external-bridges.md).
+詳しくは [docs/external-bridges.md](./docs/external-bridges.md) を見てください。
 
-Validate custom adapters before wiring them into a character:
+独自adapterは、接続前に contract test できます。
 
 ```js
 import { assertMicroHarnessContract } from "iroharness/testing";
@@ -296,9 +310,9 @@ await assertMicroHarnessContract(adapter, {
 });
 ```
 
-See [docs/adapter-contract-testing.md](./docs/adapter-contract-testing.md).
+詳細は [docs/adapter-contract-testing.md](./docs/adapter-contract-testing.md) です。
 
-Connect a local JSONL worker process:
+JSONL worker process も接続できます。
 
 ```js
 import { createJsonlProcessMicroHarness } from "iroharness/adapters";
@@ -311,7 +325,7 @@ const hermes = createJsonlProcessMicroHarness({
 });
 ```
 
-Connect Claude Code as a delegated coding micro harness:
+Claude Code を coding micro harness として呼ぶ例です。
 
 ```js
 import { createClaudeCodeCliMicroHarness } from "iroharness/adapters";
@@ -322,21 +336,30 @@ const claudeCode = createClaudeCodeCliMicroHarness({
 });
 ```
 
-Run the guarded example:
+guard付き example を実行します。
 
 ```bash
 IROHARNESS_RUN_CLAUDE=1 CLAUDE_WORKSPACE=/path/to/project npm run example:claude -- "Claude Codeで設計レビューして"
 ```
 
-For Codex app-server delegation:
+Codex app-server 委譲の例です。
 
 ```bash
 IROHARNESS_RUN_CODEX=1 CODEX_WORKSPACE=/path/to/project npm run example:codex -- "CodexでREADMEをレビューして"
 ```
 
-See [docs/codex.md](./docs/codex.md).
+詳細は [docs/codex.md](./docs/codex.md) を見てください。
 
-For voice/text/deep model switching:
+## Brain Routing
+
+IroHarness は人格とモデル選択を分離します。
+
+- `voice`: 低レイテンシー、短い返答、割り込み前提
+- `text`: Slack、Discord、Web chat 用の自然な会話
+- `deep`: 開発者との深い議論、設計、戦略、調査
+- `work`: Codex、Claude Code、OpenClaw、Hermes などへの作業委譲
+
+例です。
 
 ```bash
 npm run example:brains
@@ -344,8 +367,7 @@ npm run example:brain-gateway
 npm run example:provider-brain-gateway
 ```
 
-Generated companion apps can also route each brain slot to a model gateway from
-`.env`:
+生成アプリでは `.env` から brain slot ごとに model gateway を指定できます。
 
 ```bash
 IROHARNESS_VOICE_BRAIN_ENDPOINT=http://127.0.0.1:8788/voice
@@ -354,16 +376,15 @@ IROHARNESS_DEEP_BRAIN_ENDPOINT=http://127.0.0.1:8788/deep
 IROHARNESS_BRAIN_AUTH_TOKEN=optional-bearer-token
 ```
 
-`example:brain-gateway` is a dependency-free local HTTP gateway that implements
-the same request/response shape as `createHttpBrain`, so generated apps can test
-slot routing before you connect a real model provider.
-`example:provider-brain-gateway` keeps that same contract but routes slots to
-OpenAI Responses, Anthropic Messages, or a local OpenAI-compatible chat
-completions server.
+`example:brain-gateway` は dependency-free のローカルHTTP gatewayです。
+`example:provider-brain-gateway` は同じ contract で OpenAI Responses、
+Anthropic Messages、local OpenAI-compatible chat completions server に振り分けます。
 
-See [docs/brains.md](./docs/brains.md).
+詳細は [docs/brains.md](./docs/brains.md) を見てください。
 
-For realtime voice contracts:
+## Realtime Voice
+
+音声リアルタイム系の contract もあります。
 
 ```js
 import {
@@ -376,21 +397,20 @@ import {
 } from "iroharness";
 ```
 
-See [docs/realtime.md](./docs/realtime.md).
+詳細は [docs/realtime.md](./docs/realtime.md) です。
 
-For an external realtime core process:
+外部 realtime core process の例です。
 
 ```bash
 npm run example:realtime-core
 ```
 
-This uses the same runtime core contract that a future Rust or Go fast path can
-implement.
+これは将来の Rust や Go fast path と同じ runtime core contract を使います。
 
 ## Platform Adapters
 
-Discord and YouTube inputs are normalized before they reach personality,
-permissions, or micro harness delegation.
+Discord、Slack、YouTube の入力は、人格、権限、micro harness 委譲に入る前に
+正規化されます。
 
 ```js
 import {
@@ -404,7 +424,7 @@ const slack = createSlackMessageAdapter({ mentionOnly: true });
 const youtube = createYouTubeLiveChatAdapter();
 ```
 
-For stream-aware permissions, attach stream context after normalization:
+stream-aware permissions を使う場合は、正規化後に stream context を付けます。
 
 ```js
 import {
@@ -419,31 +439,16 @@ const enrichTurn = createStreamContextEnricher({
 });
 ```
 
-For real YouTube live chat polling:
+実際の platform runtime 例です。
 
 ```bash
 YOUTUBE_API_KEY=... YOUTUBE_LIVE_CHAT_ID=... npm run example:youtube
-```
-
-For a Discord Gateway bot:
-
-```bash
 DISCORD_BOT_TOKEN=... DISCORD_BOT_USER_ID=... npm run example:discord
-```
-
-For Slack Events API handling:
-
-```bash
 SLACK_BOT_TOKEN=... SLACK_BOT_USER_ID=... npm run example:slack
-```
-
-For OBS Browser Source control:
-
-```bash
 OBS_WEBSOCKET_URL=ws://127.0.0.1:4455 OBS_OVERLAY_INPUT="IroHarness Overlay" npm run example:obs
 ```
 
-The dev server also exposes:
+dev server には次の endpoint もあります。
 
 ```text
 POST /platform/discord/message
@@ -452,47 +457,75 @@ POST /platform/youtube/message
 GET  /platforms
 ```
 
-See [docs/platform-adapters.md](./docs/platform-adapters.md).
+詳細は [docs/platform-adapters.md](./docs/platform-adapters.md) です。
 
 ## Audience Registry
 
-YouTube, Discord, Slack, VS Code, browser, M5Stack, and Even G2 identities can
-all point to the same durable user. Roles and permission overrides decide what
-the person can do without changing the character's personality.
+YouTube、Discord、Slack、VS Code、browser、M5Stack、Even G2 のIDを、
+同じ durable user に紐づけられます。role と permission override によって、
+その人ができることを制御します。人格は変わりません。
 
 ```bash
 npm run example:audience
 ```
 
-See [docs/audience-data-model.md](./docs/audience-data-model.md) and
-[docs/audience-and-permissions.md](./docs/audience-and-permissions.md).
-For OBS/YouTube streaming and Discord fan/community operations, see
-[docs/streaming-community.md](./docs/streaming-community.md).
+詳細は [docs/audience-data-model.md](./docs/audience-data-model.md) と
+[docs/audience-and-permissions.md](./docs/audience-and-permissions.md) を見てください。
+OBS、YouTube配信、Discordファンコミュニティ運用は
+[docs/streaming-community.md](./docs/streaming-community.md) にあります。
 
-The dev server can also expose local audience management endpoints such as
-`GET /audience`, `GET /audience/resolve`, `POST /audience/users`,
-`POST /audience/users/:userId/identities`, and
-`POST /audience/users/:userId/permissions` when it is created with a
-`userRegistry`. This is the setup path for Discord fan communities, YouTube
-live streams, OBS operators, and developer-only deep discussion. Add
-`adminToken` if the server is reachable outside a trusted local machine.
+dev server では、`userRegistry` を渡すことで次の local audience management endpoint
+も使えます。
 
-With the browser demo running, seed stream identities from another shell:
+```text
+GET  /audience
+GET  /audience/resolve
+POST /audience/users
+POST /audience/users/:userId/identities
+POST /audience/users/:userId/permissions
+```
+
+外部から到達できるサーバーにする場合は `adminToken` を設定してください。
+
+browser demo 起動中に別shellから seed できます。
 
 ```bash
 IROHARNESS_URL=http://127.0.0.1:4178 npm run example:audience-admin
 ```
 
+長期運用では `protocols/sql/postgres-audience.sql` の PostgreSQL/Supabase schema を使えます。
+
+```text
+iroharness_users
+iroharness_user_identities
+iroharness_permission_overrides
+iroharness_stream_sessions
+iroharness_audit_log
+```
+
+backup / restore は [docs/postgres-backup-restore.md](./docs/postgres-backup-restore.md) と
+`examples/postgres-audience-backup.sh` /
+`examples/postgres-audience-restore.sh` を使います。
+
+core からは `pg` 互換の query 関数で使えます。
+
+```js
+import { createPostgresUserRegistry } from "iroharness";
+
+const userRegistry = createPostgresUserRegistry({
+  query: (sql, params) => pool.query(sql, params)
+});
+```
+
 ## Browser Avatar Demo
 
-Run:
+起動します。
 
 ```bash
 npm run demo:browser
 ```
 
-To test model-slot routing locally, run the demo brain gateway in another shell
-and point the browser demo at it:
+model-slot routing をローカルで試す場合は、別shellで demo brain gateway を起動します。
 
 ```bash
 npm run example:brain-gateway
@@ -502,76 +535,53 @@ IROHARNESS_DEEP_BRAIN_ENDPOINT=http://127.0.0.1:8788/deep \
 npm run demo:browser
 ```
 
-Then open the printed URL. The demo exposes:
+demo が提供するものです。
 
-- `GET /events` for Server-Sent Events
-- `POST /turn` for text/voice-like input
-- `GET /state` for current character state
-- `GET /pjos` for Project OS state
-- `GET /health` for public readiness, brain slots, and optional runtime/error metadata
-- `GET /openapi.json` for the local HTTP API contract
-- `GET /bodies`, `/body/:id`, and `/body/:id/events` for MotionPNGTuber,
-  M5Stack, Even G2, Live2D, and VRM bridge state
-- `POST /platform/discord/message` and `/platform/youtube/message` for chat
-  platform testing
-- `/?view=admin` for local audience, platform identity, permission, and stream
-  session management
+- `GET /events`: Server-Sent Events
+- `POST /turn`: text / voice-like input
+- `GET /state`: 現在の character state
+- `GET /pjos`: Project OS state
+- `GET /health`: readiness、brain slots、runtime/error metadata
+- `GET /openapi.json`: ローカルHTTP API contract
+- `GET /bodies`、`/body/:id`、`/body/:id/events`: MotionPNGTuber、M5Stack、
+  Even G2、Live2D、VRM bridge state
+- `POST /platform/discord/message`、`/platform/youtube/message`: platform testing
+- `/?view=admin`: audience、platform identity、permission、stream session 管理
 
-For the VS Code companion panel:
+VS Code companion panel は次で開きます。
 
 ```bash
 code examples/vscode-companion
 ```
 
-See [docs/vscode.md](./docs/vscode.md).
+詳細は [docs/vscode.md](./docs/vscode.md) です。
 
-The browser avatar is intentionally simple: it proves that the same normalized
-character state can drive a visual body while PJOS and micro harness delegation
-continue to run behind it.
-
-For OBS or YouTube streaming, add overlay mode:
+OBSやYouTube配信では overlay mode を使います。
 
 ```text
 http://127.0.0.1:4178/?view=overlay
 ```
 
-Overlay mode hides the controls and uses a transparent background for OBS
-Browser Source composition.
-
-OBS WebSocket control is available through `createObsWebSocketAdapter`. Approved
-macro stream operations can use `createObsStreamController` so `manage_stream`
-gates scene, overlay, and mute changes before OBS WebSocket is called. See
-[docs/obs.md](./docs/obs.md).
+Overlay mode は操作UIを隠し、OBS Browser Source 合成用に transparent background を使います。
+OBS WebSocket control は `createObsWebSocketAdapter` で扱います。
+stream操作は `manage_stream` でgateされます。詳細は [docs/obs.md](./docs/obs.md) です。
 
 ## Core Concepts
 
 ### Character Instance
 
-An identity is not only a prompt. In IroHarness, a character instance is:
+IroHarness における人格は、ただのpromptではありません。
 
 ```text
 SOUL + memory + macro harness behavior + tools + body expression + failure modes
 ```
 
-Different harnesses can be treated as different characters. For example,
-`Iroha-Hermes` and `Maguro-Codex` may share a world or team canon, but they are
-not automatically the same person.
-
-### Brains
-
-IroHarness separates model choice from identity:
-
-- `voice` brain: low latency, short replies, interruption friendly
-- `text` brain: deeper language quality for Slack, Discord, email, web chat
-- `deep` brain: developer discussion, strategy, architecture, and planning
-- `work` brain or micro harness: coding, research, execution, review
-
-The macro harness can switch engines automatically while keeping character state
-consistent.
+違う harness は違う人格として扱えます。例えば `Iroha-Hermes` と `Maguro-Codex` は
+同じ世界観やチーム設定を共有できても、自動的に同一人物にはなりません。
 
 ### Bodies
 
-A body is a device or renderer adapter:
+body は device や renderer の adapter です。
 
 - MotionPNGTuber
 - Live2D
@@ -580,23 +590,21 @@ A body is a device or renderer adapter:
 - Even G2 display
 - browser avatar
 - VS Code panel
-- Slack/Discord text
+- Slack / Discord text
 
-All bodies receive the same normalized character state.
-
-Body bridges expose mapped snapshots and SSE streams for renderers and devices.
-See [docs/body-bridges.md](./docs/body-bridges.md).
+すべてのbodyは、同じ normalized character state を受け取ります。
+詳細は [docs/body-bridges.md](./docs/body-bridges.md) です。
 
 ### Project OS
 
-PJOS is the durable state layer between macro decisions and micro execution.
-It records goals, stories, specs, tickets, runs, artifacts, and links back to the
-character and harness that produced them.
+PJOS は、macro decision と micro execution の間にある durable state layer です。
+goals、stories、specs、tickets、runs、artifacts を記録し、どの人格と harness が
+何を作ったのかを追えるようにします。
 
 ### Audience Registry And Permissions
 
-The same person may appear across YouTube, Discord, Slack, and the browser. The
-user registry links those platform IDs to a single user record:
+同じ人が YouTube、Discord、Slack、browser に別IDで現れることがあります。
+user registry はそれらを1人の user record にまとめます。
 
 ```js
 userRegistry.registerUser({
@@ -610,57 +618,24 @@ userRegistry.registerUser({
 });
 ```
 
-Role permissions decide whether a user can only chat, have deep architecture
-discussion, or delegate work to micro harnesses. The personality stays owned by
-the character macro harness.
+role permissions によって、雑談だけできる人、深い設計議論ができる人、
+micro harness に仕事を投げられる人を分けられます。
+配信操作では OBS、scene、overlay、mute、live stream control が `stream` operation として
+扱われ、`manage_stream` が必要になります。
 
-Stream operations use the same policy. Requests that mention OBS, scene,
-overlay, mute, or live stream control are routed as `stream` operations and
-require `manage_stream`. Moderators and owners can operate a stream; public fans
-cannot.
+## なぜRustを使うのか
 
-For long-running deployments, use the PostgreSQL/Supabase schema in
-`protocols/sql/postgres-audience.sql`:
-
-```text
-iroharness_users
-iroharness_user_identities
-iroharness_permission_overrides
-iroharness_stream_sessions
-iroharness_audit_log
-```
-
-This is the table layer for OBS/YouTube streams, Discord fan chats, and
-developer-only work delegation. The audit table keeps privileged audience
-changes reviewable without turning chat logs into the source of truth.
-For backup and restore, use
-[docs/postgres-backup-restore.md](./docs/postgres-backup-restore.md) and the
-`examples/postgres-audience-backup.sh` /
-`examples/postgres-audience-restore.sh` scripts.
-
-Use it from the core with a `pg`-style query function:
-
-```js
-import { createPostgresUserRegistry } from "iroharness";
-
-const userRegistry = createPostgresUserRegistry({
-  query: (sql, params) => pool.query(sql, params)
-});
-```
-
-## Why Rust Later
-
-Rust will not make remote LLMs think faster. It can reduce the overhead around
-the wait:
+Rust はリモートLLMの思考時間を短くするものではありません。
+速くなる可能性があるのは、LLMを待っている周辺の処理です。
 
 - audio stream routing
-- VAD and interruption handling
+- VAD と interruption handling
 - WebSocket fanout
 - device state synchronization
 - expression state updates
 - low-latency scheduler loops
 
-The recommended path is:
+推奨する順番は次です。
 
 ```text
 v0: Node.js core to stabilize protocols
@@ -668,8 +643,8 @@ v1: adapters for Codex, OpenClaw, Hermes, AIAvatarKit, M5Stack, Live2D
 v2: Rust realtime core for audio/device/event bus
 ```
 
-The Rust core crate starts at `crates/realtime-core`. See
-[docs/rust-core.md](./docs/rust-core.md).
+Rust core crate は `crates/realtime-core` にあります。
+詳細は [docs/rust-core.md](./docs/rust-core.md) を見てください。
 
 ## Repository Layout
 
@@ -690,6 +665,7 @@ protocols/
   user.schema.json
   adapter-contracts.md
 docs/
+  absorption-architecture.md
   adapter-contract-testing.md
   architecture.md
   audience-and-permissions.md
@@ -697,13 +673,13 @@ docs/
   brains.md
   body-bridges.md
   build-an-adapter.md
-  character-profile.md
   capability-matrix.md
   cli.md
   codex.md
   ci.md
   design-principles.md
   external-bridges.md
+  inspiration-map.md
   platform-adapters.md
   obs.md
   privacy-and-security.md
@@ -736,7 +712,7 @@ test/
 
 ## Roadmap
 
-See [ROADMAP.md](./ROADMAP.md).
+今後の予定は [ROADMAP.md](./ROADMAP.md) を見てください。
 
 ## License
 
