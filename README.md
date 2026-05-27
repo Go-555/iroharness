@@ -44,7 +44,7 @@ Slack / Web / VS Code / M5Stack / Even G2 / Live2D / MotionPNGTuber
 | モデル切り替え | voice / text / deep / work の brain slot を分け、音声は軽量、テキストは高品質、深い議論は強いモデルにできる |
 | micro harness 委譲 | Codex app-server、Claude Code CLI、OpenClaw、Hermes、HTTP worker、JSONL process、text process に仕事を投げる adapter がある |
 | ブラウザ companion | ローカルWeb UI、OBS overlay、audience admin、SSE event stream、OpenAPI を持つ開発サーバーを起動できる |
-| 配信対応 | OBS Browser Source、OBS WebSocket、YouTube Live Chat polling、Discord bot、Slack Events の実装例がある |
+| 配信・Slack対応 | OBS Browser Source、OBS WebSocket、YouTube Live Chat polling、Discord bot、Slack Events、Slack + Codex companion の実装例がある |
 | ユーザー管理 | YouTube ID、Discord ID、Slack ID、browser user などを同一人物に紐づけられる |
 | 権限制御 | deep discussion、delegate_work、manage_stream、manage_users などを role と permission override で制御できる |
 | 身体 adapter | MotionPNGTuber、M5Stack、Even G2、Live2D、VRM/3D、AIAvatarKit への状態マッピングがある |
@@ -76,6 +76,8 @@ IroHarness が中心に置くものは少し違います。
 境界の考え方は [docs/design-principles.md](./docs/design-principles.md) にあります。
 新しい連携を追加したい場合は [docs/build-an-adapter.md](./docs/build-an-adapter.md) を
 見てください。
+SlackからCodexへ委譲する最初の実運用形は
+[docs/slack-codex.md](./docs/slack-codex.md) にあります。
 
 近いOSSから何を学び、何を取り込まないかは
 [docs/inspiration-map.md](./docs/inspiration-map.md) と
@@ -204,6 +206,7 @@ npm run example:pjos
 npm run example:codex
 npm run example:claude
 npm run example:discord
+npm run example:slack-codex
 npm run example:bridges
 npm run example:slack
 npm run example:youtube
@@ -349,6 +352,23 @@ IROHARNESS_RUN_CODEX=1 CODEX_WORKSPACE=/path/to/project npm run example:codex --
 ```
 
 詳細は [docs/codex.md](./docs/codex.md) を見てください。
+
+Slackで会話しながらCodexへ委譲する例です。Codex認証はMac miniや常駐ホストで
+`codex login` しておき、Slack userごとの許可はIroHarnessのaudience registryで見ます。
+
+```bash
+codex login
+
+SLACK_BOT_TOKEN=xoxb-... \
+SLACK_SIGNING_SECRET=... \
+SLACK_BOT_USER_ID=UIROHA \
+IROHARNESS_RUN_CODEX=1 \
+IROHARNESS_SLACK_OWNER_USER_ID=UOWNER \
+CODEX_WORKSPACE=/path/to/project \
+npm run example:slack-codex
+```
+
+詳細は [docs/slack-codex.md](./docs/slack-codex.md) を見てください。
 
 ## Brain Routing
 

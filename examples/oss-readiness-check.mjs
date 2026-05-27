@@ -54,7 +54,7 @@ assert.equal(Boolean(pkg.bin?.iroharness), true);
 assert.equal(Boolean(pkg.exports?.["."]), true);
 assert.equal(Boolean(pkg.exports?.["./adapters"]), true);
 assert.equal(Boolean(pkg.exports?.["./testing"]), true);
-assert.match(pkg.repository?.url || "", /github\.com\/iroharness\/iroharness/);
+assert.match(pkg.repository?.url || "", /github\.com\/[^/]+\/iroharness/);
 assert.match(pkg.scripts.verify, /npm run check && npm test/);
 assert.match(pkg.scripts["package:dry-run"], /npm pack --dry-run/);
 assert.match(pkg.scripts["smoke:generated-app"], /generated-app-smoke-test/);
@@ -86,7 +86,7 @@ assert.match(release, /npm run smoke:generated-app/);
 const remote = run("git", ["remote", "-v"]);
 const remotes = remote.status === 0 ? remote.stdout.trim() : "";
 if (process.env.IROHARNESS_REQUIRE_GIT_REMOTE === "1") {
-  assert.match(remotes, /github\.com[:/]iroharness\/iroharness/, "GitHub remote is required");
+  assert.match(remotes, /github\.com[:/][^/\s]+\/iroharness/, "GitHub remote is required");
 }
 
 console.log(

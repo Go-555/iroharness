@@ -31,6 +31,7 @@ Status labels:
 |---|---|---|---|
 | Generic HTTP harness | adapter | `createHttpMicroHarness` | Sends IroHarness task/context envelopes to any HTTP worker. |
 | Codex app-server | adapter | `createCodexAppServerMicroHarness`, `examples/codex-app-server.mjs` | Delegated coding/review worker; Codex remains a micro harness. |
+| Slack + Codex companion | example | `examples/slack-codex-companion.mjs`, `docs/slack-codex.md` | Slack-facing macro harness that uses local Codex OAuth through `codex app-server`. |
 | Claude Code CLI | adapter | `createClaudeCodeCliMicroHarness`, `examples/claude-code-cli.mjs` | Runs CLI delegation when explicitly enabled by env. |
 | OpenClaw | adapter | `createOpenClawMicroHarness` | Bridge target; OpenClaw does not own IroHarness character identity. |
 | Hermes | adapter | `createHermesGatewayMicroHarness` | Bridge target; useful as learning/skills worker. |

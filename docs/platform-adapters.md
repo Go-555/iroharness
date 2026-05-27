@@ -182,6 +182,14 @@ Or run the example:
 SLACK_BOT_TOKEN=... SLACK_BOT_USER_ID=... npm run example:slack
 ```
 
+For a Slack-facing companion that delegates coding work to Codex through the
+host machine's Codex OAuth session, see [slack-codex.md](./slack-codex.md):
+
+```bash
+codex login
+SLACK_BOT_TOKEN=... SLACK_SIGNING_SECRET=... IROHARNESS_RUN_CODEX=1 npm run example:slack-codex
+```
+
 The built-in dev server accepts Slack Events-like payloads:
 
 ```bash
