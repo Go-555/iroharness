@@ -78,6 +78,25 @@ create index if not exists iroharness_stream_sessions_platform_idx
 create index if not exists iroharness_stream_sessions_status_idx
   on iroharness_stream_sessions(status);
 
+create table if not exists iroharness_audit_log (
+  id text primary key,
+  action text not null,
+  resource_type text not null,
+  resource_id text not null,
+  user_id text,
+  metadata jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists iroharness_audit_log_user_id_idx
+  on iroharness_audit_log(user_id);
+
+create index if not exists iroharness_audit_log_action_idx
+  on iroharness_audit_log(action);
+
+create index if not exists iroharness_audit_log_resource_idx
+  on iroharness_audit_log(resource_type, resource_id);
+
 create or replace function iroharness_touch_updated_at()
 returns trigger
 language plpgsql

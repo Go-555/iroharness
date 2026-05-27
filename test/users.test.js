@@ -40,6 +40,7 @@ const createFakePostgresAudienceQuery = () => {
   let identities = [];
   let overrides = [];
   let streams = [];
+  let auditLog = [];
   const timestamp = "2026-05-25T00:00:00.000Z";
 
   const touch = (row) => ({
@@ -55,6 +56,21 @@ const createFakePostgresAudienceQuery = () => {
       const [id, display_name, role, relationship, permissions, metadata] = params;
       const row = touch({ id, display_name, role, relationship, permissions, metadata });
       users = [...users.filter((candidate) => candidate.id !== id), row];
+      return { rows: [row] };
+    }
+
+    if (normalized.startsWith("insert into iroharness_audit_log")) {
+      const [id, action, resource_type, resource_id, user_id, metadata] = params;
+      const row = {
+        id,
+        action,
+        resource_type,
+        resource_id,
+        user_id,
+        metadata,
+        created_at: timestamp
+      };
+      auditLog = [...auditLog, row];
       return { rows: [row] };
     }
 
@@ -209,6 +225,10 @@ const createFakePostgresAudienceQuery = () => {
 
     if (normalized.startsWith("select * from iroharness_stream_sessions order by")) {
       return { rows: streams };
+    }
+
+    if (normalized.startsWith("select * from iroharness_audit_log order by")) {
+      return { rows: auditLog };
     }
 
     throw new Error(`Unhandled fake query: ${sql}`);
@@ -439,7 +459,16 @@ test("Postgres user registry resolves linked platform identities and scoped perm
   assert.equal(snapshot.userIdentities.length, 2);
   assert.equal(snapshot.streamSessions[0].status, "paused");
   assert.equal(snapshot.streamSessions[0].metadata.reason, "break");
-  assert.deepEqual(snapshot.auditLog, []);
+  assert.deepEqual(
+    snapshot.auditLog.map((entry) => entry.action),
+    [
+      "audience.user.register",
+      "audience.identity.link",
+      "audience.permission.set",
+      "audience.stream.create",
+      "audience.stream.update"
+    ]
+  );
 });
 
 test("Postgres user registry can revoke scoped permission overrides", async () => {
@@ -465,6 +494,10 @@ test("Postgres user registry can revoke scoped permission overrides", async () =
 
   assert.equal(deleted.deleted, true);
   assert.equal(snapshot.permissionOverrides.length, 0);
+  assert.equal(
+    snapshot.auditLog.some((entry) => entry.action === "audience.permission.delete"),
+    true
+  );
 });
 
 test("IroHarness can use an async Postgres user registry for developer delegation", async () => {

@@ -92,8 +92,9 @@ Use `userIdentities` to link YouTube, Discord, Slack, VS Code, browser, M5Stack,
 Even G2, and future device identities to one person. Use `permissionOverrides`
 for narrow or temporary powers such as stream operation. Use `streamSessions` to
 keep live chat state separate from the character identity. Use `auditLog` to
-review privileged local changes such as permission grants, revokes, and stream
-session edits.
+review privileged changes such as permission grants, revokes, identity links,
+and stream session edits. File-backed and PostgreSQL stores expose the same
+snapshot shape.
 
 See `protocols/audience-store.schema.json`.
 

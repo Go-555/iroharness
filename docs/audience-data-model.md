@@ -98,10 +98,10 @@ registry.createStreamSession({
 The same user can now talk from Discord or YouTube while the same character
 identity, memory, and permission policy remain in charge.
 
-File-backed registries also append audit records for user, identity, permission,
-and stream-session changes. This makes local stream operations reviewable after
-the fact and ensures exported audience backups include both current state and
-operational history.
+File-backed and PostgreSQL registries append audit records for user, identity,
+permission, and stream-session changes. This makes stream operations reviewable
+after the fact and ensures exported audience backups include both current state
+and operational history.
 
 ## PostgreSQL / Supabase
 
@@ -117,6 +117,7 @@ It creates:
 - `iroharness_user_identities`
 - `iroharness_permission_overrides`
 - `iroharness_stream_sessions`
+- `iroharness_audit_log`
 - `iroharness_resolved_users`
 
 The key invariant is `unique (platform, platform_user_id)` on identities. A
@@ -129,6 +130,11 @@ Use `permissionOverrides` for temporary or scoped powers such as:
 - allowing a trusted fan to manage a YouTube stream
 - denying `delegate_work` during a public stream
 - allowing a developer-only Discord identity to call Codex or Claude Code
+
+Use `iroharness_audit_log` for append-only records of privileged audience
+changes. The Postgres adapter writes the same `auditLog` actions as the
+file-backed registry, so local demos and long-running stream deployments expose
+the same snapshot shape.
 
 The file registry remains useful for local demos. The SQL schema is the intended
 shape for long-running OBS, YouTube, Discord, and multi-device deployments.

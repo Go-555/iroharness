@@ -12,13 +12,17 @@ test("Postgres audience schema defines canonical identity and permission tables"
     "iroharness_users",
     "iroharness_user_identities",
     "iroharness_permission_overrides",
-    "iroharness_stream_sessions"
+    "iroharness_stream_sessions",
+    "iroharness_audit_log"
   ].forEach((table) => {
     assert.match(sql, new RegExp(`create table if not exists ${table}`));
   });
 
   assert.match(sql, /unique \(platform, platform_user_id\)/);
   assert.match(sql, /unique \(user_id, permission, scope\)/);
+  assert.match(sql, /resource_type text not null/);
+  assert.match(sql, /resource_id text not null/);
+  assert.match(sql, /iroharness_audit_log_resource_idx/);
   assert.match(sql, /role in \('owner', 'developer', 'moderator', 'member', 'fan', 'anonymous'\)/);
   assert.match(sql, /permission in \('chat_public', 'deep_discussion', 'delegate_work', 'manage_stream', 'manage_users'\)/);
   assert.match(sql, /status in \('live', 'paused', 'ended'\)/);

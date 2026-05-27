@@ -23,7 +23,8 @@ Initial OSS skeleton for a character macro harness.
   revoke, and stream sessions
 - file-backed audience audit log plus export/import for backups and local
   restores
-- PostgreSQL/Supabase schema and registry adapter for production audience state
+- PostgreSQL/Supabase schema and registry adapter for production audience state,
+  including persisted audit logs
 - privacy and security guide for character memory, user IDs, credentials, and
   stream permissions
 

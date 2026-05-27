@@ -603,10 +603,12 @@ iroharness_users
 iroharness_user_identities
 iroharness_permission_overrides
 iroharness_stream_sessions
+iroharness_audit_log
 ```
 
 This is the table layer for OBS/YouTube streams, Discord fan chats, and
-developer-only work delegation.
+developer-only work delegation. The audit table keeps privileged audience
+changes reviewable without turning chat logs into the source of truth.
 
 Use it from the core with a `pg`-style query function:
 

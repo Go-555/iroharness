@@ -87,6 +87,19 @@ const fromDbStreamSession = (row) =>
       })
     : null;
 
+const fromDbAuditRecord = (row) =>
+  row
+    ? freezeCopy({
+        id: row.id,
+        action: row.action,
+        resourceType: row.resource_type ?? row.resourceType,
+        resourceId: row.resource_id ?? row.resourceId,
+        userId: row.user_id ?? row.userId ?? null,
+        metadata: freezeCopy(row.metadata || {}),
+        createdAt: row.created_at ?? row.createdAt
+      })
+    : null;
+
 const hydrateUserWithRows = ({ user, identities = [], permissionOverrides = [] }) =>
   freezeCopy({
     ...user,
@@ -779,6 +792,23 @@ export const createPostgresUserRegistry = ({ query }) => {
 
   const run = async (sql, params = []) => query(sql, params);
 
+  const appendAuditLog = async ({
+    action,
+    resourceType,
+    resourceId,
+    userId = null,
+    metadata = {}
+  }) =>
+    run(
+      [
+        "insert into iroharness_audit_log",
+        "(id, action, resource_type, resource_id, user_id, metadata)",
+        "values ($1, $2, $3, $4, $5, $6)",
+        "returning *"
+      ].join(" "),
+      [createId("audit"), action, resourceType, String(resourceId), userId, metadata]
+    );
+
   const loadUserContext = async (userId) => {
     const [userResult, identityResult, overrideResult] = await Promise.all([
       run("select * from iroharness_users where id = $1", [userId]),
@@ -843,6 +873,13 @@ export const createPostgresUserRegistry = ({ query }) => {
       );
       identityRows.push(fromDbIdentity(dbOne(identity)));
     }
+    await appendAuditLog({
+      action: "audience.user.register",
+      resourceType: "user",
+      resourceId: id,
+      userId: id,
+      metadata: { role, relationship }
+    });
     return hydrateUserWithRows({
       user: fromDbUser(dbOne(userResult)),
       identities: identityRows.filter(Boolean)
@@ -880,6 +917,13 @@ export const createPostgresUserRegistry = ({ query }) => {
       }
     }
     const user = fromDbUser(dbOne(result));
+    await appendAuditLog({
+      action: "audience.user.update",
+      resourceType: "user",
+      resourceId: userId,
+      userId,
+      metadata: { fields: Object.keys(patch || {}) }
+    });
     return loadUserContext(user.id);
   };
 
@@ -910,7 +954,15 @@ export const createPostgresUserRegistry = ({ query }) => {
       ].join(" "),
       [createId("identity"), userId, platform, String(platformUserId), displayName, metadata]
     );
-    return fromDbIdentity(dbOne(result));
+    const identity = fromDbIdentity(dbOne(result));
+    await appendAuditLog({
+      action: "audience.identity.link",
+      resourceType: "identity",
+      resourceId: identity.id,
+      userId,
+      metadata: { platform, platformUserId: String(platformUserId) }
+    });
+    return identity;
   };
 
   const setPermissionOverride = async ({
@@ -946,7 +998,15 @@ export const createPostgresUserRegistry = ({ query }) => {
       ].join(" "),
       [createId("permission"), userId, permission, effect, scope, reason, expiresAt, metadata]
     );
-    return fromDbPermissionOverride(dbOne(result));
+    const override = fromDbPermissionOverride(dbOne(result));
+    await appendAuditLog({
+      action: "audience.permission.set",
+      resourceType: "permissionOverride",
+      resourceId: override.id,
+      userId,
+      metadata: { permission, effect, scope, expiresAt }
+    });
+    return override;
   };
 
   const deletePermissionOverride = async ({ userId, permission, scope = "global" }) => {
@@ -961,11 +1021,19 @@ export const createPostgresUserRegistry = ({ query }) => {
       ].join(" "),
       [userId, permission, scope]
     );
+    const deleted = dbRows(result).length > 0;
+    await appendAuditLog({
+      action: "audience.permission.delete",
+      resourceType: "permissionOverride",
+      resourceId: `${userId}:${permission}:${scope}`,
+      userId,
+      metadata: { permission, scope, deleted }
+    });
     return freezeCopy({
       userId,
       permission,
       scope,
-      deleted: dbRows(result).length > 0
+      deleted
     });
   };
 
@@ -997,7 +1065,15 @@ export const createPostgresUserRegistry = ({ query }) => {
       ].join(" "),
       [id, platform, String(platformChannelId), title, hostUserId, status, metadata]
     );
-    return fromDbStreamSession(dbOne(result));
+    const session = fromDbStreamSession(dbOne(result));
+    await appendAuditLog({
+      action: "audience.stream.create",
+      resourceType: "streamSession",
+      resourceId: session.id,
+      userId: hostUserId,
+      metadata: { platform, platformChannelId: String(platformChannelId), status }
+    });
+    return session;
   };
 
   const updateStreamSession = async (sessionId, patch) => {
@@ -1022,7 +1098,15 @@ export const createPostgresUserRegistry = ({ query }) => {
       ].join(" "),
       [sessionId, next.title, next.hostUserId, next.status, next.metadata, next.endedAt]
     );
-    return fromDbStreamSession(dbOne(result));
+    const session = fromDbStreamSession(dbOne(result));
+    await appendAuditLog({
+      action: "audience.stream.update",
+      resourceType: "streamSession",
+      resourceId: sessionId,
+      userId: session.hostUserId,
+      metadata: { fields: Object.keys(patch || {}) }
+    });
+    return session;
   };
 
   const findByIdentity = async ({ platform, platformUserId }) => {
@@ -1082,12 +1166,14 @@ export const createPostgresUserRegistry = ({ query }) => {
   };
 
   const snapshot = async () => {
-    const [usersResult, identitiesResult, overridesResult, streamsResult] = await Promise.all([
-      run("select * from iroharness_users order by created_at asc"),
-      run("select * from iroharness_user_identities order by created_at asc"),
-      run("select * from iroharness_permission_overrides order by created_at asc"),
-      run("select * from iroharness_stream_sessions order by created_at asc")
-    ]);
+    const [usersResult, identitiesResult, overridesResult, streamsResult, auditResult] =
+      await Promise.all([
+        run("select * from iroharness_users order by created_at asc"),
+        run("select * from iroharness_user_identities order by created_at asc"),
+        run("select * from iroharness_permission_overrides order by created_at asc"),
+        run("select * from iroharness_stream_sessions order by created_at asc"),
+        run("select * from iroharness_audit_log order by created_at asc")
+      ]);
     const users = dbRows(usersResult).map(fromDbUser).filter(Boolean);
     const userIdentities = dbRows(identitiesResult).map(fromDbIdentity).filter(Boolean);
     const permissionOverrides = dbRows(overridesResult)
@@ -1106,7 +1192,7 @@ export const createPostgresUserRegistry = ({ query }) => {
       userIdentities: freezeArray(userIdentities),
       permissionOverrides: freezeArray(permissionOverrides),
       streamSessions: freezeArray(dbRows(streamsResult).map(fromDbStreamSession).filter(Boolean)),
-      auditLog: freezeArray([])
+      auditLog: freezeArray(dbRows(auditResult).map(fromDbAuditRecord).filter(Boolean))
     });
   };
 
