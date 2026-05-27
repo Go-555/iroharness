@@ -305,10 +305,18 @@ test("CLI audience manages users, platform identities, permissions, and streams"
   assert.equal(snapshot.permissionOverrides[0].permission, "manage_stream");
   assert.equal(snapshot.permissionOverrides[0].expiresAt, "2099-01-01T00:00:00.000Z");
   assert.equal(snapshot.streamSessions[0].platformChannelId, "live-chat-id");
+  assert.equal(snapshot.auditLog.some((entry) => entry.action === "audience.permission.set"), true);
+  assert.equal(snapshot.auditLog.some((entry) => entry.action === "audience.permission.delete"), true);
   assert.equal(exportedSnapshot.users[0].id, "owner");
+  assert.equal(Array.isArray(exportedSnapshot.auditLog), true);
   assert.equal(importedSnapshot.users[0].id, "owner");
+  assert.equal(
+    importedSnapshot.auditLog.some((entry) => entry.action === "audience.backup.import"),
+    true
+  );
   assert.equal(restoredSnapshot.users[0].identities.youtube, "UCOWNER");
   assert.equal(restoredSnapshot.permissionOverrides[0].permission, "manage_stream");
+  assert.equal(restoredSnapshot.auditLog.length, snapshot.auditLog.length + 1);
 });
 
 test("CLI doctor production profile requires a strong admin token", () => {

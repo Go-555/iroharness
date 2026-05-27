@@ -100,8 +100,9 @@ npx iroharness audience import . --file ./audience-backup.json --force
 ```
 
 Audience backups contain platform user IDs, roles, permission overrides, and
-stream sessions. Do not commit them, paste them into public issues, or share
-them with model providers.
+stream sessions. They also include `auditLog` records for local user, identity,
+permission, and stream-session changes. Do not commit them, paste them into
+public issues, or share them with model providers.
 
 ## Issue And PR Hygiene
 

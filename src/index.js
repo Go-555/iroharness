@@ -267,6 +267,7 @@ const createUserRegistryStore = (initialState = {}, persist = () => {}) => {
   );
   let permissionOverrides = Object.freeze([...(initialState.permissionOverrides || [])]);
   let streamSessions = Object.freeze([...(initialState.streamSessions || [])]);
+  let auditLog = Object.freeze([...(initialState.auditLog || [])]);
 
   const hydrateUser = (user) =>
     freezeCopy({
@@ -284,8 +285,25 @@ const createUserRegistryStore = (initialState = {}, persist = () => {}) => {
       users: [...users],
       userIdentities: [...userIdentities],
       permissionOverrides: [...permissionOverrides],
-      streamSessions: [...streamSessions]
+      streamSessions: [...streamSessions],
+      auditLog: [...auditLog]
     });
+
+  const appendAuditLog = ({ action, resourceType, resourceId, userId = null, metadata = {} }) => {
+    const timestamp = nowIso();
+    auditLog = Object.freeze([
+      ...auditLog,
+      freezeCopy({
+        id: createId("audit"),
+        action,
+        resourceType,
+        resourceId,
+        userId,
+        metadata: freezeCopy(metadata),
+        createdAt: timestamp
+      })
+    ]);
+  };
 
   const registerUser = ({
     id = createId("user"),
@@ -313,6 +331,13 @@ const createUserRegistryStore = (initialState = {}, persist = () => {}) => {
       ...userIdentities.filter((identity) => identity.userId !== id),
       ...createIdentityRows(id, identities, timestamp)
     ]);
+    appendAuditLog({
+      action: "audience.user.register",
+      resourceType: "user",
+      resourceId: id,
+      userId: id,
+      metadata: { role, relationship }
+    });
     save();
     return hydrateUser(user);
   };
@@ -343,6 +368,13 @@ const createUserRegistryStore = (initialState = {}, persist = () => {}) => {
         ...createIdentityRows(userId, patch.identities)
       ]);
     }
+    appendAuditLog({
+      action: "audience.user.update",
+      resourceType: "user",
+      resourceId: userId,
+      userId,
+      metadata: { fields: Object.keys(patch || {}) }
+    });
     save();
     return hydrateUser(nextUser);
   };
@@ -381,6 +413,13 @@ const createUserRegistryStore = (initialState = {}, persist = () => {}) => {
       ),
       identity
     ]);
+    appendAuditLog({
+      action: "audience.identity.link",
+      resourceType: "identity",
+      resourceId: identity.id,
+      userId,
+      metadata: { platform, platformUserId: String(platformUserId) }
+    });
     save();
     return identity;
   };
@@ -427,6 +466,13 @@ const createUserRegistryStore = (initialState = {}, persist = () => {}) => {
       ),
       override
     ]);
+    appendAuditLog({
+      action: "audience.permission.set",
+      resourceType: "permissionOverride",
+      resourceId: override.id,
+      userId,
+      metadata: { permission, effect, scope, expiresAt }
+    });
     save();
     return override;
   };
@@ -442,6 +488,13 @@ const createUserRegistryStore = (initialState = {}, persist = () => {}) => {
           !(candidate.userId === userId && candidate.permission === permission && candidate.scope === scope)
       )
     );
+    appendAuditLog({
+      action: "audience.permission.delete",
+      resourceType: "permissionOverride",
+      resourceId: `${userId}:${permission}:${scope}`,
+      userId,
+      metadata: { permission, scope, deleted: before !== permissionOverrides.length }
+    });
     save();
     return freezeCopy({
       userId,
@@ -481,6 +534,13 @@ const createUserRegistryStore = (initialState = {}, persist = () => {}) => {
       ...streamSessions.filter((candidate) => candidate.id !== id),
       session
     ]);
+    appendAuditLog({
+      action: "audience.stream.create",
+      resourceType: "streamSession",
+      resourceId: session.id,
+      userId: hostUserId,
+      metadata: { platform, platformChannelId: String(platformChannelId), status }
+    });
     save();
     return session;
   };
@@ -504,6 +564,13 @@ const createUserRegistryStore = (initialState = {}, persist = () => {}) => {
     if (!nextSession) {
       throw new Error(`Stream session not found: ${sessionId}`);
     }
+    appendAuditLog({
+      action: "audience.stream.update",
+      resourceType: "streamSession",
+      resourceId: sessionId,
+      userId: nextSession.hostUserId || null,
+      metadata: { fields: Object.keys(patch || {}) }
+    });
     save();
     return nextSession;
   };
@@ -570,7 +637,8 @@ const createUserRegistryStore = (initialState = {}, persist = () => {}) => {
       users: Object.freeze(users.map((user) => hydrateUser(user))),
       userIdentities: Object.freeze([...userIdentities]),
       permissionOverrides: Object.freeze([...permissionOverrides]),
-      streamSessions: Object.freeze([...streamSessions])
+      streamSessions: Object.freeze([...streamSessions]),
+      auditLog: Object.freeze([...auditLog])
     });
 
   return Object.freeze({
@@ -1037,7 +1105,8 @@ export const createPostgresUserRegistry = ({ query }) => {
       ),
       userIdentities: freezeArray(userIdentities),
       permissionOverrides: freezeArray(permissionOverrides),
-      streamSessions: freezeArray(dbRows(streamsResult).map(fromDbStreamSession).filter(Boolean))
+      streamSessions: freezeArray(dbRows(streamsResult).map(fromDbStreamSession).filter(Boolean)),
+      auditLog: freezeArray([])
     });
   };
 

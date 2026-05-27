@@ -21,7 +21,8 @@ Initial OSS skeleton for a character macro harness.
 - permission override expiry and revoke support
 - browser admin UI for users, platform IDs, scoped permissions, permission
   revoke, and stream sessions
-- file-backed audience export/import for backups and local restores
+- file-backed audience audit log plus export/import for backups and local
+  restores
 - PostgreSQL/Supabase schema and registry adapter for production audience state
 - privacy and security guide for character memory, user IDs, credentials, and
   stream permissions

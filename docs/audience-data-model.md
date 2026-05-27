@@ -33,6 +33,14 @@ streamSessions
   hostUserId
   status            live | ended | paused
   metadata
+
+auditLog
+  action            audience.user.register | audience.permission.set | ...
+  resourceType      user | identity | permissionOverride | streamSession
+  resourceId
+  userId
+  metadata
+  createdAt
 ```
 
 ## Why This Shape
@@ -89,6 +97,11 @@ registry.createStreamSession({
 
 The same user can now talk from Discord or YouTube while the same character
 identity, memory, and permission policy remain in charge.
+
+File-backed registries also append audit records for user, identity, permission,
+and stream-session changes. This makes local stream operations reviewable after
+the fact and ensures exported audience backups include both current state and
+operational history.
 
 ## PostgreSQL / Supabase
 

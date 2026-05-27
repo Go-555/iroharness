@@ -130,8 +130,9 @@ npx iroharness audience import ./my-companion \
 
 `audience import` overwrites `.iroharness/users.json`, so it requires
 `--force` when state already exists. Exported backups include users, platform
-identities, permission overrides, and stream sessions. Treat them as private
-operational data.
+identities, permission overrides, stream sessions, and audit log records. Treat
+them as private operational data. Import adds an `audience.backup.import` audit
+record to the restored file.
 
 ## Doctor
 

@@ -1142,7 +1142,8 @@
           "users",
           "userIdentities",
           "permissionOverrides",
-          "streamSessions"
+          "streamSessions",
+          "auditLog"
         ],
         "properties": {
           "users": {
@@ -1166,6 +1167,13 @@
             }
           },
           "streamSessions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          },
+          "auditLog": {
             "type": "array",
             "items": {
               "type": "object",

@@ -807,7 +807,13 @@ const assertAudienceSnapshot = (snapshot) => {
       throw new Error(`audience backup requires array field ${key}`);
     }
   });
-  return snapshot;
+  if (snapshot.auditLog && !Array.isArray(snapshot.auditLog)) {
+    throw new Error("audience backup field auditLog must be an array when present");
+  }
+  return {
+    ...snapshot,
+    auditLog: snapshot.auditLog || []
+  };
 };
 
 const readAudienceBackup = (path) =>
@@ -817,6 +823,16 @@ const writeJsonFile = (path, value) => {
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`, "utf8");
 };
+
+const createCliAuditRecord = ({ action, resourceType, resourceId, metadata = {} }) => ({
+  id: `audit_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`,
+  action,
+  resourceType,
+  resourceId,
+  userId: null,
+  metadata,
+  createdAt: new Date().toISOString()
+});
 
 const optionalIsoDate = (value, label) => {
   if (!value) {
@@ -845,7 +861,19 @@ const audience = (args) => {
       throw new Error("audience import overwrites existing state; pass --force to continue");
     }
     const snapshot = readAudienceBackup(backupPath);
-    writeJsonFile(targetPath, snapshot);
+    const importedSnapshot = {
+      ...snapshot,
+      auditLog: [
+        ...snapshot.auditLog,
+        createCliAuditRecord({
+          action: "audience.backup.import",
+          resourceType: "audienceStore",
+          resourceId: targetPath,
+          metadata: { backupPath }
+        })
+      ]
+    };
+    writeJsonFile(targetPath, importedSnapshot);
     const imported = audienceRegistry(args.dir).snapshot();
     printAudienceResult({
       json: args.json,
@@ -961,7 +989,8 @@ const audience = (args) => {
         `users: ${snapshot.users.length}`,
         `identities: ${snapshot.userIdentities.length}`,
         `permission overrides: ${snapshot.permissionOverrides.length}`,
-        `stream sessions: ${snapshot.streamSessions.length}`
+        `stream sessions: ${snapshot.streamSessions.length}`,
+        `audit records: ${snapshot.auditLog.length}`
       ].join("\n")
     });
     return;

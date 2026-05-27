@@ -174,6 +174,7 @@ export interface UserRegistrySnapshot {
   readonly userIdentities: readonly JsonObject[];
   readonly permissionOverrides: readonly JsonObject[];
   readonly streamSessions: readonly JsonObject[];
+  readonly auditLog: readonly JsonObject[];
 }
 
 export interface UserRegistry {

@@ -3,7 +3,7 @@
   "$id": "https://iroharness.dev/protocols/audience-store.schema.json",
   "title": "IroHarness Audience Store",
   "type": "object",
-  "required": ["users", "userIdentities", "permissionOverrides", "streamSessions"],
+  "required": ["users", "userIdentities", "permissionOverrides", "streamSessions", "auditLog"],
   "properties": {
     "users": {
       "type": "array",
@@ -105,6 +105,40 @@
           "metadata": {
             "type": "object",
             "additionalProperties": true
+          }
+        },
+        "additionalProperties": true
+      }
+    },
+    "auditLog": {
+      "type": "array",
+      "description": "Append-only operational audit records for user, identity, permission, and stream state changes.",
+      "items": {
+        "type": "object",
+        "required": ["id", "action", "resourceType", "resourceId", "createdAt"],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "action": {
+            "type": "string"
+          },
+          "resourceType": {
+            "type": "string"
+          },
+          "resourceId": {
+            "type": "string"
+          },
+          "userId": {
+            "type": ["string", "null"]
+          },
+          "metadata": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
           }
         },
         "additionalProperties": true

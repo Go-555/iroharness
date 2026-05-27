@@ -336,7 +336,12 @@ test("permission overrides can be revoked from the file registry", () => {
   });
 
   assert.equal(deleted.deleted, true);
-  assert.equal(registry.snapshot().permissionOverrides.length, 0);
+  const snapshot = registry.snapshot();
+  assert.equal(snapshot.permissionOverrides.length, 0);
+  assert.equal(
+    snapshot.auditLog.some((entry) => entry.action === "audience.permission.delete"),
+    true
+  );
 });
 
 test("file user registry persists stream sessions and permission overrides", () => {
@@ -369,6 +374,11 @@ test("file user registry persists stream sessions and permission overrides", () 
   assert.equal(snapshot.permissionOverrides.length, 1);
   assert.equal(snapshot.streamSessions.length, 1);
   assert.equal(snapshot.streamSessions[0].status, "live");
+  assert.equal(snapshot.auditLog.length, 3);
+  assert.deepEqual(
+    snapshot.auditLog.map((entry) => entry.action),
+    ["audience.user.register", "audience.permission.set", "audience.stream.create"]
+  );
 });
 
 test("Postgres user registry resolves linked platform identities and scoped permissions", async () => {
@@ -429,6 +439,7 @@ test("Postgres user registry resolves linked platform identities and scoped perm
   assert.equal(snapshot.userIdentities.length, 2);
   assert.equal(snapshot.streamSessions[0].status, "paused");
   assert.equal(snapshot.streamSessions[0].metadata.reason, "break");
+  assert.deepEqual(snapshot.auditLog, []);
 });
 
 test("Postgres user registry can revoke scoped permission overrides", async () => {

@@ -63,6 +63,7 @@ micro harnesses.
 - [x] audience registry demo
 - [x] browser admin UI for users, identities, permissions, revoke, and streams
 - [x] file-backed audience backup and restore CLI
+- [x] file-backed audit log for privileged audience changes
 
 ## Milestone 2: Harness Interop
 
@@ -99,7 +100,7 @@ micro harnesses.
 
 - [ ] real provider recipes for OpenAI, Claude, and local model brain gateways
 - [ ] deployment examples for Tailscale, reverse proxy, and systemd/launchd
-- [ ] persisted audit log for privileged actions
+- [ ] PostgreSQL persisted audit log for privileged actions
 - [ ] PostgreSQL audience backup/restore recipes
 - [ ] end-to-end browser screenshots outside sandboxed CI port restrictions
 
