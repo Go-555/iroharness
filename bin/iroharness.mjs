@@ -259,6 +259,7 @@ import {
   createFileProjectOs,
   createFileUserRegistry,
   createHeuristicRouter,
+  createHttpBrain,
   createIroHarness,
   createRecorderDevice,
   createRecorderStreamController,
@@ -340,6 +341,63 @@ const character = createFileCharacterProfile({
   name: "${character}"
 });
 
+const brainAuthHeaders = () =>
+  process.env.IROHARNESS_BRAIN_AUTH_TOKEN
+    ? { authorization: \`Bearer \${process.env.IROHARNESS_BRAIN_AUTH_TOKEN}\` }
+    : {};
+
+const brainSlotEnv = Object.freeze({
+  voice: {
+    endpoint: "IROHARNESS_VOICE_BRAIN_ENDPOINT",
+    model: "IROHARNESS_VOICE_BRAIN_MODEL",
+    id: "IROHARNESS_VOICE_BRAIN_ID"
+  },
+  text: {
+    endpoint: "IROHARNESS_TEXT_BRAIN_ENDPOINT",
+    model: "IROHARNESS_TEXT_BRAIN_MODEL",
+    id: "IROHARNESS_TEXT_BRAIN_ID"
+  },
+  deep: {
+    endpoint: "IROHARNESS_DEEP_BRAIN_ENDPOINT",
+    model: "IROHARNESS_DEEP_BRAIN_MODEL",
+    id: "IROHARNESS_DEEP_BRAIN_ID"
+  }
+});
+
+const createConfiguredBrain = ({ slot, fallbackId }) => {
+  const env = brainSlotEnv[slot];
+  const endpoint = process.env[env.endpoint];
+  if (!endpoint) {
+    return createEchoBrain(fallbackId);
+  }
+  return createHttpBrain({
+    id: process.env[env.id] || \`\${slot}-http\`,
+    endpoint,
+    model: process.env[env.model] || null,
+    headers: brainAuthHeaders()
+  });
+};
+
+const voiceBrain = createConfiguredBrain({
+  slot: "voice",
+  fallbackId: "voice-fast"
+});
+const textBrain = createConfiguredBrain({
+  slot: "text",
+  fallbackId: "text-deep"
+});
+const deepBrain = process.env.IROHARNESS_DEEP_BRAIN_ENDPOINT
+  ? createConfiguredBrain({
+      slot: "deep",
+      fallbackId: "deep-reasoning"
+    })
+  : null;
+const brains = Object.freeze({
+  voice: voiceBrain,
+  text: textBrain,
+  ...(deepBrain ? { deep: deepBrain } : {})
+});
+
 userRegistry.registerUser({
   id: "owner-local",
   displayName: "Local Owner",
@@ -356,10 +414,7 @@ const companion = createIroHarness({
   projectOs,
   userRegistry,
   router: createHeuristicRouter(),
-  brains: {
-    voice: createEchoBrain("voice-fast"),
-    text: createEchoBrain("text-deep")
-  },
+  brains,
   devices: [eventStream, recorder, ...bodyDevices],
   streamController,
   microHarnesses: [
@@ -405,7 +460,7 @@ const { url } = await app.listen({
   port: Number(process.env.PORT || 4178)
 });
 
-console.log(\`${character.name} companion server: \${url}\`);
+console.log(\`\${character.name} companion server: \${url}\`);
 console.log(\`Audience admin: \${url}/?view=admin\`);
 console.log(\`Health: \${url}/health\`);
 console.log(\`OpenAPI: \${url}/openapi.json\`);
@@ -415,7 +470,7 @@ if (process.env.YOUTUBE_API_KEY && process.env.YOUTUBE_LIVE_CHAT_ID) {
     id: \`youtube_\${process.env.YOUTUBE_LIVE_CHAT_ID}\`,
     platform: "youtube",
     platformChannelId: process.env.YOUTUBE_LIVE_CHAT_ID,
-    title: process.env.YOUTUBE_STREAM_TITLE || \`${character.name} YouTube Live\`,
+    title: process.env.YOUTUBE_STREAM_TITLE || \`\${character.name} YouTube Live\`,
     status: "live"
   });
   let youtubeRecord = null;
@@ -502,6 +557,18 @@ IROHARNESS_ADMIN_TOKEN="replace-with-a-long-random-token" npm run doctor:product
 Set \`IROHARNESS_ADMIN_TOKEN\` before exposing this server through Tailscale,
 a tunnel, reverse proxy, Discord, YouTube, or OBS tooling.
 
+## Brain Routing
+
+The same ${character} identity can use different models by mode:
+
+- \`IROHARNESS_VOICE_BRAIN_ENDPOINT\`: low-latency voice replies
+- \`IROHARNESS_TEXT_BRAIN_ENDPOINT\`: normal chat replies
+- \`IROHARNESS_DEEP_BRAIN_ENDPOINT\`: developer-level deep discussion
+
+Each endpoint receives the same character, actor, audience, route, state, and
+PJOS context. Use \`IROHARNESS_BRAIN_AUTH_TOKEN\` when your model gateway needs
+a bearer token.
+
 ## Character
 
 ${character} is the macro harness identity. Models, micro harnesses, and body
@@ -575,6 +642,13 @@ const init = ({ dir, name, character, force }) => {
     content: [
       "PORT=4178",
       "IROHARNESS_ADMIN_TOKEN=",
+      "IROHARNESS_BRAIN_AUTH_TOKEN=",
+      "IROHARNESS_VOICE_BRAIN_ENDPOINT=",
+      "IROHARNESS_VOICE_BRAIN_MODEL=",
+      "IROHARNESS_TEXT_BRAIN_ENDPOINT=",
+      "IROHARNESS_TEXT_BRAIN_MODEL=",
+      "IROHARNESS_DEEP_BRAIN_ENDPOINT=",
+      "IROHARNESS_DEEP_BRAIN_MODEL=",
       "YOUTUBE_API_KEY=",
       "YOUTUBE_LIVE_CHAT_ID=",
       "DISCORD_BOT_TOKEN=",
@@ -645,6 +719,14 @@ const doctor = ({ dir, production = false }) => {
   const appSourceText = existsSync(appPath) ? readFileSync(appPath, "utf8") : "";
   const gitignorePath = join(targetDir, ".gitignore");
   const gitignoreText = existsSync(gitignorePath) ? readFileSync(gitignorePath, "utf8") : "";
+  const appSourceChecks = [
+    {
+      label: "HTTP brain model wiring",
+      ok:
+        appSourceText.includes("createHttpBrain") &&
+        appSourceText.includes("IROHARNESS_VOICE_BRAIN_ENDPOINT")
+    }
+  ];
   const env = {
     ...readEnvFile(join(targetDir, ".env")),
     ...process.env
@@ -673,14 +755,19 @@ const doctor = ({ dir, production = false }) => {
         }
       ]
     : [];
-  const allChecks = [...checks, ...productionChecks];
+  const allChecks = [...checks, ...appSourceChecks, ...productionChecks];
   const missing = checks.filter((check) => !check.ok);
+  const failedAppSourceChecks = appSourceChecks.filter((check) => !check.ok);
   const failedProductionChecks = productionChecks.filter((check) => !check.ok);
   return {
     targetDir,
-    ok: missing.length === 0 && failedProductionChecks.length === 0,
+    ok:
+      missing.length === 0 &&
+      failedAppSourceChecks.length === 0 &&
+      failedProductionChecks.length === 0,
     checks: allChecks,
     missing,
+    failedAppSourceChecks,
     failedProductionChecks,
     production
   };

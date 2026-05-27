@@ -75,3 +75,22 @@ npm run example:brains
 ```
 
 The example shows voice/text/deep routing without changing character identity.
+
+## Generated App Environment
+
+`iroharness init` creates a companion app that defaults to local echo brains.
+Set these variables in `.env` to replace each slot with an HTTP model gateway:
+
+```bash
+IROHARNESS_BRAIN_AUTH_TOKEN=
+IROHARNESS_VOICE_BRAIN_ENDPOINT=http://127.0.0.1:8788/voice
+IROHARNESS_VOICE_BRAIN_MODEL=fast-voice-model
+IROHARNESS_TEXT_BRAIN_ENDPOINT=http://127.0.0.1:8788/text
+IROHARNESS_TEXT_BRAIN_MODEL=balanced-text-model
+IROHARNESS_DEEP_BRAIN_ENDPOINT=http://127.0.0.1:8788/deep
+IROHARNESS_DEEP_BRAIN_MODEL=deep-reasoning-model
+```
+
+The important invariant is that each brain receives the same macro context:
+character profile, actor, audience permissions, route, current state, and PJOS.
+Only the engine changes.

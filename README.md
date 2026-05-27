@@ -319,6 +319,16 @@ For voice/text/deep model switching:
 npm run example:brains
 ```
 
+Generated companion apps can also route each brain slot to a model gateway from
+`.env`:
+
+```bash
+IROHARNESS_VOICE_BRAIN_ENDPOINT=http://127.0.0.1:8788/voice
+IROHARNESS_TEXT_BRAIN_ENDPOINT=http://127.0.0.1:8788/text
+IROHARNESS_DEEP_BRAIN_ENDPOINT=http://127.0.0.1:8788/deep
+IROHARNESS_BRAIN_AUTH_TOKEN=optional-bearer-token
+```
+
 See [docs/brains.md](./docs/brains.md).
 
 For realtime voice contracts:
@@ -510,6 +520,7 @@ IroHarness separates model choice from identity:
 
 - `voice` brain: low latency, short replies, interruption friendly
 - `text` brain: deeper language quality for Slack, Discord, email, web chat
+- `deep` brain: developer discussion, strategy, architecture, and planning
 - `work` brain or micro harness: coding, research, execution, review
 
 The macro harness can switch engines automatically while keeping character state

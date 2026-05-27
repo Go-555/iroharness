@@ -298,6 +298,7 @@ test("HTTP brain posts full macro context and returns model response", async () 
   const response = await brain.respond({
     character: { id: "iroha" },
     actor: { user: { id: "developer" } },
+    audience: { responseDepth: "deep", permissions: ["deep_discussion"] },
     input: { text: "設計相談" },
     route: { kind: "deep" },
     state: { mode: "thinking" },
@@ -307,6 +308,7 @@ test("HTTP brain posts full macro context and returns model response", async () 
   assert.equal(response.text, "HTTP brain response");
   assert.equal(response.emotion, "focused");
   assert.equal(calls[0].model, "deep-model");
+  assert.equal(calls[0].audience.responseDepth, "deep");
   assert.equal(calls[0].route.kind, "deep");
 });
 

@@ -1367,6 +1367,7 @@ export const createHttpBrain = ({
           model,
           character: context.character,
           actor: context.actor,
+          audience: context.audience,
           input: context.input,
           route: context.route,
           state: context.state,

@@ -86,6 +86,11 @@ test("CLI init creates a minimal IroHarness app", () => {
   assert.equal(packageJson.scripts["doctor:production"], "iroharness doctor . --production");
   assert.match(app, /createFileCharacterProfile/);
   assert.match(app, /createIroHarness/);
+  assert.match(app, /createHttpBrain/);
+  assert.match(app, /createConfiguredBrain/);
+  assert.match(app, /IROHARNESS_VOICE_BRAIN_ENDPOINT/);
+  assert.match(app, /IROHARNESS_DEEP_BRAIN_ENDPOINT/);
+  assert.match(app, /IROHARNESS_BRAIN_AUTH_TOKEN/);
   assert.match(app, /loadEnvFile/);
   assert.match(app, /existsSync/);
   assert.match(app, /process\.env\[key\] === undefined/);
@@ -116,6 +121,9 @@ test("CLI init creates a minimal IroHarness app", () => {
   assert.match(readme, /cp \.env\.example \.env/);
   assert.match(readme, /npm run doctor/);
   assert.match(readme, /IROHARNESS_ADMIN_TOKEN/);
+  assert.match(readme, /IROHARNESS_VOICE_BRAIN_ENDPOINT/);
+  assert.match(readme, /IROHARNESS_DEEP_BRAIN_ENDPOINT/);
+  assert.match(readme, /actor, audience, route, state, and/);
   assert.match(readme, /VOICE\.md/);
   assert.match(readme, /npx iroharness audience user/);
   assert.match(readme, /npx iroharness audience list \. --json/);
@@ -124,6 +132,10 @@ test("CLI init creates a minimal IroHarness app", () => {
   const envExample = readFileSync(join(appDir, ".env.example"), "utf8");
   assert.match(envExample, /PORT=4178/);
   assert.match(envExample, /IROHARNESS_ADMIN_TOKEN=/);
+  assert.match(envExample, /IROHARNESS_BRAIN_AUTH_TOKEN=/);
+  assert.match(envExample, /IROHARNESS_VOICE_BRAIN_ENDPOINT=/);
+  assert.match(envExample, /IROHARNESS_TEXT_BRAIN_MODEL=/);
+  assert.match(envExample, /IROHARNESS_DEEP_BRAIN_ENDPOINT=/);
   assert.match(envExample, /YOUTUBE_API_KEY=/);
   assert.match(envExample, /DISCORD_BOT_TOKEN=/);
   assert.match(envExample, /IROHARNESS_ENABLE_OBS=0/);
@@ -155,6 +167,7 @@ test("CLI doctor validates generated companion app shape", () => {
   assert.match(doctor.stdout, /ok SOUL\.md/);
   assert.match(doctor.stdout, /ok VOICE\.md/);
   assert.match(doctor.stdout, /ok \.env\.example/);
+  assert.match(doctor.stdout, /ok HTTP brain model wiring/);
   assert.match(doctor.stdout, /IroHarness project looks ready/);
   assert.equal(parsed.ok, true);
   assert.equal(parsed.production, false);
