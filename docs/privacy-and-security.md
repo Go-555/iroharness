@@ -134,3 +134,10 @@ Back up the database, restrict admin access, and keep service credentials in the
 deployment secret manager rather than project files. The schema includes
 `iroharness_audit_log` so production user, identity, permission, and stream
 session changes can be reviewed without relying on chat history.
+
+For concrete launchd, systemd, Tailscale, Caddy, and nginx examples, see:
+
+```text
+docs/deployment.md
+examples/deployment/
+```

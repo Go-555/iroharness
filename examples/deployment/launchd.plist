@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>dev.iroharness.companion</string>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/iroharness/my-companion</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/bin/env</string>
+    <string>npm</string>
+    <string>start</string>
+  </array>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>NODE_ENV</key>
+    <string>production</string>
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    <key>IROHARNESS_HOST</key>
+    <string>127.0.0.1</string>
+    <key>IROHARNESS_PORT</key>
+    <string>4178</string>
+  </dict>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>KeepAlive</key>
+  <true/>
+
+  <key>StandardOutPath</key>
+  <string>/Users/iroharness/Library/Logs/iroharness.out.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>/Users/iroharness/Library/Logs/iroharness.err.log</string>
+</dict>
+</plist>

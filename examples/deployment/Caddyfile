@@ -1,0 +1,18 @@
+iroharness.example.com {
+  encode zstd gzip
+
+  @admin {
+    path /audience*
+  }
+
+  # Replace this with caddy-security, forward_auth, or a private network rule
+  # before exposing audience management routes on the public internet. The
+  # browser admin view at /?view=admin still requires IROHARNESS_ADMIN_TOKEN
+  # from the app.
+  respond @admin "admin routes require upstream access control" 403
+
+  reverse_proxy 127.0.0.1:4178 {
+    header_up X-Forwarded-Host {host}
+    header_up X-Forwarded-Proto {scheme}
+  }
+}

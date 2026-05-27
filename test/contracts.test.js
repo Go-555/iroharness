@@ -150,12 +150,18 @@ test("OSS contribution metadata is present and aligned with harness boundaries",
   const matrix = readFileSync(join("docs", "capability-matrix.md"), "utf8");
   const adapterGuide = readFileSync(join("docs", "build-an-adapter.md"), "utf8");
   const privacyGuide = readFileSync(join("docs", "privacy-and-security.md"), "utf8");
+  const deploymentGuide = readFileSync(join("docs", "deployment.md"), "utf8");
   const security = readFileSync("SECURITY.md", "utf8");
   const contributing = readFileSync("CONTRIBUTING.md", "utf8");
   const codeOfConduct = readFileSync("CODE_OF_CONDUCT.md", "utf8");
   const prTemplate = readFileSync(join(".github", "pull_request_template.md"), "utf8");
   const releaseWorkflow = readFileSync(join(".github", "workflows", "release.yml"), "utf8");
   const adapterSkeleton = readFileSync(join("examples", "adapter-skeleton.mjs"), "utf8");
+  const launchd = readFileSync(join("examples", "deployment", "launchd.plist"), "utf8");
+  const systemd = readFileSync(join("examples", "deployment", "systemd.service"), "utf8");
+  const caddyfile = readFileSync(join("examples", "deployment", "Caddyfile"), "utf8");
+  const nginx = readFileSync(join("examples", "deployment", "nginx.conf"), "utf8");
+  const tailscale = readFileSync(join("examples", "deployment", "tailscale-serve.sh"), "utf8");
 
   ["CONTRIBUTING.md", "CODE_OF_CONDUCT.md"].forEach((file) => {
     assert.equal(pkg.files.includes(file), true);
@@ -180,6 +186,7 @@ test("OSS contribution metadata is present and aligned with harness boundaries",
   assert.match(readme, /\?view=overlay/);
   assert.match(readme, /capability-matrix/);
   assert.match(readme, /build-an-adapter/);
+  assert.match(readme, /docs\/deployment\.md/);
   assert.match(readme, /privacy-and-security/);
   assert.match(security, /privacy-and-security/);
   assert.match(contributing, /build-an-adapter/);
@@ -188,6 +195,7 @@ test("OSS contribution metadata is present and aligned with harness boundaries",
     "permission override expiry and revoke support",
     "file-backed audience audit log plus export/import",
     "persisted audit logs",
+    "deployment guide and templates",
     "browser admin UI",
     "HTTP brain gateway demo",
     "npm release workflow"
@@ -199,11 +207,27 @@ test("OSS contribution metadata is present and aligned with harness boundaries",
     "file-backed audience backup and restore CLI",
     "file-backed audit log for privileged audience changes",
     "PostgreSQL persisted audit log for privileged audience changes",
+    "deployment examples for Tailscale, reverse proxy, systemd, and launchd",
     "browser admin UI for users, identities, permissions, revoke, and streams",
     "Production Hardening"
   ].forEach((entry) => {
     assert.match(roadmap, new RegExp(entry));
   });
+  [
+    "Mac mini With launchd",
+    "Linux With systemd",
+    "Tailscale-Only Exposure",
+    "Reverse Proxy",
+    "IROHARNESS_ADMIN_TOKEN"
+  ].forEach((entry) => {
+    assert.match(deploymentGuide, new RegExp(entry));
+  });
+  assert.match(matrix, /Deployment examples/);
+  assert.match(launchd, /dev\.iroharness\.companion/);
+  assert.match(systemd, /NoNewPrivileges=true/);
+  assert.match(caddyfile, /reverse_proxy 127\.0\.0\.1:4178/);
+  assert.match(nginx, /proxy_pass http:\/\/127\.0\.0\.1:4178/);
+  assert.match(tailscale, /tailscale serve/);
   [
     "Audience identity",
     "IROHARNESS_ADMIN_TOKEN",

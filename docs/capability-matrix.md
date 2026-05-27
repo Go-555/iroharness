@@ -68,6 +68,7 @@ Status labels:
 | File-backed local app | built-in | `iroharness init` | Generates a runnable local companion app. |
 | Doctor checks | built-in | `iroharness doctor --production --json` | CI/deployment preflight for generated apps. |
 | PostgreSQL/Supabase audience schema | contract | `protocols/sql/postgres-audience.sql` | Production table layer for users, identities, permissions, stream sessions, and audit logs. |
+| Deployment examples | guide | `docs/deployment.md`, `examples/deployment/` | Mac mini launchd, Linux systemd, Tailscale exposure, and reverse proxy templates. |
 | OpenAPI | contract | `protocols/openapi.json`, `GET /openapi.json` | Local server route contract. |
 | GitHub CI | built-in | `.github/workflows/ci.yml` | Node, packaging, and Rust checks. |
 | npm release workflow | built-in | `.github/workflows/release.yml` | Publishes with provenance after Node/Rust gates. |

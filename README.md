@@ -109,6 +109,10 @@ Useful generated routes:
 - `/health` for readiness and optional runtime status
 - `/openapi.json` for the local HTTP API contract
 
+Deployment examples for a Mac mini, Linux host, Tailscale exposure, and reverse
+proxies live in [docs/deployment.md](./docs/deployment.md) and
+[examples/deployment](./examples/deployment).
+
 The generated app reads `.env` directly. Setting `YOUTUBE_API_KEY` plus
 `YOUTUBE_LIVE_CHAT_ID` starts YouTube live chat polling, setting
 `DISCORD_BOT_TOKEN` starts the Discord runtime, and `IROHARNESS_ENABLE_OBS=1`
@@ -226,6 +230,7 @@ Then confirm:
 - audience backups are kept private and outside git
 - `IROHARNESS_ADMIN_TOKEN` is set before using Tailscale, tunnels, or a reverse
   proxy
+- deployment follows the launchd/systemd/Tailscale/reverse-proxy examples
 
 ## Adapter Examples
 

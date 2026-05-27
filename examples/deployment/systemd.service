@@ -1,0 +1,24 @@
+[Unit]
+Description=IroHarness companion
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=iroharness
+WorkingDirectory=/opt/iroharness/my-companion
+Environment=NODE_ENV=production
+Environment=IROHARNESS_HOST=127.0.0.1
+Environment=IROHARNESS_PORT=4178
+EnvironmentFile=-/etc/iroharness/my-companion.env
+ExecStart=/usr/bin/npm start
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/opt/iroharness/my-companion
+
+[Install]
+WantedBy=multi-user.target

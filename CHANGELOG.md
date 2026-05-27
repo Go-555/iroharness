@@ -27,6 +27,8 @@ Initial OSS skeleton for a character macro harness.
   including persisted audit logs
 - privacy and security guide for character memory, user IDs, credentials, and
   stream permissions
+- deployment guide and templates for Mac mini `launchd`, Linux `systemd`,
+  Tailscale-only exposure, and Caddy/nginx reverse proxies
 
 ### Platforms, Bodies, And Harness Interop
 

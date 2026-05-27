@@ -52,6 +52,10 @@ safe testing.
 Set `IROHARNESS_ADMIN_TOKEN` before exposing the server beyond a trusted local
 machine.
 
+For always-on deployments, use the templates in `examples/deployment/` and the
+guide in `docs/deployment.md`. They cover Mac mini `launchd`, Linux `systemd`,
+Tailscale-only exposure, and Caddy/nginx reverse proxies.
+
 ## Audience Setup
 
 The generated app stores local audience data in `.iroharness/users.json`.
