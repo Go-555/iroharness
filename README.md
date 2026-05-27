@@ -48,6 +48,10 @@ IroHarness aims at a different center:
 See [docs/design-principles.md](./docs/design-principles.md) for the design
 rules behind these boundaries.
 
+See [docs/capability-matrix.md](./docs/capability-matrix.md) for the current
+implementation matrix across micro harnesses, platforms, bodies, storage, and
+deployment.
+
 ## Status
 
 This repository is an early OSS skeleton. It intentionally starts with a small
@@ -627,6 +631,7 @@ docs/
   brains.md
   body-bridges.md
   character-profile.md
+  capability-matrix.md
   cli.md
   codex.md
   ci.md

@@ -1,0 +1,82 @@
+# Capability Matrix
+
+This matrix shows what is implemented in the OSS package and what still depends
+on an external service, device, or harness.
+
+Status labels:
+
+- `built-in`: implemented in this repository with no service dependency
+- `adapter`: normalizes or bridges an external runtime
+- `runtime`: can run an event loop or local server
+- `contract`: protocol or scaffold exists, but production deployment still
+  depends on a host implementation
+
+## Core
+
+| Capability | Status | Public API / Artifact | Notes |
+|---|---|---|---|
+| Character macro harness | built-in | `createIroHarness` | Owns identity, routing, permissions, PJOS, and state updates. |
+| File character profile | built-in | `createFileCharacterProfile` | Loads `SOUL.md`, `IDENTITY.md`, `MEMORY.md`, and `VOICE.md`. |
+| Project OS | built-in | `createInMemoryProjectOs`, `createFileProjectOs`, `createProjectOsMarkdown` | Tracks tickets, runs, artifacts, and durable state. |
+| Audience registry | built-in | `createInMemoryUserRegistry`, `createFileUserRegistry`, `createPostgresUserRegistry` | Links platform IDs to one user. |
+| Permissions | built-in | `createPermissionPolicy`, `createAudienceContextPolicy` | Gates deep discussion, work delegation, stream control, and user management. |
+| Brain routing | built-in | `createHeuristicRouter`, `createEchoBrain`, `createHttpBrain` | Supports voice/text/deep/work routing while keeping identity stable. |
+| Realtime voice contract | contract | `createRealtimeVoiceSession`, STT/TTS interfaces, schemas | JavaScript contract exists; production STT/TTS providers are replaceable. |
+| Rust realtime core | contract | `crates/realtime-core`, `createRustRealtimeCoreBinding` | Rust crate and JSONL binary scaffold exist; native/WASM fast path is future work. |
+
+## Micro Harnesses
+
+| Target | Status | Public API / Example | Notes |
+|---|---|---|---|
+| Generic HTTP harness | adapter | `createHttpMicroHarness` | Sends IroHarness task/context envelopes to any HTTP worker. |
+| Codex app-server | adapter | `createCodexAppServerMicroHarness`, `examples/codex-app-server.mjs` | Delegated coding/review worker; Codex remains a micro harness. |
+| Claude Code CLI | adapter | `createClaudeCodeCliMicroHarness`, `examples/claude-code-cli.mjs` | Runs CLI delegation when explicitly enabled by env. |
+| OpenClaw | adapter | `createOpenClawMicroHarness` | Bridge target; OpenClaw does not own IroHarness character identity. |
+| Hermes | adapter | `createHermesGatewayMicroHarness` | Bridge target; useful as learning/skills worker. |
+| JSONL process | adapter | `createJsonlProcessMicroHarness` | Local process worker contract for custom harnesses. |
+| Plain text process | adapter | `createTextProcessMicroHarness` | Simple process delegation path for scripts and CLIs. |
+
+## Platforms And Community
+
+| Platform | Status | Public API / Example | Notes |
+|---|---|---|---|
+| Browser companion | runtime | `createIroHarnessDevServer`, `npm run demo:browser` | Local chat, overlay, admin UI, state, events, OpenAPI. |
+| Discord | runtime | `createDiscordMessageAdapter`, `createDiscordBotRuntime` | Multi-person fan rooms and developer channels. |
+| Slack | runtime | `createSlackMessageAdapter`, `createSlackEventsRuntime` | Events API payload handling and replies. |
+| YouTube Live Chat | runtime | `createYouTubeLiveChatAdapter`, `createYouTubeLiveChatPollingRuntime` | Polling runtime for live chat turns. |
+| VS Code | adapter | `createVsCodeCompanionAdapter`, `examples/vscode-companion` | Companion panel and developer turns. |
+| Audience CLI | built-in | `iroharness audience user/link/grant/stream/list` | Sets up users, platform IDs, permissions, and streams before going live. |
+
+## Bodies And Stream Output
+
+| Body / Output | Status | Public API / Example | Notes |
+|---|---|---|---|
+| Event stream | built-in | `createEventStreamDevice`, `GET /events` | Server-sent events for browser/body renderers. |
+| OBS overlay | runtime | `/?view=overlay`, `createObsStreamController` | Browser Source plus permission-gated stream operations. |
+| OBS WebSocket | adapter | `createObsWebSocketAdapter` | Scene, overlay, and mute operations after `manage_stream` approval. |
+| MotionPNGTuber | adapter | `createMotionPngTuberMapper`, `createMotionPngTuberRendererBridge` | Maps normalized character state to PNG state. |
+| M5Stack | adapter | `createM5StackFaceMapper`, `createM5StackBodyBridge` | Maps character state to compact device face payloads. |
+| Even G2 | adapter | `createEvenG2DisplayMapper`, `createEvenG2DisplayBridge` | Maps state and speech to display payloads. |
+| Live2D | adapter | `createLive2DMapper`, `createLive2DBodyBridge` | Maps state to expression, motion, and lip sync. |
+| VRM/3D | adapter | `createVrmMapper`, `createVrmBodyBridge` | Maps state to expression, animation, and gaze. |
+| AIAvatarKit | adapter | `createAIAvatarKitBridgeDevice` | Bridges speech/state events to an external avatar runtime. |
+
+## Storage And Deployment
+
+| Capability | Status | Public API / Artifact | Notes |
+|---|---|---|---|
+| File-backed local app | built-in | `iroharness init` | Generates a runnable local companion app. |
+| Doctor checks | built-in | `iroharness doctor --production --json` | CI/deployment preflight for generated apps. |
+| PostgreSQL/Supabase audience schema | contract | `protocols/sql/postgres-audience.sql` | Production table layer for users, identities, permissions, and stream sessions. |
+| OpenAPI | contract | `protocols/openapi.json`, `GET /openapi.json` | Local server route contract. |
+| GitHub CI | built-in | `.github/workflows/ci.yml` | Node, packaging, and Rust checks. |
+| npm release workflow | built-in | `.github/workflows/release.yml` | Publishes with provenance after Node/Rust gates. |
+
+## Current Non-Goals
+
+- IroHarness does not replace Codex, OpenClaw, Hermes, or Claude Code.
+- IroHarness does not bundle proprietary STT, TTS, LLM, Discord, YouTube, OBS,
+  or avatar credentials.
+- IroHarness does not make every bridge the same character. Character identity
+  remains in the macro harness; external tools are engines, workers, peers, or
+  bodies.
