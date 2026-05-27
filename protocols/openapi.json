@@ -633,6 +633,21 @@
                 "state": {
                   "type": "object",
                   "additionalProperties": true
+                },
+                "lastReadyAt": {
+                  "type": ["string", "null"],
+                  "format": "date-time"
+                },
+                "lastResultAt": {
+                  "type": ["string", "null"],
+                  "format": "date-time"
+                },
+                "lastErrorAt": {
+                  "type": ["string", "null"],
+                  "format": "date-time"
+                },
+                "lastError": {
+                  "type": ["string", "null"]
                 }
               },
               "additionalProperties": true

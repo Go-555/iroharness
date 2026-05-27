@@ -389,7 +389,7 @@ Then open the printed URL. The demo exposes:
 - `POST /turn` for text/voice-like input
 - `GET /state` for current character state
 - `GET /pjos` for Project OS state
-- `GET /health` for public readiness and optional runtime metadata
+- `GET /health` for public readiness and optional runtime/error metadata
 - `GET /openapi.json` for the local HTTP API contract
 - `GET /bodies`, `/body/:id`, and `/body/:id/events` for MotionPNGTuber,
   M5Stack, Even G2, Live2D, and VRM bridge state

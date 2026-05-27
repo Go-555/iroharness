@@ -96,6 +96,9 @@ test("CLI init creates a minimal IroHarness app", () => {
   assert.match(app, /turnEnricher: enrichTurn/);
   assert.match(app, /runtimeStatus/);
   assert.match(app, /runtimes\.map/);
+  assert.match(app, /createRuntimeRecord/);
+  assert.match(app, /lastErrorAt/);
+  assert.match(app, /lastResultAt/);
   assert.match(app, /name: "Iroha"/);
   assert.match(app, /createFileProjectOs/);
   assert.match(app, /createFileUserRegistry/);

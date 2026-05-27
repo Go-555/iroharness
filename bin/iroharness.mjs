@@ -234,6 +234,18 @@ const companion = createIroHarness({
 });
 
 const runtimes = [];
+const createRuntimeRecord = (id, runtime) => {
+  const record = {
+    id,
+    runtime,
+    lastReadyAt: null,
+    lastResultAt: null,
+    lastErrorAt: null,
+    lastError: null
+  };
+  runtimes.push(record);
+  return record;
+};
 
 const app = createIroHarnessDevServer({
   harness: companion,
@@ -243,9 +255,13 @@ const app = createIroHarnessDevServer({
   bodyDevices,
   turnEnricher: enrichTurn,
   runtimeStatus: () =>
-    runtimes.map(({ id, runtime }) => ({
+    runtimes.map(({ id, runtime, lastReadyAt, lastResultAt, lastErrorAt, lastError }) => ({
       id,
-      state: typeof runtime.state === "function" ? runtime.state() : { active: true }
+      state: typeof runtime.state === "function" ? runtime.state() : { active: true },
+      lastReadyAt,
+      lastResultAt,
+      lastErrorAt,
+      lastError
     }))
 });
 
@@ -266,24 +282,29 @@ if (process.env.YOUTUBE_API_KEY && process.env.YOUTUBE_LIVE_CHAT_ID) {
     title: process.env.YOUTUBE_STREAM_TITLE || \`${character.name} YouTube Live\`,
     status: "live"
   });
+  let youtubeRecord = null;
   const youtube = createYouTubeLiveChatPollingRuntime({
     apiKey: process.env.YOUTUBE_API_KEY,
     liveChatId: process.env.YOUTUBE_LIVE_CHAT_ID,
     harness: companion,
     turnEnricher: enrichTurn,
     onResult({ turn, result }) {
+      youtubeRecord.lastResultAt = new Date().toISOString();
       console.log(\`youtube \${turn.actor.displayName}: \${result.kind}\`);
     },
     onError(error) {
+      youtubeRecord.lastErrorAt = new Date().toISOString();
+      youtubeRecord.lastError = error.message;
       console.error(\`youtube runtime error: \${error.message}\`);
     }
   });
+  youtubeRecord = createRuntimeRecord("youtube", youtube);
   youtube.start();
-  runtimes.push({ id: "youtube", runtime: youtube });
   console.log("YouTube live chat runtime started");
 }
 
 if (process.env.DISCORD_BOT_TOKEN) {
+  let discordRecord = null;
   const discord = createDiscordBotRuntime({
     token: process.env.DISCORD_BOT_TOKEN,
     harness: companion,
@@ -293,14 +314,17 @@ if (process.env.DISCORD_BOT_TOKEN) {
     }),
     turnEnricher: enrichTurn,
     onReady({ botUserId }) {
+      discordRecord.lastReadyAt = new Date().toISOString();
       console.log(\`Discord runtime ready: \${botUserId}\`);
     },
     onError(error) {
+      discordRecord.lastErrorAt = new Date().toISOString();
+      discordRecord.lastError = error.message;
       console.error(\`discord runtime error: \${error.message}\`);
     }
   });
+  discordRecord = createRuntimeRecord("discord", discord);
   discord.start();
-  runtimes.push({ id: "discord", runtime: discord });
   console.log("Discord runtime started");
 }
 
