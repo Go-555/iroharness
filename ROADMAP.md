@@ -143,7 +143,7 @@ boundaries and first real devices are comfortable for daily use.
 - [x] Production TTS provider adapter
 - [x] Speech playback queue protocol and simulator
 - [x] StackChan richer audio invoke path based on AIAvatarStackChan
-- [ ] OTA/provisioning strategy for physical devices
+- [x] OTA/provisioning strategy for physical devices
 
 ### P3: Public Streaming Surfaces
 

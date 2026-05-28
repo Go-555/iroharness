@@ -178,6 +178,17 @@ It does two things:
 Edit `examples/stackchan-face-poller/data/config.json`, then build/upload with
 PlatformIO.
 
+`iroharness connect stackchan` also writes:
+
+```text
+.iroharness/connections/stackchan-provisioning.md
+```
+
+That file is the generated first-flash and update runbook for non-engineers. It
+keeps today's path explicit: firmware config is copied and flashed manually now,
+while OTA belongs in the future firmware package or device relay rather than the
+macro harness core.
+
 The face poller supports local retry settings:
 
 ```json

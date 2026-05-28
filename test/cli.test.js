@@ -389,6 +389,10 @@ test("CLI connect prepares Slack and StackChan onboarding files", () => {
       "utf8"
     )
   );
+  const stackchanProvisioning = readFileSync(
+    join(appDir, ".iroharness", "connections", "stackchan-provisioning.md"),
+    "utf8"
+  );
   const audience = JSON.parse(readFileSync(join(appDir, ".iroharness", "users.json"), "utf8"));
 
   assert.equal(init.status, 0, init.stderr);
@@ -414,8 +418,13 @@ test("CLI connect prepares Slack and StackChan onboarding files", () => {
   assert.equal(stackchanDevice.server.invokePath, "/device/stackchan/invoke");
   assert.equal(stackchanDevice.metadata.connectionMode, "http-polling");
   assert.equal(stackchanDevice.metadata.auth, "x-iroharness-device-token");
+  assert.equal(
+    stackchanDevice.metadata.provisioning,
+    "manual-flash-now-ota-firmware-package-later"
+  );
   assert.equal(stackchanDevice.metadata.deviceReachability.ok, true);
   assert.equal(stackchanResult.deviceReachability.ok, true);
+  assert.equal(stackchanResult.provisioningPath.endsWith("stackchan-provisioning.md"), true);
   assert.equal(firmwareConfig.face_url, "http://100.64.0.10:4182/stackchan/face");
   assert.equal(firmwareConfig.invoke_url, "http://100.64.0.10:4182/device/stackchan/invoke");
   assert.equal(firmwareConfig.device_token, "device-secret-test");
@@ -424,6 +433,8 @@ test("CLI connect prepares Slack and StackChan onboarding files", () => {
   assert.equal(firmwareConfig.wifi_retry_max_ms, 30000);
   assert.equal(firmwareConfig.http_retry_base_ms, 1000);
   assert.equal(firmwareConfig.http_retry_max_ms, 15000);
+  assert.match(stackchanProvisioning, /First Flash/);
+  assert.match(stackchanProvisioning, /OTA should be added in the firmware package/);
   assert.equal(stackchanResult.firmwareConfig.wifi_pass, "[redacted]");
   assert.equal(stackchanResult.firmwareConfig.device_token, "[redacted]");
 });

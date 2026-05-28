@@ -188,6 +188,26 @@ Reasons to split:
 
 Until then, keep contracts and examples in the main monorepo.
 
+### OTA / Provisioning Strategy
+
+The current monorepo ships a generated provisioning runbook, not an OTA updater.
+Running `iroharness connect stackchan` writes:
+
+```text
+.iroharness/connections/stackchan-provisioning.md
+```
+
+Use that file as the owner-facing setup checklist. It deliberately separates:
+
+- host-side updates: character, brain routing, permissions, Project OS, Slack
+  settings, and STT/TTS endpoints
+- device-side updates: Wi-Fi, display, retry settings, device token, host URL,
+  and future OTA firmware
+
+OTA should live in the firmware package or device relay. The macro harness core
+should only generate the signed/authorized configuration and keep the device
+contract stable.
+
 ## Config Mapping
 
 | AIAvatarStackChan config | IroHarness target |
@@ -214,7 +234,8 @@ Until then, keep contracts and examples in the main monorepo.
 5. Done: add Wi-Fi reconnect and HTTP retry backoff to the face poller.
 6. Done: add audio invoke fixture and host-side STT relay hook.
 7. Add a WebSocket/SSE relay sketch.
-8. Add AIAvatarStackChan-compatible WebSocket mode.
+8. Done: generate a StackChan provisioning runbook from `connect stackchan`.
+9. Add AIAvatarStackChan-compatible WebSocket mode.
 
 The first firmware should be intentionally small. It should prove networking,
 display, and shared identity before attempting STT/TTS, camera, servo, and
