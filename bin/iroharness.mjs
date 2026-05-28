@@ -1051,6 +1051,73 @@ const redactConnectionSecrets = (value) => {
 
 const sanitizeViewJson = (value) => redactConnectionSecrets(value);
 
+const viewVisibilityForZone = (zone) => {
+  if (zone === "public") {
+    return Object.freeze(["public"]);
+  }
+  if (zone === "trusted") {
+    return Object.freeze(["public", "trusted"]);
+  }
+  return Object.freeze(["public", "trusted", "owner"]);
+};
+
+const createGatewayPolicy = ({ zone }) => ({
+  kind: "iroharness.gatewayPolicy",
+  zone,
+  allowedVisibility: viewVisibilityForZone(zone),
+  sourcePathVisible: zone === "owner",
+  directAccess: {
+    coreSource: "denied",
+    environment: "denied",
+    secrets: "denied",
+    hostFiles: "denied",
+    repositoryCredentials: "denied",
+    browserSession: "denied",
+    codexOAuthSession: "denied"
+  },
+  writablePaths: {
+    state: "allowed",
+    current: "denied",
+    coreSource: "denied"
+  },
+  inputPolicy: {
+    requireManifestAllowlist: true,
+    unknownFilesAllowed: false
+  }
+});
+
+const createWorkRunnerPolicy = ({ zone }) => {
+  const delegation = {
+    public: "denied",
+    trusted: "permission-required",
+    owner: "allowed"
+  }[zone];
+  return {
+    kind: "iroharness.workRunnerPolicy",
+    zone,
+    delegation,
+    boundary: "runner-only",
+    directGatewayAccess: {
+      codexOAuthSession: "denied",
+      repositoryCredentials: "denied",
+      browserSession: "denied",
+      hostFiles: "denied"
+    },
+    runnerAccess: {
+      codexOAuthSession: zone === "public" ? "none" : "host-local-after-codex-login",
+      repositoryWork: zone === "public" ? "none" : "scoped-workspace",
+      browserControl: zone === "public" ? "none" : "scoped-session",
+      defaultSandbox: zone === "public" ? "none" : "workspace-write"
+    },
+    requiredChecks: [
+      "resolve-user",
+      "check-permission",
+      "scope-workspace",
+      "record-project-os-run"
+    ]
+  };
+};
+
 const copyViewFile = ({ sourceRoot, targetRoot, sourcePath, targetPath = sourcePath, files }) => {
   const source = join(sourceRoot, sourcePath);
   if (!existsSync(source)) {
@@ -1296,15 +1363,32 @@ const exportView = (args) => {
   exportMemoryFiles({ sourceRoot, targetRoot: currentRoot, zone, files });
   const projectOs = exportProjectOsFiles({ sourceRoot, targetRoot: currentRoot, zone, files });
   exportConnectionFiles({ sourceRoot, targetRoot: currentRoot, zone, files });
+  const gatewayPolicy = createGatewayPolicy({ zone });
+  const workRunnerPolicy = createWorkRunnerPolicy({ zone });
+  writeViewJson({
+    targetRoot: currentRoot,
+    targetPath: "gateway-policy.json",
+    value: gatewayPolicy,
+    files
+  });
+  writeViewJson({
+    targetRoot: currentRoot,
+    targetPath: "work-runner-policy.json",
+    value: workRunnerPolicy,
+    files
+  });
 
   const manifestFiles = [...files, "view-manifest.json"].sort();
+  const source = zone === "owner" ? sourceRoot : "[redacted]";
   const manifest = {
     kind: "iroharness.view",
     zone,
-    source: sourceRoot,
+    source,
     exportedAt: new Date().toISOString(),
     files: manifestFiles,
     statePath: join(viewRoot, "state"),
+    gatewayPolicy: "gateway-policy.json",
+    workRunnerPolicy: "work-runner-policy.json",
     projectOs: {
       defaultVisibility: "owner",
       visibilityRule:
@@ -1319,12 +1403,15 @@ const exportView = (args) => {
       coreReadableByRunner: false,
       envCopied: false,
       secretsCopied: false,
+      sourcePathVisible: zone === "owner",
+      gatewayHasHostCredentials: false,
+      workRunnerBoundary: "runner-only",
       unknownFilesAllowed: false
     }
   };
   writeViewJson({ targetRoot: currentRoot, targetPath: "view-manifest.json", value: manifest, files });
   return {
-    sourceRoot,
+    sourceRoot: source,
     viewRoot,
     currentRoot,
     manifest

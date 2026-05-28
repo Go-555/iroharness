@@ -144,6 +144,8 @@ The output shape is:
 │   ├── MEMORY.trusted.md
 │   ├── PROJECT_OS.md
 │   ├── project-os.json
+│   ├── gateway-policy.json
+│   ├── work-runner-policy.json
 │   ├── connections/
 │   └── view-manifest.json
 └── state/
@@ -156,6 +158,7 @@ Rules:
 - `current/` is generated from the source app and should be treated as read-only.
 - `state/` is where the gateway can write logs and proposals.
 - `.env` is never copied into a view.
+- Public and trusted `view-manifest.json` files redact the source app path.
 - Root `MEMORY.md` from the source app is treated as owner/core memory. Public
   and trusted views only receive `memory/public.md` and `memory/trusted.md`
   layers when they exist. The exported `MEMORY.md` is rebuilt from the allowed
@@ -163,6 +166,13 @@ Rules:
 - Project OS is exported as `project-os.json` and `PROJECT_OS.md`. A ticket,
   run, or artifact must set `metadata.visibility` to `public` or `trusted` to
   appear outside owner views. Unmarked items are owner-only by default.
+- `gateway-policy.json` states what the gateway may read and write. Gateways
+  cannot directly read Core SSOT, `.env`, host files, repository credentials,
+  browser sessions, or the host Codex OAuth session.
+- `work-runner-policy.json` states that Codex OAuth, repository work, browser
+  control, and similar privileged operations are runner-only boundaries. Public
+  views cannot delegate work; trusted views require permission; owner views may
+  delegate through scoped workspaces.
 - Public views do not receive Slack or StackChan trusted connection files.
 - Trusted views receive sanitized connection metadata; Wi-Fi passwords and
   device tokens are redacted in exported connection JSON.

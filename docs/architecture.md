@@ -61,11 +61,21 @@ iroharness view export ./my-companion --zone public --out /Users/iroharness-publ
 iroharness view export ./my-companion --zone trusted --out /Users/iroharness-trusted/iroha-view
 ```
 
-Generated views contain a `current/view-manifest.json` allowlist and a separate
-`state/` directory for logs and proposals. They do not copy `.env`, firmware
-secrets, root/core memory, or the whole `.iroharness/` runtime directory. The
-exported `MEMORY.md` is generated from allowed memory layers such as
-`memory/public.md`, `memory/trusted.md`, and `memory/owner.md`.
+Generated views contain a `current/view-manifest.json` allowlist,
+`current/gateway-policy.json`, `current/work-runner-policy.json`, and a separate
+`state/` directory for logs and proposals. Public and trusted manifests redact
+the Core SSOT path. Views do not copy `.env`, firmware secrets, root/core
+memory, or the whole `.iroharness/` runtime directory. The exported `MEMORY.md`
+is generated from allowed memory layers such as `memory/public.md`,
+`memory/trusted.md`, and `memory/owner.md`.
+
+`gateway-policy.json` is the reception-desk policy: it states that the gateway
+can read only the exported view, can write only `state/`, and cannot directly
+open Core SSOT, host files, repository credentials, browser sessions, secrets,
+or the host Codex OAuth session. `work-runner-policy.json` is the privileged
+work policy: public views cannot delegate work, trusted views require permission,
+and owner views can delegate through runner-only scoped workspaces. The gateway
+does not receive those host credentials directly.
 
 Project OS is also exported as a zone-filtered work board. Items without an
 explicit `metadata.visibility` are owner-only by default. Public views only see

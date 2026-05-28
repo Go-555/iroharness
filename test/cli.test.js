@@ -571,6 +571,18 @@ test("CLI view export creates zone-limited runtime views", () => {
   const trustedStackchan = JSON.parse(
     readFileSync(join(trustedView, "current", "connections", "stackchan.device.json"), "utf8")
   );
+  const publicGatewayPolicy = JSON.parse(
+    readFileSync(join(publicView, "current", "gateway-policy.json"), "utf8")
+  );
+  const trustedGatewayPolicy = JSON.parse(
+    readFileSync(join(trustedView, "current", "gateway-policy.json"), "utf8")
+  );
+  const publicWorkRunnerPolicy = JSON.parse(
+    readFileSync(join(publicView, "current", "work-runner-policy.json"), "utf8")
+  );
+  const trustedWorkRunnerPolicy = JSON.parse(
+    readFileSync(join(trustedView, "current", "work-runner-policy.json"), "utf8")
+  );
   const publicMemory = readFileSync(join(publicView, "current", "MEMORY.md"), "utf8");
   const trustedMemory = readFileSync(join(trustedView, "current", "MEMORY.md"), "utf8");
   const publicProjectOs = JSON.parse(
@@ -591,6 +603,8 @@ test("CLI view export creates zone-limited runtime views", () => {
   assert.equal(trustedExport.status, 0, trustedExport.stderr);
   assert.equal(publicResult.manifest.zone, "public");
   assert.equal(trustedResult.manifest.zone, "trusted");
+  assert.equal(publicResult.sourceRoot, "[redacted]");
+  assert.equal(trustedResult.sourceRoot, "[redacted]");
   assert.equal(existsSync(join(publicView, "current", "SOUL.md")), true);
   assert.equal(existsSync(join(publicView, "current", "MEMORY.md")), true);
   assert.match(publicMemory, /public-safe/);
@@ -614,9 +628,18 @@ test("CLI view export creates zone-limited runtime views", () => {
   assert.equal(existsSync(join(publicView, "current", ".env")), false);
   assert.equal(existsSync(join(publicView, "current", "connections", "slack.json")), false);
   assert.equal(existsSync(join(publicView, "state", "logs")), true);
+  assert.equal(publicManifest.source, "[redacted]");
+  assert.equal(trustedManifest.source, "[redacted]");
   assert.equal(trustedManifest.rules.envCopied, false);
   assert.equal(trustedManifest.rules.unknownFilesAllowed, false);
+  assert.equal(trustedManifest.rules.sourcePathVisible, false);
+  assert.equal(trustedManifest.rules.gatewayHasHostCredentials, false);
+  assert.equal(trustedManifest.rules.workRunnerBoundary, "runner-only");
   assert.equal(trustedManifest.files.includes("view-manifest.json"), true);
+  assert.equal(trustedManifest.files.includes("gateway-policy.json"), true);
+  assert.equal(trustedManifest.files.includes("work-runner-policy.json"), true);
+  assert.equal(trustedManifest.gatewayPolicy, "gateway-policy.json");
+  assert.equal(trustedManifest.workRunnerPolicy, "work-runner-policy.json");
   assert.equal(trustedManifest.files.includes("project-os.json"), true);
   assert.equal(trustedManifest.projectOs.defaultVisibility, "owner");
   assert.equal(trustedManifest.projectOs.counts.tickets, 2);
@@ -624,6 +647,16 @@ test("CLI view export creates zone-limited runtime views", () => {
   assert.equal(trustedManifest.files.includes("connections/stackchan.device.json"), true);
   assert.equal(publicManifest.files.includes("connections/slack.json"), false);
   assert.equal(trustedStackchan.wifiNetworks[0].pass, "[redacted]");
+  assert.deepEqual(publicGatewayPolicy.allowedVisibility, ["public"]);
+  assert.deepEqual(trustedGatewayPolicy.allowedVisibility, ["public", "trusted"]);
+  assert.equal(publicGatewayPolicy.directAccess.codexOAuthSession, "denied");
+  assert.equal(trustedGatewayPolicy.directAccess.repositoryCredentials, "denied");
+  assert.equal(trustedGatewayPolicy.inputPolicy.requireManifestAllowlist, true);
+  assert.equal(publicWorkRunnerPolicy.delegation, "denied");
+  assert.equal(trustedWorkRunnerPolicy.delegation, "permission-required");
+  assert.equal(trustedWorkRunnerPolicy.boundary, "runner-only");
+  assert.equal(trustedWorkRunnerPolicy.directGatewayAccess.browserSession, "denied");
+  assert.equal(trustedWorkRunnerPolicy.runnerAccess.repositoryWork, "scoped-workspace");
 });
 
 test("CLI doctor production profile requires a strong admin token", () => {

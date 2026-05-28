@@ -80,6 +80,9 @@ Initial OSS skeleton for a character macro harness.
   directories for zero-trust gateway separation
 - View export now emits zone-filtered `project-os.json` and `PROJECT_OS.md`, so
   public/trusted gateways can see only explicitly visible work board items
+- View export now emits `gateway-policy.json` and `work-runner-policy.json`,
+  redacts public/trusted source paths, and records that Codex OAuth, repository
+  work, browser sessions, and host credentials are runner-only boundaries
 - CLI `init`, `doctor`, `doctor --json`, and `audience`
   `user/link/grant/revoke/stream/export/import/list`
 - generated `AGENTS.md` companion instructions for character, permission, and
