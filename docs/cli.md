@@ -193,6 +193,18 @@ IROHARNESS_VIEW_DIR=/Users/iroharness-trusted/iroha-view \
 npm run example:slack-stackchan
 ```
 
+Before attaching a privileged worker, validate that the exported view contains a
+runner-only policy:
+
+```bash
+npx iroharness work-runner check /Users/iroharness-trusted/iroha-view
+npx iroharness work-runner check /Users/iroharness-trusted/iroha-view --json
+```
+
+The check reads `current/work-runner-policy.json`, confirms that the manifest
+points to it, and verifies that gateway direct access to Codex OAuth, repository
+credentials, browser sessions, and host files is denied.
+
 ## Audience Setup
 
 The generated app stores local audience data in `.iroharness/users.json`.

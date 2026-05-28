@@ -609,8 +609,10 @@ test("CLI view export creates zone-limited runtime views", () => {
     "--force",
     "--json"
   ]);
+  const trustedWorkRunnerCheck = runCli(["work-runner", "check", trustedView, "--json"]);
   const publicResult = JSON.parse(publicExport.stdout);
   const trustedResult = JSON.parse(trustedExport.stdout);
+  const trustedWorkRunnerCheckResult = JSON.parse(trustedWorkRunnerCheck.stdout);
   const publicManifest = JSON.parse(
     readFileSync(join(publicView, "current", "view-manifest.json"), "utf8")
   );
@@ -650,6 +652,10 @@ test("CLI view export creates zone-limited runtime views", () => {
   assert.equal(stackchan.status, 0, stackchan.stderr);
   assert.equal(publicExport.status, 0, publicExport.stderr);
   assert.equal(trustedExport.status, 0, trustedExport.stderr);
+  assert.equal(trustedWorkRunnerCheck.status, 0, trustedWorkRunnerCheck.stderr);
+  assert.equal(trustedWorkRunnerCheckResult.ok, true);
+  assert.equal(trustedWorkRunnerCheckResult.zone, "trusted");
+  assert.equal(trustedWorkRunnerCheckResult.delegation, "permission-required");
   assert.equal(publicResult.manifest.zone, "public");
   assert.equal(trustedResult.manifest.zone, "trusted");
   assert.equal(publicResult.sourceRoot, "[redacted]");

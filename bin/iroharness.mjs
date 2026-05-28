@@ -20,6 +20,7 @@ Usage:
   iroharness connect slack [dir] [--bot-token <xoxb-token>] [--signing-secret <secret>] [--bot-user-id <user-id>] [--owner-slack-user-id <user-id>]
   iroharness connect stackchan [dir] [--host-url <url>] [--wifi-ssid <ssid>] [--wifi-pass <password>] [--device-id <id>] [--device-token <token>] [--poll-interval-ms <ms>]
   iroharness view export [dir] --zone <public|trusted|owner> --out <view-dir> [--force]
+  iroharness work-runner check <view-dir> [--json]
   iroharness doctor [dir] [--production] [--json]
   iroharness --help
 
@@ -33,6 +34,7 @@ Examples:
   iroharness connect slack ./my-companion --owner-slack-user-id UOWNER
   iroharness connect stackchan ./my-companion --host-url http://100.64.0.10:4182
   iroharness view export ./my-companion --zone trusted --out /Users/iroharness-trusted/iroha-view --force
+  iroharness work-runner check /Users/iroharness-trusted/iroha-view
   iroharness doctor ./my-companion
   IROHARNESS_ADMIN_TOKEN=... iroharness doctor ./my-companion --production
   iroharness doctor ./my-companion --production --json
@@ -250,7 +252,7 @@ const parseArgs = (argv) => {
       positional.push(value);
     }
   }
-  if (command === "audience" || command === "connect" || command === "view") {
+  if (command === "audience" || command === "connect" || command === "view" || command === "work-runner") {
     [action = null, dir = "."] = positional;
   } else if (positional.length > 0) {
     dir = positional[positional.length - 1];
@@ -1499,6 +1501,71 @@ const exportView = (args) => {
   };
 };
 
+const resolveViewCurrentRoot = (viewDir) => {
+  const root = resolve(viewDir);
+  const currentRoot = join(root, "current");
+  return existsSync(join(currentRoot, "view-manifest.json")) ? currentRoot : root;
+};
+
+const checkWorkRunnerPolicy = (args) => {
+  if (args.action !== "check") {
+    throw new Error(`Unknown work-runner action: ${args.action || "(missing)"}\n\n${usage}`);
+  }
+  const viewRoot = resolve(args.dir);
+  const currentRoot = resolveViewCurrentRoot(viewRoot);
+  const policyPath = join(currentRoot, "work-runner-policy.json");
+  const manifestPath = join(currentRoot, "view-manifest.json");
+  const policy = existsSync(policyPath) ? readJsonFile(policyPath) : null;
+  const manifest = existsSync(manifestPath) ? readJsonFile(manifestPath) : null;
+  const directGatewayAccess = policy?.directGatewayAccess || {};
+  const directAccessDenied = [
+    "codexOAuthSession",
+    "repositoryCredentials",
+    "browserSession",
+    "hostFiles"
+  ].every((key) => directGatewayAccess[key] === "denied");
+  const checks = [
+    {
+      label: "work-runner-policy.json exists",
+      ok: Boolean(policy),
+      path: policyPath
+    },
+    {
+      label: "view-manifest.json exists",
+      ok: Boolean(manifest),
+      path: manifestPath
+    },
+    {
+      label: "policy kind",
+      ok: policy?.kind === "iroharness.workRunnerPolicy"
+    },
+    {
+      label: "runner-only boundary",
+      ok: policy?.boundary === "runner-only"
+    },
+    {
+      label: "gateway direct access denied",
+      ok: directAccessDenied
+    },
+    {
+      label: "manifest points to work-runner policy",
+      ok: !manifest || manifest.workRunnerPolicy === "work-runner-policy.json"
+    }
+  ];
+  const failed = checks.filter((check) => !check.ok);
+  return {
+    ok: failed.length === 0,
+    viewRoot,
+    currentRoot,
+    policyPath,
+    zone: policy?.zone || manifest?.zone || null,
+    delegation: policy?.delegation || null,
+    checks,
+    failed,
+    policy: policy ? sanitizeViewJson(policy) : null
+  };
+};
+
 const createCliAuditRecord = ({ action, resourceType, resourceId, metadata = {} }) => ({
   id: `audit_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`,
   action,
@@ -1931,6 +1998,24 @@ const main = () => {
     }
     console.log(`exported ${result.manifest.zone} view to ${result.currentRoot}`);
     console.log(`files: ${result.manifest.files.length}`);
+    return;
+  }
+  if (args.command === "work-runner") {
+    const result = checkWorkRunnerPolicy(args);
+    if (args.json) {
+      console.log(JSON.stringify(result, null, 2));
+      if (!result.ok) {
+        process.exitCode = 1;
+      }
+      return;
+    }
+    result.checks.forEach((check) => {
+      console.log(`${check.ok ? "ok" : "failed"} ${check.label}`);
+    });
+    if (!result.ok) {
+      throw new Error(`Work Runner policy check failed in ${result.currentRoot}`);
+    }
+    console.log(`Work Runner policy ready: ${result.currentRoot}`);
     return;
   }
   if (args.command !== "init") {

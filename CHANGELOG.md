@@ -89,6 +89,8 @@ Initial OSS skeleton for a character macro harness.
 - View export now emits `gateway-policy.json` and `work-runner-policy.json`,
   redacts public/trusted source paths, and records that Codex OAuth, repository
   work, browser sessions, and host credentials are runner-only boundaries
+- `iroharness work-runner check` validates exported Work Runner policy files
+  before privileged Codex, browser, or repository workers are attached
 - CLI `init`, `doctor`, `doctor --json`, and `audience`
   `user/link/grant/revoke/stream/export/import/list`
 - generated `AGENTS.md` companion instructions for character, permission, and

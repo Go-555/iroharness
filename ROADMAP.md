@@ -132,7 +132,7 @@ boundaries and first real devices are comfortable for daily use.
 
 ### P1: Zero-Trust Work Runner
 
-- [ ] Work Runner executable reads `work-runner-policy.json`
+- [x] Work Runner policy check reads `work-runner-policy.json`
 - [ ] Work Runner scopes Codex/browser/repo access per requested workspace
 - [ ] Gateway-to-runner delegation records permission checks in Project OS
 - [ ] Public gateway cannot delegate work even when prompted through chat

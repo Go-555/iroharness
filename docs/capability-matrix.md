@@ -76,6 +76,7 @@ Status labels:
 | OpenClaw-style installer | script | `install.sh`, `docs/install.md` | Installs from GitHub or npm, creates a per-user companion app, and points to StackChan setup. |
 | Connection onboarding | CLI | `iroharness connect slack`, `iroharness connect stackchan` | Generates first Slack env/checklist and StackChan device/firmware config files. |
 | Zone view export | CLI | `iroharness view export` | Creates public/trusted/owner runtime views with allowlisted files, redacted source paths for public/trusted views, redacted connection metadata, gateway/work-runner policies, and zone-filtered Project OS snapshots. |
+| Work Runner policy check | CLI | `iroharness work-runner check` | Reads exported view policies before attaching privileged Codex, browser, or repo workers. |
 | Doctor checks | built-in | `iroharness doctor --production --json` | CI/deployment preflight for generated apps, including StackChan firmware URL checks when connected. |
 | PostgreSQL/Supabase audience schema | contract | `protocols/sql/postgres-audience.sql` | Production table layer for users, identities, permissions, stream sessions, and audit logs. |
 | PostgreSQL audience backup/restore | guide | `docs/postgres-backup-restore.md`, `examples/postgres-audience-backup.sh`, `examples/postgres-audience-restore.sh` | `pg_dump` and `pg_restore` recipes scoped to audience tables. |
