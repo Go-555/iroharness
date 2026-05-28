@@ -10,6 +10,7 @@ struct AppConfig {
   String wifiPass;
   String faceUrl;
   String invokeUrl;
+  String deviceToken;
   String deviceId;
   uint32_t pollIntervalMs;
 };
@@ -49,6 +50,7 @@ static bool loadConfig() {
   config.wifiPass = doc["wifi_pass"] | "";
   config.faceUrl = doc["face_url"] | "http://127.0.0.1:4182/stackchan/face";
   config.invokeUrl = doc["invoke_url"] | "http://127.0.0.1:4182/device/stackchan/invoke";
+  config.deviceToken = doc["device_token"] | "";
   config.deviceId = doc["device_id"] | "stackchan";
   config.pollIntervalMs = doc["poll_interval_ms"] | 500;
   return config.wifiSsid.length() > 0 && config.faceUrl.length() > 0;
@@ -130,6 +132,9 @@ static void sendTouchInvoke() {
   HTTPClient http;
   http.begin(config.invokeUrl);
   http.addHeader("content-type", "application/json");
+  if (config.deviceToken.length() > 0) {
+    http.addHeader("x-iroharness-device-token", config.deviceToken);
+  }
   int status = http.POST(payload);
   http.end();
   drawStatus("Invoke", String(status));

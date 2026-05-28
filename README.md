@@ -399,6 +399,7 @@ Slackで話しかけると同じcharacter stateをStackChan風のM5Stack faceへ
 ```bash
 SLACK_BOT_TOKEN=xoxb-... \
 SLACK_SIGNING_SECRET=... \
+STACKCHAN_DEVICE_TOKEN=... \
 SLACK_BOT_USER_ID=UIROHA \
 IROHARNESS_SLACK_OWNER_USER_ID=UOWNER \
 npm run example:slack-stackchan

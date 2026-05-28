@@ -71,6 +71,10 @@ Initial OSS skeleton for a character macro harness.
   StackChan connection
 - `iroharness connect slack` and `iroharness connect stackchan` for first
   onboarding files, `.env` setup, owner Slack identity, and firmware config
+- generated apps no longer map unauthenticated browser guests to local owner
+  identity; `.iroharness/` is ignored recursively
+- Slack examples now require signing secrets, and StackChan invoke requires a
+  per-device token
 - CLI `init`, `doctor`, `doctor --json`, and `audience`
   `user/link/grant/revoke/stream/export/import/list`
 - generated `AGENTS.md` companion instructions for character, permission, and

@@ -96,7 +96,6 @@ userRegistry.registerUser({
   displayName: "Local Developer",
   role: "developer",
   identities: {
-    browser: "browser-guest",
     discord: "discord-developer",
     youtube: "youtube-developer"
   },

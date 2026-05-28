@@ -3,6 +3,7 @@
   "wifi_pass": "YOUR_WIFI_PASSWORD",
   "face_url": "http://YOUR_MAC_MINI_IP:4182/stackchan/face",
   "invoke_url": "http://YOUR_MAC_MINI_IP:4182/device/stackchan/invoke",
+  "device_token": "YOUR_STACKCHAN_DEVICE_TOKEN",
   "device_id": "stackchan",
   "poll_interval_ms": 500
 }

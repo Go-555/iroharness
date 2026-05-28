@@ -39,9 +39,6 @@ const safeEqual = (left, right) => {
 };
 
 const verifySlackSignature = ({ body, headers, signingSecret }) => {
-  if (!signingSecret) {
-    return true;
-  }
   const timestamp = headers["x-slack-request-timestamp"];
   const signature = headers["x-slack-signature"];
   if (!timestamp || !signature) {
@@ -92,7 +89,7 @@ const createSlackCodexCompanion = () => {
   }
 
   const botToken = requireEnv("SLACK_BOT_TOKEN");
-  const signingSecret = process.env.SLACK_SIGNING_SECRET || "";
+  const signingSecret = requireEnv("SLACK_SIGNING_SECRET");
   const port = Number(process.env.PORT || "4181");
   const host = process.env.HOST || "127.0.0.1";
   const codexWorkspace = process.env.CODEX_WORKSPACE || process.cwd();

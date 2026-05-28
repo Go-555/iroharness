@@ -200,6 +200,8 @@ test("OSS contribution metadata is present and aligned with harness boundaries",
   const postgresRestore = readFileSync(join("examples", "postgres-audience-restore.sh"), "utf8");
   const stackchanFirmware = readFileSync(join("docs", "stackchan-firmware.md"), "utf8");
   const slackStackchan = readFileSync(join("docs", "slack-stackchan.md"), "utf8");
+  const slackStackchanExample = readFileSync(join("examples", "slack-stackchan-companion.mjs"), "utf8");
+  const slackCodexExample = readFileSync(join("examples", "slack-codex-companion.mjs"), "utf8");
   const stackchanPoller = readFileSync(
     join("examples", "stackchan-face-poller", "src", "main.cpp"),
     "utf8"
@@ -354,8 +356,16 @@ test("OSS contribution metadata is present and aligned with harness boundaries",
   assert.match(stackchanFirmware, /AIAvatarStackChan/);
   assert.match(stackchanFirmware, /examples\/stackchan-face-poller/);
   assert.match(slackStackchan, /\/device\/stackchan\/invoke/);
+  assert.match(slackStackchan, /STACKCHAN_DEVICE_TOKEN/);
+  assert.match(slackStackchanExample, /requireEnv\("SLACK_SIGNING_SECRET"\)/);
+  assert.match(slackStackchanExample, /requireEnv\("STACKCHAN_DEVICE_TOKEN"\)/);
+  assert.match(slackStackchanExample, /invalid_device_token/);
+  assert.doesNotMatch(slackStackchanExample, /if \(!signingSecret\)/);
+  assert.match(slackCodexExample, /requireEnv\("SLACK_SIGNING_SECRET"\)/);
+  assert.doesNotMatch(slackCodexExample, /if \(!signingSecret\)/);
   assert.match(stackchanPoller, /\/config\.json/);
   assert.match(stackchanPoller, /\/device\/stackchan\/invoke/);
+  assert.match(stackchanPoller, /x-iroharness-device-token/);
   assert.match(postgresBackup, /pg_dump/);
   assert.match(postgresBackup, /--table=public\.iroharness_audit_log/);
   assert.match(postgresRestore, /IROHARNESS_RESTORE_CONFIRM/);
@@ -370,7 +380,7 @@ test("OSS contribution metadata is present and aligned with harness boundaries",
     assert.match(privacyGuide, new RegExp(section));
   });
   assert.match(privacyGuide, /`\.env` is ignored/);
-  assert.match(privacyGuide, /`\.iroharness\/\*\.json` is ignored/);
+  assert.match(privacyGuide, /`\.iroharness\/` is ignored recursively/);
   assert.match(pkg.scripts["example:adapter"], /adapter-skeleton/);
   assert.match(pkg.scripts.check, /examples\/adapter-skeleton\.mjs/);
   assert.match(adapterSkeleton, /createSkeletonMicroHarness/);

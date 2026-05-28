@@ -39,6 +39,7 @@ reference, see [stackchan-firmware.md](./stackchan-firmware.md).
 ```bash
 SLACK_BOT_TOKEN=xoxb-... \
 SLACK_SIGNING_SECRET=... \
+STACKCHAN_DEVICE_TOKEN=... \
 SLACK_BOT_USER_ID=UIROHA \
 IROHARNESS_SLACK_OWNER_USER_ID=UOWNER \
 npm run example:slack-stackchan
@@ -99,6 +100,7 @@ StackChan can also send events back to IroHarness:
 
 ```text
 POST /device/stackchan/invoke
+x-iroharness-device-token: <STACKCHAN_DEVICE_TOKEN>
 ```
 
 Example:
@@ -115,6 +117,7 @@ Example:
 
 IroHarness treats this as a normal device-originated turn. The same character
 identity, brain routing, Project OS state, and permissions are used.
+The invoke endpoint rejects requests without the configured device token.
 
 ## Minimal Firmware Example
 

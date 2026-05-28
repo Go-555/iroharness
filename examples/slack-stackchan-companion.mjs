@@ -45,9 +45,6 @@ const safeEqual = (left, right) => {
 };
 
 const verifySlackSignature = ({ body, headers, signingSecret }) => {
-  if (!signingSecret) {
-    return true;
-  }
   const timestamp = headers["x-slack-request-timestamp"];
   const signature = headers["x-slack-signature"];
   if (!timestamp || !signature) {
@@ -88,7 +85,8 @@ const createBrainForSlot = ({ slot, codexWorkspace }) => {
 
 const createSlackStackChanCompanion = () => {
   const botToken = requireEnv("SLACK_BOT_TOKEN");
-  const signingSecret = process.env.SLACK_SIGNING_SECRET || "";
+  const signingSecret = requireEnv("SLACK_SIGNING_SECRET");
+  const stackchanDeviceToken = requireEnv("STACKCHAN_DEVICE_TOKEN");
   const port = Number(process.env.PORT || "4182");
   const host = process.env.HOST || "127.0.0.1";
   const codexWorkspace = process.env.CODEX_WORKSPACE || process.cwd();
@@ -216,6 +214,15 @@ const createSlackStackChanCompanion = () => {
     };
   };
 
+  const verifyDeviceToken = (request) => {
+    const headerToken = request.headers["x-iroharness-device-token"];
+    const authorization = request.headers.authorization || "";
+    const bearerToken = authorization.startsWith("Bearer ") ? authorization.slice("Bearer ".length) : "";
+    return [headerToken, bearerToken].some(
+      (candidate) => typeof candidate === "string" && safeEqual(candidate, stackchanDeviceToken)
+    );
+  };
+
   const server = createServer(async (request, response) => {
     if (request.method === "GET" && request.url === "/health") {
       sendJson(response, 200, {
@@ -254,6 +261,10 @@ const createSlackStackChanCompanion = () => {
       return;
     }
     if (request.method === "POST" && request.url === "/device/stackchan/invoke") {
+      if (!verifyDeviceToken(request)) {
+        sendJson(response, 401, { ok: false, error: "invalid_device_token" });
+        return;
+      }
       try {
         const body = await readBody(request);
         const payload = parseJson(body);

@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { randomBytes } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 
@@ -17,7 +18,7 @@ Usage:
   iroharness audience import [dir] --file <path> --force
   iroharness audience list [dir] [--json]
   iroharness connect slack [dir] [--bot-token <xoxb-token>] [--signing-secret <secret>] [--bot-user-id <user-id>] [--owner-slack-user-id <user-id>]
-  iroharness connect stackchan [dir] [--host-url <url>] [--wifi-ssid <ssid>] [--wifi-pass <password>] [--device-id <id>] [--poll-interval-ms <ms>]
+  iroharness connect stackchan [dir] [--host-url <url>] [--wifi-ssid <ssid>] [--wifi-pass <password>] [--device-id <id>] [--device-token <token>] [--poll-interval-ms <ms>]
   iroharness doctor [dir] [--production] [--json]
   iroharness --help
 
@@ -67,6 +68,7 @@ const parseArgs = (argv) => {
   let wifiSsid = null;
   let wifiPass = null;
   let deviceId = "stackchan";
+  let deviceToken = null;
   let pollIntervalMs = "500";
   const identities = {};
   const positional = [];
@@ -215,6 +217,11 @@ const parseArgs = (argv) => {
       index += 1;
       continue;
     }
+    if (value === "--device-token") {
+      deviceToken = rest[index + 1];
+      index += 1;
+      continue;
+    }
     if (value === "--poll-interval-ms") {
       pollIntervalMs = rest[index + 1] || pollIntervalMs;
       index += 1;
@@ -267,6 +274,7 @@ const parseArgs = (argv) => {
     wifiSsid,
     wifiPass,
     deviceId,
+    deviceToken,
     pollIntervalMs,
     identities
   };
@@ -482,7 +490,6 @@ userRegistry.registerUser({
   role: "owner",
   relationship: "owner",
   identities: {
-    browser: "browser-guest",
     local: "owner"
   }
 });
@@ -704,11 +711,11 @@ Before taking action, read these files in this app directory:
 ## File Boundaries
 
 - Character profile: \`SOUL.md\`, \`IDENTITY.md\`, \`MEMORY.md\`, \`VOICE.md\`
-- Runtime state: \`.iroharness/*.json\`
+- Runtime state: \`.iroharness/\`
 - App code: \`src/app.mjs\`
 - Local secrets: \`.env\`
 
-Do not commit \`.env\` or \`.iroharness/*.json\`.
+Do not commit \`.env\` or \`.iroharness/\`.
 `;
 
 const init = ({ dir, name, character, force }) => {
@@ -824,7 +831,7 @@ keeping ${character}'s identity stable.
   writeFile({
     path: join(targetDir, ".gitignore"),
     force,
-    content: "node_modules\n.env\n.iroharness/*.json\n"
+    content: "node_modules\n.env\n.iroharness/\n"
   });
 
   return {
@@ -921,8 +928,8 @@ const doctor = ({ dir, production = false }) => {
           ok: gitignoreText.split(/\r?\n/).some((line) => line.trim() === ".env")
         },
         {
-          label: ".iroharness JSON state is ignored",
-          ok: gitignoreText.split(/\r?\n/).some((line) => line.trim() === ".iroharness/*.json")
+          label: ".iroharness runtime state is ignored",
+          ok: gitignoreText.split(/\r?\n/).some((line) => line.trim() === ".iroharness/")
         }
       ]
     : [];
@@ -1004,6 +1011,25 @@ const mergeEnvFile = (path, entries) => {
 };
 
 const normalizeBaseUrl = (value) => String(value || "http://127.0.0.1:4182").replace(/\/+$/g, "");
+
+const createSecretToken = () => randomBytes(24).toString("base64url");
+
+const redactConnectionSecrets = (value) => {
+  if (Array.isArray(value)) {
+    return value.map((item) => redactConnectionSecrets(item));
+  }
+  if (!value || typeof value !== "object") {
+    return value;
+  }
+  return Object.fromEntries(
+    Object.entries(value).map(([key, item]) => {
+      if (/pass|password|secret|token/i.test(key)) {
+        return [key, item ? "[redacted]" : item];
+      }
+      return [key, redactConnectionSecrets(item)];
+    })
+  );
+};
 
 const createCliAuditRecord = ({ action, resourceType, resourceId, metadata = {} }) => ({
   id: `audit_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`,
@@ -1237,10 +1263,15 @@ const connectSlack = (args) => {
 const connectStackChan = (args) => {
   const targetDir = resolve(args.dir);
   const connectionDir = join(targetDir, ".iroharness", "connections");
+  const envPath = join(targetDir, ".env");
   mkdirSync(connectionDir, { recursive: true });
   const baseUrl = normalizeBaseUrl(args.hostUrl);
   const deviceId = args.deviceId || "stackchan";
+  const deviceToken = args.deviceToken || createSecretToken();
   const pollIntervalMs = Number(args.pollIntervalMs || "500");
+  mergeEnvFile(envPath, {
+    STACKCHAN_DEVICE_TOKEN: deviceToken
+  });
   const deviceConfig = {
     deviceId,
     kind: "stackchan",
@@ -1268,7 +1299,8 @@ const connectStackChan = (args) => {
       ptt: "$StackChanから音声入力が届きました。短く反応してください。"
     },
     metadata: {
-      connectionMode: "http-polling"
+      connectionMode: "http-polling",
+      auth: "x-iroharness-device-token"
     }
   };
   const firmwareConfig = {
@@ -1276,6 +1308,7 @@ const connectStackChan = (args) => {
     wifi_pass: args.wifiPass || "YOUR_WIFI_PASSWORD",
     face_url: `${baseUrl}/stackchan/face`,
     invoke_url: `${baseUrl}/device/stackchan/invoke`,
+    device_token: deviceToken,
     device_id: deviceId,
     poll_interval_ms: Number.isFinite(pollIntervalMs) ? pollIntervalMs : 500
   };
@@ -1285,6 +1318,7 @@ const connectStackChan = (args) => {
   writeJsonFile(firmwareConfigPath, firmwareConfig);
   return {
     targetDir,
+    envPath,
     deviceConfigPath,
     firmwareConfigPath,
     deviceConfig,
@@ -1308,7 +1342,7 @@ const connect = (args) => {
   if (args.action === "stackchan") {
     const result = connectStackChan(args);
     if (args.json) {
-      console.log(JSON.stringify(result, null, 2));
+      console.log(JSON.stringify(redactConnectionSecrets(result), null, 2));
       return;
     }
     console.log(`configured StackChan in ${result.targetDir}`);

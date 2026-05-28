@@ -27,7 +27,7 @@ The generated `.gitignore` excludes:
 
 ```text
 .env
-.iroharness/*.json
+.iroharness/
 ```
 
 Run the production doctor before exposing the app:
@@ -43,7 +43,7 @@ The production doctor verifies:
 - the token is at least 16 characters
 - audience admin routes are wired to the token
 - `.env` is ignored
-- `.iroharness/*.json` is ignored
+- `.iroharness/` is ignored recursively
 
 ## Admin Routes
 

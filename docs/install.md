@@ -83,7 +83,7 @@ Rules:
 
 - `~/.iroharness/source` is disposable OSS source.
 - `~/iroharness-apps/iroha` is the user's actual character instance.
-- `.env` and `.iroharness/*.json` are local/private and should not be committed.
+- `.env` and `.iroharness/` are local/private and should not be committed.
 - `SOUL.md`, `IDENTITY.md`, `MEMORY.md`, and `VOICE.md` are the character profile.
 
 ## StackChan First Connection
@@ -118,6 +118,7 @@ Use a LAN or Tailscale address that the M5Stack can reach. Do not use
   "wifi_pass": "YOUR_WIFI_PASSWORD",
   "face_url": "http://MAC_MINI_IP:4182/stackchan/face",
   "invoke_url": "http://MAC_MINI_IP:4182/device/stackchan/invoke",
+  "device_token": "YOUR_STACKCHAN_DEVICE_TOKEN",
   "device_id": "stackchan",
   "poll_interval_ms": 500
 }

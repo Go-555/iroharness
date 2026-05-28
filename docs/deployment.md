@@ -28,7 +28,7 @@ npx iroharness doctor . --production --json
 Required defaults:
 
 - set `IROHARNESS_ADMIN_TOKEN` to a strong secret
-- keep `.env`, `.iroharness/*.json`, and audience backups out of git
+- keep `.env`, `.iroharness/`, and audience backups out of git
 - use PostgreSQL/Supabase for long-running public audience state
 - keep `SOUL.md`, `IDENTITY.md`, `MEMORY.md`, and `VOICE.md` private unless the
   character is intended to be public
@@ -126,4 +126,3 @@ protocols/sql/postgres-audience.sql
 
 That schema includes `iroharness_audit_log` so user, identity, permission, and
 stream changes remain reviewable without making chat logs the source of truth.
-

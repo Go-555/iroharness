@@ -128,6 +128,8 @@ Payloads:
 
 This maps AIAvatarStackChan's `sendInvoke`, `sendInvokeWithImage`, and
 `sendInvokeWithAudio` idea into an IroHarness-owned contract.
+The first HTTP endpoint requires `x-iroharness-device-token` so public network
+traffic cannot forge device-originated turns.
 
 ### Phase 3: AIAvatarStackChan-Compatible WebSocket
 

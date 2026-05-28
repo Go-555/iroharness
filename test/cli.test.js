@@ -116,6 +116,7 @@ test("CLI init creates a minimal IroHarness app", () => {
   assert.match(app, /createIroHarnessDevServer/);
   assert.match(app, /createMotionPngTuberRendererBridge/);
   assert.match(app, /IROHARNESS_ADMIN_TOKEN/);
+  assert.doesNotMatch(app, /browser: "browser-guest"/);
   assert.match(app, /\/health/);
   assert.match(app, /\/openapi\.json/);
   assert.match(agents, /macro harness owns character identity/);
@@ -363,6 +364,8 @@ test("CLI connect prepares Slack and StackChan onboarding files", () => {
     "ssid-test",
     "--wifi-pass",
     "pass-test",
+    "--device-token",
+    "device-secret-test",
     "--poll-interval-ms",
     "750",
     "--json"
@@ -390,6 +393,7 @@ test("CLI connect prepares Slack and StackChan onboarding files", () => {
   assert.match(env, /SLACK_BOT_TOKEN=xoxb-test/);
   assert.match(env, /SLACK_SIGNING_SECRET=secret-test/);
   assert.match(env, /IROHARNESS_SLACK_OWNER_USER_ID=UOWNER/);
+  assert.match(env, /STACKCHAN_DEVICE_TOKEN=device-secret-test/);
   assert.equal(slackConnection.preset, "slack-text");
   assert.equal(slackConnection.body.kind, "presence");
   assert.equal(slackResult.connection.requiredEnv.includes("SLACK_BOT_TOKEN"), true);
@@ -399,9 +403,13 @@ test("CLI connect prepares Slack and StackChan onboarding files", () => {
   assert.equal(stackchanDevice.server.facePath, "/stackchan/face");
   assert.equal(stackchanDevice.server.invokePath, "/device/stackchan/invoke");
   assert.equal(stackchanDevice.metadata.connectionMode, "http-polling");
+  assert.equal(stackchanDevice.metadata.auth, "x-iroharness-device-token");
   assert.equal(firmwareConfig.face_url, "http://100.64.0.10:4182/stackchan/face");
   assert.equal(firmwareConfig.invoke_url, "http://100.64.0.10:4182/device/stackchan/invoke");
+  assert.equal(firmwareConfig.device_token, "device-secret-test");
   assert.equal(firmwareConfig.poll_interval_ms, 750);
+  assert.equal(stackchanResult.firmwareConfig.wifi_pass, "[redacted]");
+  assert.equal(stackchanResult.firmwareConfig.device_token, "[redacted]");
 });
 
 test("CLI doctor production profile requires a strong admin token", () => {
@@ -439,7 +447,7 @@ test("CLI doctor production profile requires a strong admin token", () => {
   assert.equal(ready.status, 0, ready.stderr);
   assert.match(ready.stdout, /ok audience admin token wiring/);
   assert.match(ready.stdout, /ok \.env is ignored/);
-  assert.match(ready.stdout, /ok \.iroharness JSON state is ignored/);
+  assert.match(ready.stdout, /ok \.iroharness runtime state is ignored/);
 });
 
 test("CLI generated app starts a local companion server", async (context) => {
