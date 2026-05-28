@@ -448,6 +448,96 @@ test("CLI view export creates zone-limited runtime views", () => {
   writeFileSync(join(appDir, "MEMORY.md"), "# Core Memory\nprivate-core-secret\n", "utf8");
   writeFileSync(join(appDir, "memory", "public.md"), "# Public Memory\npublic-safe\n", "utf8");
   writeFileSync(join(appDir, "memory", "trusted.md"), "# Trusted Memory\ntrusted-safe\n", "utf8");
+  writeFileSync(
+    join(appDir, ".iroharness", "pjos.json"),
+    `${JSON.stringify(
+      {
+        tickets: [
+          {
+            id: "ticket_public",
+            title: "Publish public roadmap",
+            purpose: "Explain safe external progress",
+            acceptance: [],
+            ownerCharacterId: "iroha",
+            executorHarnessId: null,
+            status: "open",
+            createdAt: "2026-05-28T00:00:00.000Z",
+            updatedAt: "2026-05-28T00:00:00.000Z",
+            metadata: { visibility: "public" }
+          },
+          {
+            id: "ticket_trusted",
+            title: "Tune StackChan room setup",
+            purpose: "Coordinate trusted device work",
+            acceptance: [],
+            ownerCharacterId: "iroha",
+            executorHarnessId: "stackchan",
+            status: "open",
+            createdAt: "2026-05-28T00:00:00.000Z",
+            updatedAt: "2026-05-28T00:00:00.000Z",
+            metadata: { visibility: "trusted" }
+          },
+          {
+            id: "ticket_owner",
+            title: "Private repo migration",
+            purpose: "Owner-only work",
+            acceptance: [],
+            ownerCharacterId: "iroha",
+            executorHarnessId: "codex",
+            status: "open",
+            createdAt: "2026-05-28T00:00:00.000Z",
+            updatedAt: "2026-05-28T00:00:00.000Z",
+            metadata: {}
+          }
+        ],
+        runs: [
+          {
+            id: "run_public",
+            ticketId: "ticket_public",
+            harnessId: "codex",
+            status: "completed",
+            input: {},
+            output: {},
+            createdAt: "2026-05-28T00:00:00.000Z",
+            updatedAt: "2026-05-28T00:00:00.000Z"
+          },
+          {
+            id: "run_owner",
+            ticketId: "ticket_owner",
+            harnessId: "codex",
+            status: "completed",
+            input: {},
+            output: { token: "secret-run-token" },
+            createdAt: "2026-05-28T00:00:00.000Z",
+            updatedAt: "2026-05-28T00:00:00.000Z"
+          }
+        ],
+        artifacts: [
+          {
+            id: "artifact_public",
+            ticketId: "ticket_public",
+            runId: "run_public",
+            kind: "doc",
+            uri: "https://example.com/public",
+            title: "Public note",
+            createdAt: "2026-05-28T00:00:00.000Z"
+          },
+          {
+            id: "artifact_owner",
+            ticketId: "ticket_owner",
+            runId: "run_owner",
+            kind: "repo",
+            uri: "file:///private/repo",
+            title: "Private repo",
+            createdAt: "2026-05-28T00:00:00.000Z"
+          }
+        ]
+      },
+      null,
+      2
+    )}\n`,
+    "utf8"
+  );
   const publicExport = runCli([
     "view",
     "export",
@@ -483,6 +573,16 @@ test("CLI view export creates zone-limited runtime views", () => {
   );
   const publicMemory = readFileSync(join(publicView, "current", "MEMORY.md"), "utf8");
   const trustedMemory = readFileSync(join(trustedView, "current", "MEMORY.md"), "utf8");
+  const publicProjectOs = JSON.parse(
+    readFileSync(join(publicView, "current", "project-os.json"), "utf8")
+  );
+  const trustedProjectOs = JSON.parse(
+    readFileSync(join(trustedView, "current", "project-os.json"), "utf8")
+  );
+  const trustedProjectOsMarkdown = readFileSync(
+    join(trustedView, "current", "PROJECT_OS.md"),
+    "utf8"
+  );
 
   assert.equal(init.status, 0, init.stderr);
   assert.equal(slack.status, 0, slack.stderr);
@@ -498,12 +598,28 @@ test("CLI view export creates zone-limited runtime views", () => {
   assert.match(trustedMemory, /public-safe/);
   assert.match(trustedMemory, /trusted-safe/);
   assert.doesNotMatch(trustedMemory, /private-core-secret/);
+  assert.deepEqual(
+    publicProjectOs.tickets.map((ticket) => ticket.id),
+    ["ticket_public"]
+  );
+  assert.deepEqual(
+    trustedProjectOs.tickets.map((ticket) => ticket.id),
+    ["ticket_public", "ticket_trusted"]
+  );
+  assert.equal(publicProjectOs.runs.some((run) => run.id === "run_owner"), false);
+  assert.equal(trustedProjectOs.artifacts.some((artifact) => artifact.id === "artifact_owner"), false);
+  assert.match(trustedProjectOsMarkdown, /Publish public roadmap/);
+  assert.match(trustedProjectOsMarkdown, /Tune StackChan room setup/);
+  assert.doesNotMatch(trustedProjectOsMarkdown, /Private repo migration/);
   assert.equal(existsSync(join(publicView, "current", ".env")), false);
   assert.equal(existsSync(join(publicView, "current", "connections", "slack.json")), false);
   assert.equal(existsSync(join(publicView, "state", "logs")), true);
   assert.equal(trustedManifest.rules.envCopied, false);
   assert.equal(trustedManifest.rules.unknownFilesAllowed, false);
   assert.equal(trustedManifest.files.includes("view-manifest.json"), true);
+  assert.equal(trustedManifest.files.includes("project-os.json"), true);
+  assert.equal(trustedManifest.projectOs.defaultVisibility, "owner");
+  assert.equal(trustedManifest.projectOs.counts.tickets, 2);
   assert.equal(trustedManifest.files.includes("connections/slack.json"), true);
   assert.equal(trustedManifest.files.includes("connections/stackchan.device.json"), true);
   assert.equal(publicManifest.files.includes("connections/slack.json"), false);

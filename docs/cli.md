@@ -142,6 +142,8 @@ The output shape is:
 │   ├── MEMORY.md
 │   ├── MEMORY.public.md
 │   ├── MEMORY.trusted.md
+│   ├── PROJECT_OS.md
+│   ├── project-os.json
 │   ├── connections/
 │   └── view-manifest.json
 └── state/
@@ -158,6 +160,9 @@ Rules:
   and trusted views only receive `memory/public.md` and `memory/trusted.md`
   layers when they exist. The exported `MEMORY.md` is rebuilt from the allowed
   layers for that zone.
+- Project OS is exported as `project-os.json` and `PROJECT_OS.md`. A ticket,
+  run, or artifact must set `metadata.visibility` to `public` or `trusted` to
+  appear outside owner views. Unmarked items are owner-only by default.
 - Public views do not receive Slack or StackChan trusted connection files.
 - Trusted views receive sanitized connection metadata; Wi-Fi passwords and
   device tokens are redacted in exported connection JSON.

@@ -78,6 +78,8 @@ Initial OSS skeleton for a character macro harness.
 - `iroharness view export` creates public/trusted/owner runtime views with a
   `view-manifest.json`, read-only `current/` files, and writable `state/`
   directories for zero-trust gateway separation
+- View export now emits zone-filtered `project-os.json` and `PROJECT_OS.md`, so
+  public/trusted gateways can see only explicitly visible work board items
 - CLI `init`, `doctor`, `doctor --json`, and `audience`
   `user/link/grant/revoke/stream/export/import/list`
 - generated `AGENTS.md` companion instructions for character, permission, and

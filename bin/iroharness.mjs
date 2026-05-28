@@ -3,7 +3,7 @@ import { randomBytes } from "node:crypto";
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 
-import { createFileUserRegistry } from "../src/index.js";
+import { createFileUserRegistry, createProjectOsMarkdown } from "../src/index.js";
 
 const usage = `IroHarness
 
@@ -1142,6 +1142,108 @@ const exportMemoryFiles = ({ sourceRoot, targetRoot, zone, files }) => {
   });
 };
 
+const viewZoneRank = Object.freeze({
+  public: 0,
+  trusted: 1,
+  owner: 2
+});
+
+const normalizeVisibility = (value) => {
+  const normalized = String(value || "owner").toLowerCase();
+  if (["public", "external"].includes(normalized)) {
+    return "public";
+  }
+  if (["trusted", "team", "internal"].includes(normalized)) {
+    return "trusted";
+  }
+  return "owner";
+};
+
+const visibilityForProjectOsItem = (item) =>
+  normalizeVisibility(
+    item?.visibility ||
+      item?.zone ||
+      item?.metadata?.visibility ||
+      item?.metadata?.zone ||
+      item?.metadata?.view
+  );
+
+const canExposeProjectOsItem = ({ item, zone }) =>
+  viewZoneRank[visibilityForProjectOsItem(item)] <= viewZoneRank[zone];
+
+const emptyProjectOsSnapshot = () => ({
+  tickets: [],
+  runs: [],
+  artifacts: []
+});
+
+const normalizeProjectOsSnapshot = (snapshot) => ({
+  tickets: Array.isArray(snapshot?.tickets) ? snapshot.tickets : [],
+  runs: Array.isArray(snapshot?.runs) ? snapshot.runs : [],
+  artifacts: Array.isArray(snapshot?.artifacts) ? snapshot.artifacts : []
+});
+
+const filterProjectOsForZone = ({ snapshot, zone }) => {
+  const normalized = normalizeProjectOsSnapshot(snapshot);
+  const tickets = normalized.tickets.filter((ticket) =>
+    canExposeProjectOsItem({ item: ticket, zone })
+  );
+  const visibleTicketIds = new Set(tickets.map((ticket) => ticket.id));
+  const runs = normalized.runs.filter((run) => {
+    if (run.ticketId && visibleTicketIds.has(run.ticketId)) {
+      return true;
+    }
+    return !run.ticketId && canExposeProjectOsItem({ item: run, zone });
+  });
+  const visibleRunIds = new Set(runs.map((run) => run.id));
+  const artifacts = normalized.artifacts.filter((artifact) => {
+    if (artifact.ticketId && visibleTicketIds.has(artifact.ticketId)) {
+      return true;
+    }
+    if (artifact.runId && visibleRunIds.has(artifact.runId)) {
+      return true;
+    }
+    return (
+      !artifact.ticketId &&
+      !artifact.runId &&
+      canExposeProjectOsItem({ item: artifact, zone })
+    );
+  });
+  return sanitizeViewJson({
+    tickets,
+    runs,
+    artifacts
+  });
+};
+
+const readProjectOsSnapshot = (sourceRoot) => {
+  const source = join(sourceRoot, ".iroharness", "pjos.json");
+  if (!existsSync(source)) {
+    return emptyProjectOsSnapshot();
+  }
+  return normalizeProjectOsSnapshot(readJsonFile(source));
+};
+
+const exportProjectOsFiles = ({ sourceRoot, targetRoot, zone, files }) => {
+  const snapshot = filterProjectOsForZone({
+    snapshot: readProjectOsSnapshot(sourceRoot),
+    zone
+  });
+  writeViewJson({
+    targetRoot,
+    targetPath: "project-os.json",
+    value: snapshot,
+    files
+  });
+  writeViewText({
+    targetRoot,
+    targetPath: "PROJECT_OS.md",
+    content: createProjectOsMarkdown(snapshot),
+    files
+  });
+  return snapshot;
+};
+
 const viewConnectionFilesForZone = (zone) => {
   if (zone === "public") {
     return Object.freeze([]);
@@ -1192,6 +1294,7 @@ const exportView = (args) => {
     copyViewFile({ sourceRoot, targetRoot: currentRoot, sourcePath: fileName, files });
   });
   exportMemoryFiles({ sourceRoot, targetRoot: currentRoot, zone, files });
+  const projectOs = exportProjectOsFiles({ sourceRoot, targetRoot: currentRoot, zone, files });
   exportConnectionFiles({ sourceRoot, targetRoot: currentRoot, zone, files });
 
   const manifestFiles = [...files, "view-manifest.json"].sort();
@@ -1202,6 +1305,16 @@ const exportView = (args) => {
     exportedAt: new Date().toISOString(),
     files: manifestFiles,
     statePath: join(viewRoot, "state"),
+    projectOs: {
+      defaultVisibility: "owner",
+      visibilityRule:
+        "public views see public items; trusted views see public and trusted items; owner views see all items",
+      counts: {
+        tickets: projectOs.tickets.length,
+        runs: projectOs.runs.length,
+        artifacts: projectOs.artifacts.length
+      }
+    },
     rules: {
       coreReadableByRunner: false,
       envCopied: false,

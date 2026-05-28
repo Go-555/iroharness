@@ -245,7 +245,7 @@ npx iroharness connect stackchan ~/iroharness-apps/iroha --host-url http://MAC_M
 
 外部公開する入口は、Core全体ではなくzone別Viewから起動する前提にします。
 `view export` は `.env` やルートのcore memoryをコピーせず、許可されたmemory
-layerとredact済み接続情報だけを `current/` に出します。
+layer、zoneで絞ったProject OS、redact済み接続情報だけを `current/` に出します。
 
 ```bash
 npx iroharness view export ~/iroharness-apps/iroha \

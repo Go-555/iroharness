@@ -51,6 +51,33 @@ secrets, root/core memory, or the whole `.iroharness/` runtime directory. The
 exported `MEMORY.md` is generated from allowed memory layers such as
 `memory/public.md`, `memory/trusted.md`, and `memory/owner.md`.
 
+Project OS is also exported as a zone-filtered work board. Items without an
+explicit `metadata.visibility` are owner-only by default. Public views only see
+public tickets, runs, and artifacts; trusted views see public and trusted work;
+owner views see the full work board.
+
+Human metaphor:
+
+```text
+Iroha
+  = the principal person with stable identity, relationship memory, and policy
+
+Gateways
+  = reception desks that decide who is talking and what room they may enter
+
+Views
+  = prepared folders of documents the receptionist is allowed to show
+
+Project OS
+  = the work board: goals, specs, tickets, runs, artifacts, and decisions
+
+Micro Harness Workers
+  = other specialists, like Codex, OpenClaw, Hermes, and Claude Code
+```
+
+Those workers can help Iroha do work, but they are not Iroha. They are delegated
+specialists who receive scoped tasks and return results to Project OS.
+
 ## Runtime Flow
 
 ```text
