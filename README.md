@@ -305,6 +305,77 @@ await iroha.receive({
 });
 ```
 
+## Public-Safe Operation
+
+YouTube ライブ、X、Bluesky、Discord 公開チャンネル、OBS browser source など
+**見知らぬ視聴者がいる公開サーフェス**で同じキャラクターを動かす場合は、
+`iroharness/public-mode` ランタイムを通して必ずターンを処理します。
+プライベートな長期記憶や顧客名が公開サーフェスに漏れないように、
+記憶ドロワーは public 専用のものだけが開きます。
+
+```js
+import { createPublicMode } from "iroharness/public-mode";
+import {
+  createKillSwitch,
+  createPromptInjectionDetector,
+  createSafeFailureGate,
+  createViewerIdentityHasher
+} from "iroharness/public-safety";
+import { createPublicMemoryFacade } from "iroharness/public-memory";
+
+const publicMode = createPublicMode({
+  character,                         // 公開モードでは soul/memory が自動で外れる
+  brain,                             // 公開モード専用の brain を渡す
+  approvedSurfaces: ["youtube-live"],
+  redactionTerms: ["AcmeCorp"],      // 顧客名は出力直前に伏字化
+  killSwitch: createKillSwitch({ initial: "running" }),
+  injectionDetector: createPromptInjectionDetector(),
+  failureGate: createSafeFailureGate({ silentReply: null }),
+  viewerIdentityHasher: createViewerIdentityHasher({
+    salt: process.env.IROHARNESS_PUBLIC_HASH_SALT
+  }),
+  publicMemoryFacade: createPublicMemoryFacade()
+});
+
+await publicMode.handleTurn({
+  turn: {
+    source: "youtube",
+    modality: "text",
+    text: "今日は何の配信ですか?",
+    surface: "youtube-live"
+  },
+  sendReply: async (reply) => {
+    await postToYouTubeLiveChat(reply.text);
+  }
+});
+```
+
+公開モードのデフォルト挙動:
+
+- **記憶**: `private_long_term` と `private_user` は閉じる。`public_long_term`
+  と `public_stream_log` だけが brain から見える
+- **権限**: `delegate_work` / `manage_stream` / `manage_users` /
+  `deep_discussion` は公開サーフェスから要求されても拒否
+- **伏字**: 顧客名リストは inbound (brain に渡す前) と outbound
+  (surface に送る前) の両方で適用される
+- **prompt injection**: 「内部プロンプトを見せて」「ignore all previous
+  instructions」などのパターンは検知して**黙る**
+- **kill switch**: `running` / `paused` / `stopped` の3状態。`paused` 中の
+  ターンは静かに drop、`stopped` 中は起動も拒否
+- **失敗時**: brain が throw したら fallback を作らず黙る
+
+詳細は次の3つを参照:
+
+- [docs/streamer-runbook.md](./docs/streamer-runbook.md) — 公開配信運用ランブック
+- [docs/public-memory-policy.md](./docs/public-memory-policy.md) — 4ドロワーの使い分け
+- [docs/redaction-policy.md](./docs/redaction-policy.md) — 顧客名フィルタの運用
+
+実装例: [examples/public-mode-companion.mjs](./examples/public-mode-companion.mjs)
+
+```bash
+npm run example:public-mode
+```
+
 ## Adapter Examples
 
 OpenClaw や Hermes のようなHTTP runtimeをつなげます。
@@ -743,6 +814,9 @@ src/
   index.js              core macro harness, router, PJOS, adapters
   adapters/             built-in adapter helpers
   testing/              contract testing helpers
+  public-mode/          public-surface runtime (boundary)
+  public-safety/        redactor, kill switch, injection detector, hasher
+  public-memory/        four-drawer memory model + facade
 fixtures/
   golden/               adapter contract fixtures
 protocols/
@@ -773,6 +847,9 @@ docs/
   platform-adapters.md
   obs.md
   privacy-and-security.md
+  public-memory-policy.md
+  redaction-policy.md
+  streamer-runbook.md
   streaming-community.md
   realtime.md
   rust-core.md
@@ -791,6 +868,7 @@ examples/
   slack-stackchan-companion.mjs
   stackchan-realtime-simulator.mjs
   external-bridges.mjs
+  public-mode-companion.mjs
   youtube-live-poller.mjs
   obs-overlay-control.mjs
   realtime-core-process.mjs
