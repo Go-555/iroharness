@@ -64,6 +64,7 @@ Initial OSS skeleton for a character macro harness.
   bindings
 - HTTP streaming STT/TTS adapters for production provider gateways
 - speech playback queue protocol and simulator for body-side utterance control
+- StackChan audio invoke fixture and host-side STT relay hook
 - Rust realtime core crate scaffold, JSONL process binary, and native/WASM C ABI
   path
 - browser avatar demo with configurable voice/text/deep HTTP brain slots

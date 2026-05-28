@@ -149,12 +149,14 @@ test("device config and invoke schemas cover StackChan fixtures", () => {
   const invokeSchema = readProtocol("device-invoke.schema.json");
   const config = readFixture("device-config.json");
   const invoke = readFixture("device-invoke.json");
+  const audioInvoke = readFixture("device-invoke-audio.json");
 
   configSchema.required.forEach((field) => {
     assert.notEqual(config[field], undefined);
   });
   invokeSchema.required.forEach((field) => {
     assert.notEqual(invoke[field], undefined);
+    assert.notEqual(audioInvoke[field], undefined);
   });
 
   assert.equal(config.kind, "stackchan");
@@ -162,6 +164,8 @@ test("device config and invoke schemas cover StackChan fixtures", () => {
   assert.equal(config.server.invokePath, "/device/stackchan/invoke");
   assert.equal(configSchema.properties.kind.enum.includes("stackchan"), true);
   assert.equal(invoke.type, "touch");
+  assert.equal(audioInvoke.type, "audio");
+  assert.equal(audioInvoke.audio.encoding, "wav");
   assert.equal(invokeSchema.properties.type.enum.includes("vision"), true);
   assert.equal(invokeSchema.properties.type.enum.includes("audio"), true);
 });

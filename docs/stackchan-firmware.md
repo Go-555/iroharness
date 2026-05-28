@@ -128,10 +128,26 @@ Payloads:
 }
 ```
 
+```json
+{
+  "type": "audio",
+  "deviceId": "stackchan",
+  "audio": {
+    "encoding": "wav",
+    "sampleRate": 16000,
+    "dataBase64": "..."
+  }
+}
+```
+
 This maps AIAvatarStackChan's `sendInvoke`, `sendInvokeWithImage`, and
 `sendInvokeWithAudio` idea into an IroHarness-owned contract.
 The first HTTP endpoint requires `x-iroharness-device-token` so public network
 traffic cannot forge device-originated turns.
+
+The Mac mini host can translate audio invoke payloads through
+`IROHARNESS_STACKCHAN_STT_ENDPOINT`, then pass the transcript into the voice
+brain while preserving StackChan as the body/interface rather than the identity.
 
 ### Phase 3: AIAvatarStackChan-Compatible WebSocket
 
@@ -196,7 +212,7 @@ Until then, keep contracts and examples in the main monorepo.
 3. Done: add `protocols/device-invoke.schema.json`.
 4. Done: add a minimal StackChan/CoreS3 face polling sketch.
 5. Done: add Wi-Fi reconnect and HTTP retry backoff to the face poller.
-6. Add deeper integration tests around `/device/stackchan/invoke`.
+6. Done: add audio invoke fixture and host-side STT relay hook.
 7. Add a WebSocket/SSE relay sketch.
 8. Add AIAvatarStackChan-compatible WebSocket mode.
 

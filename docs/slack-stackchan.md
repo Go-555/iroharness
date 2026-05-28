@@ -20,6 +20,7 @@ Good now:
 - Slack Events API input and thread replies
 - StackChan face JSON polling
 - StackChan Server-Sent Events stream
+- StackChan device invoke for touch, push-to-talk/audio, and vision payloads
 - minimal StackChan/CoreS3 PlatformIO face poller sketch
 - device-side Wi-Fi reconnect and HTTP retry backoff in the face poller
 - shared character state between Slack and StackChan
@@ -28,7 +29,7 @@ Good now:
 Still early:
 
 - no full AIAvatarStackChan-compatible firmware yet
-- no built-in STT/TTS on the M5Stack device
+- no built-in STT/TTS on the M5Stack device; audio invoke can use a host STT relay
 - no OTA or provisioning flow yet
 
 For the firmware plan and how AIAvatarStackChan will be used as the main
@@ -134,6 +135,28 @@ Example:
   "text": "$頭を撫でられました。短く反応してください。"
 }
 ```
+
+Audio / push-to-talk input can use the same endpoint:
+
+```json
+{
+  "type": "audio",
+  "deviceId": "stackchan",
+  "userId": "stackchan",
+  "channel": "local",
+  "audio": {
+    "encoding": "wav",
+    "sampleRate": 16000,
+    "dataBase64": "..."
+  }
+}
+```
+
+Set `IROHARNESS_STACKCHAN_STT_ENDPOINT` to bridge the audio payload through a
+host-side STT provider. The endpoint follows the same
+`createHttpStreamingStt` contract documented in [realtime.md](./realtime.md).
+If no STT endpoint is configured, IroHarness still treats the payload as a
+voice-originated device event and uses a short fallback prompt.
 
 IroHarness treats this as a normal device-originated turn. The same character
 identity, brain routing, Project OS state, and permissions are used.

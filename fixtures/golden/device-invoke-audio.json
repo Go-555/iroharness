@@ -1,0 +1,15 @@
+{
+  "type": "audio",
+  "deviceId": "stackchan",
+  "userId": "stackchan",
+  "channel": "local",
+  "audio": {
+    "encoding": "wav",
+    "sampleRate": 16000,
+    "dataBase64": "UklGRg=="
+  },
+  "metadata": {
+    "source": "m5stack",
+    "trigger": "ptt"
+  }
+}

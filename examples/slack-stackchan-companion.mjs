@@ -9,6 +9,7 @@ import {
   createFileProjectOs,
   createFileUserRegistry,
   createHeuristicRouter,
+  createHttpStreamingStt,
   createIroHarness
 } from "../src/index.js";
 import {
@@ -132,6 +133,40 @@ const createBrainForSlot = ({ slot, codexWorkspace }) => {
   return createEchoBrain(`${slot}-echo`);
 };
 
+const createStackChanStt = () => {
+  const endpoint = process.env.IROHARNESS_STACKCHAN_STT_ENDPOINT;
+  if (!endpoint) {
+    return null;
+  }
+  const authorization = process.env.IROHARNESS_STACKCHAN_STT_AUTHORIZATION;
+  return createHttpStreamingStt({
+    id: "stackchan-http-stt",
+    endpoint,
+    headers: authorization ? { authorization } : {}
+  });
+};
+
+const transcribeStackChanAudio = async ({ stt, audio, fallbackText }) => {
+  if (!stt || !audio?.dataBase64) {
+    return fallbackText;
+  }
+  const events = [];
+  const session = stt.start({
+    onEvent(event) {
+      events.push(event);
+    }
+  });
+  await session.push({
+    audio,
+    final: false
+  });
+  await session.end();
+  const transcriptEvent =
+    events.findLast((event) => event.type === "stt.final" && event.text) ||
+    events.findLast((event) => event.text);
+  return transcriptEvent?.text || fallbackText;
+};
+
 const createSlackStackChanCompanion = () => {
   const botToken = requireEnv("SLACK_BOT_TOKEN");
   const signingSecret = requireEnv("SLACK_SIGNING_SECRET");
@@ -143,6 +178,7 @@ const createSlackStackChanCompanion = () => {
   const stackchan = createM5StackBodyBridge({
     id: process.env.STACKCHAN_BODY_ID || "stackchan"
   });
+  const stackchanStt = createStackChanStt();
 
   const projectOs = createFileProjectOs({
     path: join(runtimePaths.stateDir, "slack-stackchan-pjos.json")
@@ -226,14 +262,26 @@ const createSlackStackChanCompanion = () => {
   });
 
   const handleDeviceInvoke = async (payload) => {
+    const fallbackText =
+      payload.type === "touch"
+        ? "$頭を撫でられました。短く反応してください。"
+        : payload.type === "audio" || payload.type === "ptt"
+          ? "$StackChanから音声入力が届きました。短く反応してください。"
+          : payload.type === "vision"
+            ? "$見えているものに反応してください。"
+            : "$StackChanからイベントが届きました。短く反応してください。";
     const text =
       payload.text ||
-      (payload.type === "touch"
-        ? "$頭を撫でられました。短く反応してください。"
-        : "$StackChanからイベントが届きました。短く反応してください。");
+      (payload.type === "audio" || payload.type === "ptt"
+        ? await transcribeStackChanAudio({
+            stt: stackchanStt,
+            audio: payload.audio,
+            fallbackText
+          })
+        : fallbackText);
     const result = await harness.receive({
       source: "m5stack",
-      modality: payload.type === "audio" ? "voice" : "text",
+      modality: payload.type === "audio" || payload.type === "ptt" ? "voice" : "text",
       text,
       actor: {
         platform: "m5stack",
@@ -246,6 +294,7 @@ const createSlackStackChanCompanion = () => {
         channel: payload.channel || "local",
         imageDataUrl: payload.imageDataUrl || null,
         audio: payload.audio || null,
+        sttConfigured: Boolean(stackchanStt),
         ...(payload.metadata || {})
       }
     });
