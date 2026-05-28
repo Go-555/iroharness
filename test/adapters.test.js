@@ -25,6 +25,7 @@ import {
   createObsWebSocketAdapter,
   createOpenClawMicroHarness,
   createPlatformAdapterRegistry,
+  createScopedWorkRunnerMicroHarness,
   createSlackEventsRuntime,
   createSlackMessageAdapter,
   createSnapshotStreamSessionResolver,
@@ -404,6 +405,96 @@ test("Codex app-server micro harness starts thread and returns assistant deltas"
   assert.equal(transport.requests[1].params.model, "gpt-test");
   assert.equal(transport.requests[2].method, "turn/start");
   assert.equal(transport.requests[2].params.threadId, "thread_1");
+});
+
+test("Scoped Work Runner wraps a worker with policy and workspace boundaries", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "iroharness-work-runner-"));
+  const repo = join(dir, "repo");
+  const outside = join(dir, "outside");
+  const calls = [];
+  const worker = {
+    id: "codex",
+    capabilities: ["code"],
+    async run(task, context) {
+      calls.push({ task, context });
+      return {
+        status: "completed",
+        summary: `scoped ${context.workRunner.workspace}`,
+        artifacts: []
+      };
+    }
+  };
+  const runner = createScopedWorkRunnerMicroHarness({
+    worker,
+    policy: {
+      kind: "iroharness.workRunnerPolicy",
+      zone: "trusted",
+      delegation: "permission-required",
+      boundary: "runner-only",
+      runnerAccess: {
+        repositoryWork: "scoped-workspace",
+        browserControl: "scoped-session",
+        defaultSandbox: "workspace-write"
+      }
+    },
+    allowedWorkspaces: [repo]
+  });
+
+  const deniedByPermission = await runner.run(
+    { id: "ticket_1", title: "Work", metadata: { workspace: repo } },
+    { audience: { canDelegateWork: false } }
+  );
+  const deniedByScope = await runner.run(
+    { id: "ticket_2", title: "Work", metadata: { workspace: outside } },
+    { audience: { canDelegateWork: true } }
+  );
+  const allowed = await runner.run(
+    { id: "ticket_3", title: "Work", metadata: { workspace: join(repo, "app") } },
+    { audience: { canDelegateWork: true } }
+  );
+
+  assert.equal(runner.id, "codex");
+  assert.equal(deniedByPermission.status, "failed");
+  assert.equal(deniedByPermission.raw.reason, "permission_required");
+  assert.equal(deniedByScope.status, "failed");
+  assert.equal(deniedByScope.raw.reason, "workspace_out_of_scope");
+  assert.equal(allowed.status, "completed");
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].context.workRunner.root, repo);
+  assert.equal(calls[0].task.metadata.workRunnerRoot, repo);
+  assert.match(calls[0].context.workRunner.workspace, /repo\/app$/);
+});
+
+test("Scoped Work Runner denies public-view delegation before worker execution", async () => {
+  let called = false;
+  const runner = createScopedWorkRunnerMicroHarness({
+    worker: {
+      id: "codex",
+      async run() {
+        called = true;
+        return { status: "completed", summary: "should not run", artifacts: [] };
+      }
+    },
+    policy: {
+      kind: "iroharness.workRunnerPolicy",
+      zone: "public",
+      delegation: "denied",
+      boundary: "runner-only",
+      runnerAccess: {
+        repositoryWork: "none"
+      }
+    },
+    allowedWorkspaces: [tmpdir()]
+  });
+
+  const output = await runner.run(
+    { id: "ticket_public", title: "Try work", metadata: { workspace: tmpdir() } },
+    { audience: { canDelegateWork: true } }
+  );
+
+  assert.equal(output.status, "failed");
+  assert.equal(output.raw.reason, "delegation_denied");
+  assert.equal(called, false);
 });
 
 test("Codex app-server brain uses selected model and returns assistant deltas", async () => {

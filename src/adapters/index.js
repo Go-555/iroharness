@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { createServer } from "node:http";
 import { readFileSync, statSync } from "node:fs";
-import { extname, join, normalize } from "node:path";
+import { extname, join, normalize, relative, resolve } from "node:path";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 
@@ -167,6 +167,41 @@ const serveStatic = (response, publicDir, pathname) => {
 };
 
 const normalizeText = (value) => String(value || "").trim();
+
+const pathInside = ({ root, candidate }) => {
+  const resolvedRoot = resolve(root);
+  const resolvedCandidate = resolve(candidate);
+  const relativePath = relative(resolvedRoot, resolvedCandidate);
+  return Boolean(relativePath) && !relativePath.startsWith("..") && !relativePath.startsWith("/");
+};
+
+const pathSameOrInside = ({ root, candidate }) => {
+  const resolvedRoot = resolve(root);
+  const resolvedCandidate = resolve(candidate);
+  return resolvedRoot === resolvedCandidate || pathInside({ root: resolvedRoot, candidate: resolvedCandidate });
+};
+
+const normalizeWorkspaceRoots = (roots) =>
+  Object.freeze([...(roots || [])].filter(Boolean).map((root) => resolve(String(root))));
+
+const resolveRequestedWorkspace = ({ task, context, defaultWorkspace }) =>
+  task?.metadata?.workspace ||
+  context?.input?.metadata?.workspace ||
+  context?.input?.metadata?.requestedWorkspace ||
+  context?.input?.metadata?.repositoryWorkspace ||
+  defaultWorkspace ||
+  null;
+
+const failedWorkRunnerOutput = ({ summary, reason, raw = {} }) =>
+  Object.freeze({
+    status: "failed",
+    summary,
+    artifacts: Object.freeze([]),
+    raw: Object.freeze({
+      reason,
+      ...raw
+    })
+  });
 
 const normalizeActor = ({ platform, platformUserId, displayName }) =>
   Object.freeze({
@@ -592,6 +627,129 @@ export const createCodexAppServerMicroHarness = ({
     close() {
       transport.close?.();
       threadId = null;
+    }
+  });
+};
+
+export const createScopedWorkRunnerMicroHarness = ({
+  id = null,
+  worker,
+  policy = {
+    kind: "iroharness.workRunnerPolicy",
+    zone: "owner",
+    delegation: "allowed",
+    boundary: "runner-only",
+    runnerAccess: {
+      repositoryWork: "scoped-workspace",
+      browserControl: "scoped-session",
+      defaultSandbox: "workspace-write"
+    }
+  },
+  allowedWorkspaces = [],
+  defaultWorkspace = null,
+  capabilities = null
+} = {}) => {
+  if (!worker || typeof worker.run !== "function") {
+    throw new Error("createScopedWorkRunnerMicroHarness requires worker.run");
+  }
+  const runnerId = id || worker.id || "work-runner";
+  const workspaceRoots = normalizeWorkspaceRoots(allowedWorkspaces);
+  const resolvedDefaultWorkspace = defaultWorkspace ? resolve(defaultWorkspace) : null;
+  const policyDelegation = policy?.delegation || "denied";
+  const repositoryWork = policy?.runnerAccess?.repositoryWork || "none";
+
+  const scopeWorkspace = ({ task, context }) => {
+    const requested = resolveRequestedWorkspace({
+      task,
+      context,
+      defaultWorkspace: resolvedDefaultWorkspace
+    });
+    if (!requested) {
+      return {
+        ok: false,
+        reason: "workspace_required",
+        summary: "Work Runner requires an explicit workspace."
+      };
+    }
+    const resolvedWorkspace = resolve(String(requested));
+    const matchedRoot = workspaceRoots.find((root) =>
+      pathSameOrInside({ root, candidate: resolvedWorkspace })
+    );
+    if (!matchedRoot) {
+      return {
+        ok: false,
+        reason: "workspace_out_of_scope",
+        summary: `Workspace is outside the allowed Work Runner scope: ${resolvedWorkspace}`,
+        workspace: resolvedWorkspace
+      };
+    }
+    return {
+      ok: true,
+      workspace: resolvedWorkspace,
+      root: matchedRoot
+    };
+  };
+
+  const run = async (task, context = {}) => {
+    if (policyDelegation === "denied") {
+      return failedWorkRunnerOutput({
+        summary: "Work Runner delegation is denied for this view.",
+        reason: "delegation_denied",
+        raw: { policy }
+      });
+    }
+    if (policyDelegation === "permission-required" && !context.audience?.canDelegateWork) {
+      return failedWorkRunnerOutput({
+        summary: "Work Runner delegation requires delegate_work permission.",
+        reason: "permission_required",
+        raw: { policy }
+      });
+    }
+    if (repositoryWork === "none") {
+      return failedWorkRunnerOutput({
+        summary: "Repository work is not enabled for this Work Runner policy.",
+        reason: "repository_work_disabled",
+        raw: { policy }
+      });
+    }
+    const scoped = scopeWorkspace({ task, context });
+    if (!scoped.ok) {
+      return failedWorkRunnerOutput({
+        summary: scoped.summary,
+        reason: scoped.reason,
+        raw: {
+          policy,
+          workspace: scoped.workspace || null,
+          allowedWorkspaces: workspaceRoots
+        }
+      });
+    }
+    const scopedTask = Object.freeze({
+      ...task,
+      metadata: Object.freeze({
+        ...(task.metadata || {}),
+        workspace: scoped.workspace,
+        workRunnerRoot: scoped.root
+      })
+    });
+    return worker.run(scopedTask, {
+      ...context,
+      workRunner: Object.freeze({
+        id: runnerId,
+        policy,
+        workspace: scoped.workspace,
+        root: scoped.root,
+        allowedWorkspaces: workspaceRoots
+      })
+    });
+  };
+
+  return Object.freeze({
+    id: runnerId,
+    capabilities: Object.freeze([...(capabilities || worker.capabilities || [])]),
+    run,
+    close() {
+      worker.close?.();
     }
   });
 };

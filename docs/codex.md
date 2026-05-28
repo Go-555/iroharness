@@ -31,9 +31,12 @@ IROHARNESS_RUN_CODEX=1 CODEX_WORKSPACE=/path/to/project CODEX_MODEL=gpt-5.4 npm 
 ## Programmatic Use
 
 ```js
-import { createCodexAppServerMicroHarness } from "iroharness/adapters";
+import {
+  createCodexAppServerMicroHarness,
+  createScopedWorkRunnerMicroHarness
+} from "iroharness/adapters";
 
-const codex = createCodexAppServerMicroHarness({
+const codexWorker = createCodexAppServerMicroHarness({
   cwd: "/path/to/project",
   model: "gpt-5.4",
   approvalPolicy: "on-request",
@@ -42,6 +45,22 @@ const codex = createCodexAppServerMicroHarness({
     writableRoots: ["/path/to/project"],
     networkAccess: false
   }
+});
+
+const codex = createScopedWorkRunnerMicroHarness({
+  worker: codexWorker,
+  policy: {
+    kind: "iroharness.workRunnerPolicy",
+    zone: "trusted",
+    delegation: "permission-required",
+    boundary: "runner-only",
+    runnerAccess: {
+      repositoryWork: "scoped-workspace",
+      browserControl: "scoped-session",
+      defaultSandbox: "workspace-write"
+    }
+  },
+  allowedWorkspaces: ["/path/to/project"]
 });
 ```
 
@@ -56,6 +75,16 @@ const iroha = createIroHarness({
   microHarnesses: [codex]
 });
 ```
+
+The scoped Work Runner wrapper checks three things before Codex is called:
+
+- the exported view policy permits delegation
+- trusted views have `delegate_work` permission in the macro context
+- the requested workspace is inside one of the configured `allowedWorkspaces`
+
+When delegation is allowed, Project OS records the permission check on the
+ticket metadata and run input. If a public fan or untrusted actor asks for Codex
+work, the macro harness denies the request before creating a Project OS ticket.
 
 ## Event Capture
 

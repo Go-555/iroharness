@@ -39,6 +39,10 @@ Initial OSS skeleton for a character macro harness.
 - Slack, Discord, YouTube, browser, OBS, VS Code, M5Stack, Even G2, Live2D, VRM,
   MotionPNGTuber, AIAvatarKit, Codex, Claude Code, OpenClaw, and Hermes adapter
   contracts or examples
+- scoped Work Runner adapter that wraps privileged Codex, browser, and
+  repository workers with view policy, delegate_work, and workspace checks
+- Project OS delegation tickets and runs now record permission checks, and
+  public actors are denied before work tickets are created
 - Discord bot runtime, Slack Events runtime, and YouTube Live Chat polling
   runtime
 - Slack + Codex companion recipe that uses Slack Events API plus the host

@@ -2449,7 +2449,7 @@ export const createIroHarness = ({
     }
 
     if (route.kind === "work" && route.harnessId) {
-      return runMicroHarness(input, route, actor, audience);
+      return runMicroHarness(input, route, actor, audience, permission, actorPermissions, contextScopes);
     }
 
     if (route.kind === "stream") {
@@ -2548,11 +2548,26 @@ export const createIroHarness = ({
     });
   };
 
-  const runMicroHarness = async (input, route, actor, audience) => {
+  const runMicroHarness = async (
+    input,
+    route,
+    actor,
+    audience,
+    permission,
+    actorPermissions,
+    contextScopes
+  ) => {
     const microHarness = microHarnesses.find((candidate) => candidate.id === route.harnessId);
     if (!microHarness) {
       throw new Error(`Micro harness not found: ${route.harnessId}`);
     }
+    const permissionCheck = freezeCopy({
+      allowed: permission.allowed,
+      permission: permission.permission || "delegate_work",
+      reason: permission.reason,
+      actorPermissions,
+      contextScopes
+    });
 
     const ticket = projectOs.createTicket({
       title: input.text.slice(0, 80),
@@ -2566,7 +2581,8 @@ export const createIroHarness = ({
         actorUserId: actor.user.id,
         actorRole: actor.user.role,
         actorPlatform: actor.identity.platform,
-        actorPlatformUserId: actor.identity.platformUserId
+        actorPlatformUserId: actor.identity.platformUserId,
+        permissionCheck
       }
     });
 
@@ -2596,7 +2612,10 @@ export const createIroHarness = ({
     const run = projectOs.createRun({
       ticketId: ticket.id,
       harnessId: microHarness.id,
-      input
+      input: {
+        ...input,
+        permissionCheck
+      }
     });
     const output = await microHarness.run(ticket, {
       character,

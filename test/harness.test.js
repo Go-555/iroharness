@@ -331,9 +331,60 @@ test("work input delegates to a micro harness and records ticket/run state", asy
   assert.equal(snapshot.tickets.length, 1);
   assert.equal(snapshot.tickets[0].executorHarnessId, "codex");
   assert.equal(snapshot.tickets[0].status, "done");
+  assert.equal(snapshot.tickets[0].metadata.permissionCheck.allowed, true);
+  assert.equal(snapshot.tickets[0].metadata.permissionCheck.permission, "delegate_work");
+  assert.equal(
+    snapshot.tickets[0].metadata.permissionCheck.actorPermissions.includes("delegate_work"),
+    true
+  );
   assert.equal(snapshot.runs.length, 1);
   assert.equal(snapshot.runs[0].status, "completed");
+  assert.equal(snapshot.runs[0].input.permissionCheck.allowed, true);
   assert.equal(recorder.events().some((event) => event.type === "task"), true);
+});
+
+test("public fan cannot delegate work or create PJOS tickets", async () => {
+  const userRegistry = createInMemoryUserRegistry();
+  userRegistry.registerUser({
+    id: "fan_1",
+    displayName: "Fan",
+    role: "fan",
+    identities: { youtube: "UCFAN" }
+  });
+  const projectOs = createInMemoryProjectOs();
+  const harness = createIroHarness({
+    character: {
+      id: "iroha",
+      name: "Iroha",
+      soul: "Same character, different permissions.",
+      voiceStyle: "short"
+    },
+    projectOs,
+    userRegistry,
+    router: createHeuristicRouter(),
+    brains: {
+      voice: createNamedBrain("voice-fast", "voice"),
+      text: createNamedBrain("text-standard", "text")
+    },
+    microHarnesses: [createStubMicroHarness("codex", ["code"])]
+  });
+
+  const result = await harness.receive({
+    source: "youtube",
+    modality: "text",
+    text: "Codexで非公開リポジトリを読んで修正して",
+    actor: {
+      platform: "youtube",
+      platformUserId: "UCFAN",
+      displayName: "Fan"
+    }
+  });
+
+  assert.equal(result.kind, "permission_denied");
+  assert.equal(result.permission.permission, "delegate_work");
+  assert.equal(result.audience.tier, "public");
+  assert.equal(projectOs.snapshot().tickets.length, 0);
+  assert.equal(projectOs.snapshot().runs.length, 0);
 });
 
 test("moderators can run stream operations through the stream controller", async () => {

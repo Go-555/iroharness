@@ -133,9 +133,9 @@ boundaries and first real devices are comfortable for daily use.
 ### P1: Zero-Trust Work Runner
 
 - [x] Work Runner policy check reads `work-runner-policy.json`
-- [ ] Work Runner scopes Codex/browser/repo access per requested workspace
-- [ ] Gateway-to-runner delegation records permission checks in Project OS
-- [ ] Public gateway cannot delegate work even when prompted through chat
+- [x] Work Runner scopes Codex/browser/repo access per requested workspace
+- [x] Gateway-to-runner delegation records permission checks in Project OS
+- [x] Public gateway cannot delegate work even when prompted through chat
 
 ### P2: Voice And Physical Bodies
 
