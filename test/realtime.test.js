@@ -3,6 +3,8 @@ import test from "node:test";
 
 import {
   createJavascriptRealtimeCore,
+  createHttpStreamingStt,
+  createHttpStreamingTts,
   createRealtimeEventBus,
   createRealtimeLatencyTracker,
   createRealtimeVoiceSession,
@@ -77,6 +79,87 @@ test("streaming TTS can be interrupted by an AbortSignal", async () => {
   assert.equal(chunks.at(-1).type, "tts.interrupted");
   assert.equal(chunks.at(-1).reason, "barge-in");
   assert.equal(events.filter((event) => event.type === "tts.audio").length, 1);
+});
+
+test("HTTP streaming STT posts chunks and emits provider events", async () => {
+  const requests = [];
+  const events = [];
+  const stt = createHttpStreamingStt({
+    id: "http-stt-test",
+    endpoint: "http://stt.local/transcribe",
+    fetchImpl: async (endpoint, options) => {
+      requests.push({ endpoint, body: JSON.parse(options.body) });
+      return {
+        ok: true,
+        status: 200,
+        async text() {
+          return JSON.stringify({
+            events: [
+              {
+                type: "stt.partial",
+                text: "こん",
+                delta: "こん",
+                final: false
+              }
+            ]
+          });
+        }
+      };
+    }
+  });
+  const session = stt.start({
+    onEvent(event) {
+      events.push(event);
+    }
+  });
+
+  const emitted = await session.push({ audio: "base64-audio" });
+
+  assert.equal(stt.kind, "stt");
+  assert.equal(requests[0].endpoint, "http://stt.local/transcribe");
+  assert.equal(requests[0].body.audio, "base64-audio");
+  assert.equal(emitted[0].type, "stt.partial");
+  assert.equal(events[0].adapterId, "http-stt-test");
+});
+
+test("HTTP streaming TTS posts text and emits audio chunks", async () => {
+  const requests = [];
+  const events = [];
+  const tts = createHttpStreamingTts({
+    id: "http-tts-test",
+    endpoint: "http://tts.local/speak",
+    fetchImpl: async (endpoint, options) => {
+      requests.push({ endpoint, body: JSON.parse(options.body) });
+      return {
+        ok: true,
+        status: 200,
+        async text() {
+          return JSON.stringify({
+            chunks: [
+              { text: "こん", audio: "audio-1" },
+              { text: "にちは", audio: "audio-2" }
+            ]
+          });
+        }
+      };
+    }
+  });
+
+  const chunks = await tts.stream({
+    text: "こんにちは",
+    voice: "iroha",
+    onEvent(event) {
+      events.push(event);
+    }
+  });
+
+  assert.equal(tts.kind, "tts");
+  assert.equal(requests[0].endpoint, "http://tts.local/speak");
+  assert.equal(requests[0].body.text, "こんにちは");
+  assert.equal(requests[0].body.voice, "iroha");
+  assert.equal(chunks.filter((event) => event.type === "tts.audio").length, 2);
+  assert.equal(chunks.at(-1).type, "tts.completed");
+  assert.equal(events[0].audio, "audio-1");
 });
 
 test("realtime latency tracker records turn timing metrics", () => {

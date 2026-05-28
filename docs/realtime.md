@@ -38,6 +38,20 @@ Event types:
 - `stt.final`
 - `stt.cancelled`
 
+For production providers, use the HTTP adapter shape and put the actual OpenAI,
+local Whisper, browser relay, or vendor-specific code behind an HTTP endpoint:
+
+```js
+import { createHttpStreamingStt } from "iroharness";
+
+const stt = createHttpStreamingStt({
+  endpoint: "http://127.0.0.1:8788/stt"
+});
+```
+
+The endpoint receives `{ type, audio, text, final }` and can return either
+`{ events: [...] }` or `{ text, delta, final }`.
+
 ## Streaming TTS
 
 `createTextStreamingTts` emits chunk events and supports interruption through an
@@ -64,6 +78,19 @@ Event types:
 - `tts.audio`
 - `tts.completed`
 - `tts.interrupted`
+
+For production providers, use the HTTP TTS adapter:
+
+```js
+import { createHttpStreamingTts } from "iroharness";
+
+const tts = createHttpStreamingTts({
+  endpoint: "http://127.0.0.1:8788/tts"
+});
+```
+
+The endpoint receives `{ text, voice }` and can return `{ events: [...] }`,
+`{ chunks: [{ text, audio }] }`, or `{ audio }`.
 
 ## Interruption / Barge-In
 

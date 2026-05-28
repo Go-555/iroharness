@@ -139,8 +139,8 @@ boundaries and first real devices are comfortable for daily use.
 
 ### P2: Voice And Physical Bodies
 
-- [ ] Production STT provider adapter
-- [ ] Production TTS provider adapter
+- [x] Production STT provider adapter
+- [x] Production TTS provider adapter
 - [ ] Speech playback queue protocol and simulator
 - [ ] StackChan richer audio invoke path based on AIAvatarStackChan
 - [ ] OTA/provisioning strategy for physical devices

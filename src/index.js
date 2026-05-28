@@ -2076,6 +2076,106 @@ export const createTextStreamingStt = ({ id = "text-streaming-stt" } = {}) =>
     }
   });
 
+const createRealtimeAdapterEvent = ({ id, sequence, event, extra = {} }) =>
+  freezeCopy({
+    ...event,
+    ...extra,
+    adapterId: id,
+    sequence,
+    timestamp: nowIso()
+  });
+
+const parseHttpRealtimePayload = async ({ response, label }) => {
+  const responseText = await response.text();
+  if (!response.ok) {
+    throw new Error(`${label} failed: ${response.status} ${responseText}`);
+  }
+  return responseText.trim() ? JSON.parse(responseText) : {};
+};
+
+export const createHttpStreamingStt = ({
+  id = "http-streaming-stt",
+  endpoint,
+  headers = {},
+  fetchImpl = globalThis.fetch
+} = {}) => {
+  if (!endpoint) {
+    throw new Error("createHttpStreamingStt requires endpoint");
+  }
+  if (typeof fetchImpl !== "function") {
+    throw new Error("createHttpStreamingStt requires fetchImpl");
+  }
+  return Object.freeze({
+    id,
+    kind: "stt",
+    capabilities: Object.freeze(["streaming-stt", "partial-transcript", "final-transcript", "http-provider"]),
+    start({ onEvent = () => {} } = {}) {
+      let sequence = 0;
+      let closed = false;
+      const emit = (event) => {
+        const nextEvent = createRealtimeAdapterEvent({ id, sequence, event });
+        sequence += 1;
+        onEvent(nextEvent);
+        return nextEvent;
+      };
+      const post = async (payload) => {
+        const response = await fetchImpl(endpoint, {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            ...headers
+          },
+          body: JSON.stringify(payload)
+        });
+        const body = await parseHttpRealtimePayload({ response, label: `HTTP STT ${id}` });
+        const events = Array.isArray(body.events)
+          ? body.events
+          : [
+              {
+                type: body.final ? "stt.final" : "stt.partial",
+                text: body.text || body.transcript || "",
+                delta: body.delta || body.text || body.transcript || "",
+                final: Boolean(body.final)
+              }
+            ];
+        return Object.freeze(events.map((event) => emit(event)));
+      };
+      return Object.freeze({
+        async push(chunk) {
+          if (closed) {
+            throw new Error(`${id} STT session is closed`);
+          }
+          return post({
+            type: "audio",
+            audio: chunk?.audio || chunk?.data || null,
+            text: typeof chunk === "string" ? chunk : chunk?.text || null,
+            final: Boolean(chunk?.final)
+          });
+        },
+        async end() {
+          if (closed) {
+            return Object.freeze([]);
+          }
+          closed = true;
+          return post({ type: "end", final: true });
+        },
+        cancel(reason = "cancelled") {
+          if (closed) {
+            return null;
+          }
+          closed = true;
+          return emit({
+            type: "stt.cancelled",
+            text: "",
+            reason,
+            final: false
+          });
+        }
+      });
+    }
+  });
+};
+
 export const createTextStreamingTts = ({
   id = "text-streaming-tts",
   chunkSize = 24
@@ -2130,6 +2230,106 @@ export const createTextStreamingTts = ({
       return Object.freeze(chunks);
     }
   });
+
+export const createHttpStreamingTts = ({
+  id = "http-streaming-tts",
+  endpoint,
+  headers = {},
+  fetchImpl = globalThis.fetch
+} = {}) => {
+  if (!endpoint) {
+    throw new Error("createHttpStreamingTts requires endpoint");
+  }
+  if (typeof fetchImpl !== "function") {
+    throw new Error("createHttpStreamingTts requires fetchImpl");
+  }
+  return Object.freeze({
+    id,
+    kind: "tts",
+    capabilities: Object.freeze(["streaming-tts", "audio-chunks", "interruptible", "http-provider"]),
+    async stream({ text, voice = null, onEvent = () => {}, signal = null } = {}) {
+      const chunks = [];
+      let sequence = 0;
+      const emit = (event) => {
+        const nextEvent = createRealtimeAdapterEvent({
+          id,
+          sequence,
+          event,
+          extra: { voice }
+        });
+        sequence += 1;
+        onEvent(nextEvent);
+        chunks.push(nextEvent);
+        return nextEvent;
+      };
+      if (signal?.aborted) {
+        emit({
+          type: "tts.interrupted",
+          text: String(text || ""),
+          reason: signal.reason || "aborted"
+        });
+        return Object.freeze(chunks);
+      }
+      const response = await fetchImpl(endpoint, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          ...headers
+        },
+        body: JSON.stringify({
+          text: String(text || ""),
+          voice
+        }),
+        signal
+      });
+      const body = await parseHttpRealtimePayload({ response, label: `HTTP TTS ${id}` });
+      const events = Array.isArray(body.events)
+        ? body.events
+        : Array.isArray(body.chunks)
+          ? body.chunks.map((chunk) => ({
+              type: "tts.audio",
+              text: chunk.text || "",
+              audio: chunk.audio || chunk.data || chunk,
+              final: false
+            }))
+          : [
+              {
+                type: "tts.audio",
+                text: String(text || ""),
+                audio: body.audio || body.data || "",
+                final: false
+              },
+              {
+                type: "tts.completed",
+                text: String(text || ""),
+                audio: "",
+                final: true
+              }
+            ];
+      events.forEach((event) => {
+        if (!signal?.aborted) {
+          emit(event);
+        }
+      });
+      if (signal?.aborted && chunks.at(-1)?.type !== "tts.interrupted") {
+        emit({
+          type: "tts.interrupted",
+          text: String(text || ""),
+          reason: signal.reason || "aborted"
+        });
+      }
+      if (!signal?.aborted && chunks.at(-1)?.type !== "tts.completed") {
+        emit({
+          type: "tts.completed",
+          text: String(text || ""),
+          audio: "",
+          final: true
+        });
+      }
+      return Object.freeze(chunks);
+    }
+  });
+};
 
 export const createRealtimeVoiceSession = ({
   id = "realtime-voice-session",
