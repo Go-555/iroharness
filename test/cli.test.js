@@ -404,12 +404,51 @@ test("CLI connect prepares Slack and StackChan onboarding files", () => {
   assert.equal(stackchanDevice.server.invokePath, "/device/stackchan/invoke");
   assert.equal(stackchanDevice.metadata.connectionMode, "http-polling");
   assert.equal(stackchanDevice.metadata.auth, "x-iroharness-device-token");
+  assert.equal(stackchanDevice.metadata.deviceReachability.ok, true);
+  assert.equal(stackchanResult.deviceReachability.ok, true);
   assert.equal(firmwareConfig.face_url, "http://100.64.0.10:4182/stackchan/face");
   assert.equal(firmwareConfig.invoke_url, "http://100.64.0.10:4182/device/stackchan/invoke");
   assert.equal(firmwareConfig.device_token, "device-secret-test");
   assert.equal(firmwareConfig.poll_interval_ms, 750);
+  assert.equal(firmwareConfig.wifi_retry_base_ms, 1000);
+  assert.equal(firmwareConfig.wifi_retry_max_ms, 30000);
+  assert.equal(firmwareConfig.http_retry_base_ms, 1000);
+  assert.equal(firmwareConfig.http_retry_max_ms, 15000);
   assert.equal(stackchanResult.firmwareConfig.wifi_pass, "[redacted]");
   assert.equal(stackchanResult.firmwareConfig.device_token, "[redacted]");
+});
+
+test("CLI doctor flags StackChan host URLs that firmware cannot reach", () => {
+  const dir = mkdtempSync(join(tmpdir(), "iroharness-stackchan-doctor-"));
+  const appDir = join(dir, "companion");
+  const init = runCli(["init", appDir, "--character", "Iroha"]);
+  const stackchan = runCli([
+    "connect",
+    "stackchan",
+    appDir,
+    "--host-url",
+    "http://127.0.0.1:4182",
+    "--json"
+  ]);
+  const doctor = runCli(["doctor", appDir]);
+  const jsonDoctor = runCli(["doctor", appDir, "--json"]);
+  const stackchanResult = JSON.parse(stackchan.stdout);
+  const doctorResult = JSON.parse(jsonDoctor.stdout);
+
+  assert.equal(init.status, 0, init.stderr);
+  assert.equal(stackchan.status, 0, stackchan.stderr);
+  assert.equal(stackchanResult.deviceReachability.ok, false);
+  assert.notEqual(doctor.status, 0);
+  assert.match(doctor.stdout, /failed StackChan host URL is firmware-reachable/);
+  assert.match(doctor.stdout, /use the Mac mini LAN or Tailscale IP/);
+  assert.equal(jsonDoctor.status, 1);
+  assert.equal(doctorResult.ok, false);
+  assert.equal(
+    doctorResult.failedStackChanChecks.some(
+      (check) => check.label === "StackChan host URL is firmware-reachable"
+    ),
+    true
+  );
 });
 
 test("CLI view export creates zone-limited runtime views", () => {

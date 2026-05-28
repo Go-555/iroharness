@@ -128,6 +128,16 @@ Use a LAN or Tailscale address that the M5Stack can reach. Do not use
 }
 ```
 
+Run doctor after `connect stackchan`:
+
+```bash
+npx iroharness doctor ~/iroharness-apps/iroha
+```
+
+Doctor fails if the saved StackChan URL points at `localhost`, `127.*`,
+`0.0.0.0`, or `::1`, because those addresses point back to the M5Stack itself
+instead of the Mac mini.
+
 Then build/upload from:
 
 ```bash

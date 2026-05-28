@@ -857,6 +857,83 @@ keeping ${character}'s identity stable.
   };
 };
 
+const stackChanRetryDefaults = Object.freeze({
+  wifiRetryBaseMs: 1000,
+  wifiRetryMaxMs: 30000,
+  httpRetryBaseMs: 1000,
+  httpRetryMaxMs: 15000
+});
+
+const isLoopbackHost = (hostname) => {
+  const host = String(hostname || "").toLowerCase();
+  return (
+    host === "localhost" ||
+    host === "0.0.0.0" ||
+    host === "::" ||
+    host === "::1" ||
+    host === "[::1]" ||
+    host.startsWith("127.")
+  );
+};
+
+const analyzeStackChanDeviceReachability = (baseUrl) => {
+  try {
+    const url = new URL(baseUrl);
+    const protocolOk = url.protocol === "http:" || url.protocol === "https:";
+    const hostOk = Boolean(url.hostname) && !isLoopbackHost(url.hostname);
+    const ok = protocolOk && hostOk;
+    return {
+      ok,
+      baseUrl,
+      protocol: url.protocol.replace(":", ""),
+      host: url.hostname,
+      reason: ok
+        ? "host URL can be placed in firmware config"
+        : protocolOk
+          ? "host URL points to this device or an unspecified local interface; use the Mac mini LAN or Tailscale IP"
+          : "host URL must use http or https"
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      baseUrl,
+      protocol: null,
+      host: null,
+      reason: `invalid URL: ${error.message}`
+    };
+  }
+};
+
+const stackChanConnectionChecks = (targetDir) => {
+  const connectionPath = join(targetDir, ".iroharness", "connections", "stackchan.device.json");
+  if (!existsSync(connectionPath)) {
+    return [];
+  }
+  const connection = JSON.parse(readFileSync(connectionPath, "utf8"));
+  const reachability = analyzeStackChanDeviceReachability(connection?.server?.baseUrl || "");
+  return [
+    {
+      label: "StackChan host URL is firmware-reachable",
+      ok: reachability.ok,
+      detail: reachability.reason,
+      status: "failed",
+      path: connectionPath
+    },
+    {
+      label: "StackChan face path",
+      ok: connection?.server?.facePath === "/stackchan/face",
+      status: "failed",
+      path: connectionPath
+    },
+    {
+      label: "StackChan invoke path",
+      ok: connection?.server?.invokePath === "/device/stackchan/invoke",
+      status: "failed",
+      path: connectionPath
+    }
+  ];
+};
+
 const doctor = ({ dir, production = false }) => {
   const targetDir = resolve(dir);
   const checks = [
@@ -949,19 +1026,23 @@ const doctor = ({ dir, production = false }) => {
         }
       ]
     : [];
-  const allChecks = [...checks, ...appSourceChecks, ...productionChecks];
+  const stackChanChecks = stackChanConnectionChecks(targetDir);
+  const allChecks = [...checks, ...appSourceChecks, ...stackChanChecks, ...productionChecks];
   const missing = checks.filter((check) => !check.ok);
   const failedAppSourceChecks = appSourceChecks.filter((check) => !check.ok);
+  const failedStackChanChecks = stackChanChecks.filter((check) => !check.ok);
   const failedProductionChecks = productionChecks.filter((check) => !check.ok);
   return {
     targetDir,
     ok:
       missing.length === 0 &&
       failedAppSourceChecks.length === 0 &&
+      failedStackChanChecks.length === 0 &&
       failedProductionChecks.length === 0,
     checks: allChecks,
     missing,
     failedAppSourceChecks,
+    failedStackChanChecks,
     failedProductionChecks,
     production
   };
@@ -1653,6 +1734,7 @@ const connectStackChan = (args) => {
   const envPath = join(targetDir, ".env");
   mkdirSync(connectionDir, { recursive: true });
   const baseUrl = normalizeBaseUrl(args.hostUrl);
+  const deviceReachability = analyzeStackChanDeviceReachability(baseUrl);
   const deviceId = args.deviceId || "stackchan";
   const deviceToken = args.deviceToken || createSecretToken();
   const pollIntervalMs = Number(args.pollIntervalMs || "500");
@@ -1687,7 +1769,8 @@ const connectStackChan = (args) => {
     },
     metadata: {
       connectionMode: "http-polling",
-      auth: "x-iroharness-device-token"
+      auth: "x-iroharness-device-token",
+      deviceReachability
     }
   };
   const firmwareConfig = {
@@ -1697,7 +1780,11 @@ const connectStackChan = (args) => {
     invoke_url: `${baseUrl}/device/stackchan/invoke`,
     device_token: deviceToken,
     device_id: deviceId,
-    poll_interval_ms: Number.isFinite(pollIntervalMs) ? pollIntervalMs : 500
+    poll_interval_ms: Number.isFinite(pollIntervalMs) ? pollIntervalMs : 500,
+    wifi_retry_base_ms: stackChanRetryDefaults.wifiRetryBaseMs,
+    wifi_retry_max_ms: stackChanRetryDefaults.wifiRetryMaxMs,
+    http_retry_base_ms: stackChanRetryDefaults.httpRetryBaseMs,
+    http_retry_max_ms: stackChanRetryDefaults.httpRetryMaxMs
   };
   const deviceConfigPath = join(connectionDir, "stackchan.device.json");
   const firmwareConfigPath = join(connectionDir, "stackchan-firmware-config.json");
@@ -1708,6 +1795,7 @@ const connectStackChan = (args) => {
     envPath,
     deviceConfigPath,
     firmwareConfigPath,
+    deviceReachability,
     deviceConfig,
     firmwareConfig
   };
@@ -1735,6 +1823,9 @@ const connect = (args) => {
     console.log(`configured StackChan in ${result.targetDir}`);
     console.log(`device config: ${result.deviceConfigPath}`);
     console.log(`firmware config: ${result.firmwareConfigPath}`);
+    if (!result.deviceReachability.ok) {
+      console.log(`warning: ${result.deviceReachability.reason}`);
+    }
     console.log("next: copy firmware config values into examples/stackchan-face-poller/data/config.json");
     return;
   }
@@ -1757,8 +1848,9 @@ const main = () => {
       return;
     }
     result.checks.forEach((check) => {
-      const status = check.ok ? "ok" : check.path ? "missing" : "failed";
-      console.log(`${status} ${check.label}`);
+      const status = check.ok ? "ok" : check.status || (check.path ? "missing" : "failed");
+      const detail = check.detail && !check.ok ? ` - ${check.detail}` : "";
+      console.log(`${status} ${check.label}${detail}`);
     });
     if (!result.ok) {
       throw new Error(`IroHarness project check failed in ${result.targetDir}`);

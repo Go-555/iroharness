@@ -117,7 +117,10 @@ CLI JSON output redacts Wi-Fi passwords and device tokens.
 Copy the firmware config values into
 `examples/stackchan-face-poller/data/config.json`, then build/upload from the
 PlatformIO sketch directory. The M5Stack must use a LAN or Tailscale address it
-can reach; `127.0.0.1` only points back to the M5Stack itself.
+can reach; `127.0.0.1` only points back to the M5Stack itself. `connect
+stackchan` records a firmware reachability check, and `iroharness doctor` fails
+when the saved StackChan host URL is `localhost`, `127.*`, `0.0.0.0`, `::1`, or
+another local-only URL.
 
 ## View Export
 
@@ -280,6 +283,9 @@ npx iroharness doctor ./my-companion --json
 
 The doctor command checks for `package.json`, `src/app.mjs`, `.iroharness/`,
 `SOUL.md`, `IDENTITY.md`, `MEMORY.md`, `VOICE.md`, and `.env.example`.
+If StackChan has been connected, it also validates that the saved firmware host
+URL is not a loopback/local-only address and that the face/invoke paths match
+the expected device contract.
 Use `--json` for CI, deployment scripts, or stream preflight checks. It prints a
 single JSON object to stdout and exits non-zero when `ok` is false.
 
