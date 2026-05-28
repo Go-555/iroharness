@@ -7,6 +7,12 @@ see [slack-codex.md](./slack-codex.md).
 For using Codex OAuth as the main text/deep brain instead of only as a coding
 worker, see [brains.md](./brains.md#codex-oauth-brain).
 
+Codex OAuth belongs to the local `codex app-server` process on the host where
+`codex login` was completed. It should not be treated as a public gateway
+credential. If a gateway receives a request that requires local repository
+access, file edits, approvals, or review, route it to a Codex micro harness with
+a scoped workspace and explicit IroHarness permissions.
+
 The macro harness still owns:
 
 - character identity

@@ -38,6 +38,22 @@ Work Runner
   handles Codex, OpenClaw, browser control, and repo work in scoped workspaces
 ```
 
+The Work Runner is a responsibility boundary, not necessarily a separate
+physical machine. It may run on the same Mac mini or PC as the Core SSOT, but
+public or trusted gateways should not receive direct access to full local files,
+repository credentials, browser sessions, or the host's Codex OAuth session.
+
+Confirmed implementation detail: Codex OAuth is used through the local
+`codex app-server` process on a host that has already run `codex login`. When
+Codex is used as a text/deep brain, prefer read-only sandboxing. Coding,
+editing, review, repository work, and other privileged operations should be
+delegated through a micro harness / Work Runner with explicit permissions and a
+scoped workspace.
+
+Browser control is listed here as the intended privileged-work boundary. Treat
+it like repository work: the gateway should pass a task, while the runner owns
+the browser/session access inside its scoped environment.
+
 The initial CLI support for this boundary is:
 
 ```bash

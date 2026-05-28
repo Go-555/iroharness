@@ -96,6 +96,8 @@ This follows the same separation that OpenClaw uses for model routing: auth is
 handled as a provider credential/profile concern, while the active model is a
 separate selection. In IroHarness, Codex OAuth belongs to the local
 `codex app-server` process; IroHarness selects the brain slot and model.
+That host-level OAuth session must not be exposed through public gateways or
+copied into exported views.
 
 For a main character brain, default to read-only sandboxing and no approvals:
 
