@@ -171,6 +171,18 @@ This phase should cover:
 This is the point where the full AIAvatarStackChan firmware becomes the main
 reference instead of the simplified face poller.
 
+IroHarness now has the provider and relay-side building blocks for this phase:
+
+- `createAzureSpeechStt` for Azure Speech short-audio STT
+- `createAivisSpeechTts` for AivisSpeech Engine `/audio_query` + `/synthesis`
+- `createStackChanRealtimeRelay` for WebSocket audio chunk and speech playback
+  relay simulation
+
+The remaining gap is the firmware-facing WebSocket server that speaks the exact
+AIAvatarStackChan wire protocol. Until that exists, `/device/stackchan/invoke`
+can validate audio/PTT end-to-end, but it should not be treated as the final
+1-second realtime path.
+
 ### Phase 4: Dedicated Firmware Package
 
 Split only when the toolchain forces it:

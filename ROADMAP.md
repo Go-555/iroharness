@@ -145,6 +145,11 @@ boundaries and first real devices are comfortable for daily use.
 - [x] StackChan richer audio invoke path based on AIAvatarStackChan
 - [x] OTA/provisioning strategy for physical devices
 
+P2 now includes Azure Speech STT, AivisSpeech TTS, and a StackChan WebSocket
+realtime relay contract. The next hardware milestone is an
+AIAvatarStackChan-compatible firmware-facing WebSocket server plus measured
+end-to-end latency on the Mac mini and physical device.
+
 ### P3: Public Streaming Surfaces
 
 - [ ] YouTube live companion deployment preset

@@ -84,6 +84,50 @@ const createTimeoutSignal = (timeoutMs) => {
   });
 };
 
+const nowIso = () => new Date().toISOString();
+
+const createAdapterEvent = ({ adapterId, sequence, event, extra = {} }) =>
+  Object.freeze({
+    ...event,
+    ...extra,
+    adapterId,
+    sequence,
+    timestamp: nowIso()
+  });
+
+const parseJsonResponse = async ({ response, label }) => {
+  const responseText = await response.text();
+  if (!response.ok) {
+    throw new Error(`${label} failed: ${response.status} ${responseText}`);
+  }
+  return responseText.trim() ? JSON.parse(responseText) : {};
+};
+
+const bufferFromAudioChunk = (chunk) => {
+  const audio = chunk?.audio || chunk?.data || chunk;
+  if (!audio) {
+    return Buffer.alloc(0);
+  }
+  if (Buffer.isBuffer(audio)) {
+    return audio;
+  }
+  if (audio instanceof ArrayBuffer) {
+    return Buffer.from(audio);
+  }
+  if (ArrayBuffer.isView(audio)) {
+    return Buffer.from(audio.buffer, audio.byteOffset, audio.byteLength);
+  }
+  if (typeof audio === "object" && typeof audio.dataBase64 === "string") {
+    return Buffer.from(audio.dataBase64, "base64");
+  }
+  if (typeof audio === "string") {
+    return Buffer.from(audio, "base64");
+  }
+  return Buffer.alloc(0);
+};
+
+const arrayBufferToBase64 = (value) => Buffer.from(value).toString("base64");
+
 const sendJson = (response, status, value) => {
   response.writeHead(status, {
     "content-type": "application/json; charset=utf-8",
@@ -2483,6 +2527,402 @@ export const createAIAvatarKitBridgeDevice = ({
       if (event.type === "speech") {
         post(speechEndpoint, payload).catch(() => {});
       }
+    }
+  });
+};
+
+export const createAzureSpeechStt = ({
+  id = "azure-speech-stt",
+  region,
+  endpoint = null,
+  subscriptionKey = null,
+  authorizationToken = null,
+  language = "ja-JP",
+  format = "detailed",
+  sampleRate = 16000,
+  contentType = `audio/wav; codecs=audio/pcm; samplerate=${sampleRate}`,
+  headers = {},
+  fetchImpl = globalThis.fetch
+} = {}) => {
+  if (!endpoint && !region) {
+    throw new Error("createAzureSpeechStt requires region or endpoint");
+  }
+  if (!subscriptionKey && !authorizationToken) {
+    throw new Error("createAzureSpeechStt requires subscriptionKey or authorizationToken");
+  }
+  if (typeof fetchImpl !== "function") {
+    throw new Error("createAzureSpeechStt requires fetchImpl");
+  }
+  const url =
+    endpoint ||
+    `https://${region}.stt.speech.microsoft.com/speech/recognition/conversation/cognitiveservices/v1?language=${encodeURIComponent(language)}&format=${encodeURIComponent(format)}`;
+
+  return Object.freeze({
+    id,
+    kind: "stt",
+    capabilities: Object.freeze(["azure-speech", "short-audio-stt", "final-transcript"]),
+    start({ onEvent = () => {} } = {}) {
+      let sequence = 0;
+      let closed = false;
+      const buffers = [];
+      const emit = (event) => {
+        const nextEvent = createAdapterEvent({ adapterId: id, sequence, event });
+        sequence += 1;
+        onEvent(nextEvent);
+        return nextEvent;
+      };
+      return Object.freeze({
+        push(chunk = {}) {
+          if (closed) {
+            throw new Error(`${id} STT session is closed`);
+          }
+          const buffer = bufferFromAudioChunk(chunk);
+          if (buffer.length > 0) {
+            buffers.push(buffer);
+          }
+          return emit({
+            type: "stt.audio_buffered",
+            byteLength: buffer.length,
+            final: false
+          });
+        },
+        async end() {
+          if (closed) {
+            return Object.freeze([]);
+          }
+          closed = true;
+          const audio = Buffer.concat(buffers);
+          const response = await fetchImpl(url, {
+            method: "POST",
+            headers: {
+              accept: "application/json;text/xml",
+              "content-type": contentType,
+              ...(subscriptionKey ? { "Ocp-Apim-Subscription-Key": subscriptionKey } : {}),
+              ...(authorizationToken ? { authorization: `Bearer ${authorizationToken}` } : {}),
+              ...headers
+            },
+            body: audio
+          });
+          const body = await parseJsonResponse({ response, label: `Azure Speech STT ${id}` });
+          const text =
+            body.DisplayText ||
+            body.NBest?.[0]?.Display ||
+            body.NBest?.[0]?.Lexical ||
+            body.Text ||
+            "";
+          return Object.freeze([
+            emit({
+              type: "stt.final",
+              text,
+              delta: text,
+              final: true,
+              raw: body
+            })
+          ]);
+        },
+        cancel(reason = "cancelled") {
+          if (closed) {
+            return null;
+          }
+          closed = true;
+          return emit({
+            type: "stt.cancelled",
+            text: "",
+            reason,
+            final: false
+          });
+        }
+      });
+    }
+  });
+};
+
+export const createAivisSpeechTts = ({
+  id = "aivisspeech-tts",
+  baseUrl = "http://127.0.0.1:10101",
+  speaker,
+  headers = {},
+  fetchImpl = globalThis.fetch,
+  useCancellableSynthesis = false
+} = {}) => {
+  if (speaker === undefined || speaker === null || speaker === "") {
+    throw new Error("createAivisSpeechTts requires speaker");
+  }
+  if (typeof fetchImpl !== "function") {
+    throw new Error("createAivisSpeechTts requires fetchImpl");
+  }
+  const root = String(baseUrl).replace(/\/+$/g, "");
+  return Object.freeze({
+    id,
+    kind: "tts",
+    capabilities: Object.freeze(["aivisspeech", "voicevox-compatible", "audio-query", "wav"]),
+    async stream({ text, voice = null, onEvent = () => {}, signal = null } = {}) {
+      const chunks = [];
+      let sequence = 0;
+      const emit = (event) => {
+        const nextEvent = createAdapterEvent({
+          adapterId: id,
+          sequence,
+          event,
+          extra: { voice: voice || speaker }
+        });
+        sequence += 1;
+        chunks.push(nextEvent);
+        onEvent(nextEvent);
+        return nextEvent;
+      };
+      if (signal?.aborted) {
+        emit({
+          type: "tts.interrupted",
+          text: String(text || ""),
+          reason: signal.reason || "aborted"
+        });
+        return Object.freeze(chunks);
+      }
+
+      const queryUrl = `${root}/audio_query?speaker=${encodeURIComponent(speaker)}&text=${encodeURIComponent(String(text || ""))}`;
+      const queryResponse = await fetchImpl(queryUrl, {
+        method: "POST",
+        headers: {
+          accept: "application/json",
+          ...headers
+        },
+        signal
+      });
+      const audioQuery = await parseJsonResponse({
+        response: queryResponse,
+        label: `AivisSpeech audio_query ${id}`
+      });
+      if (signal?.aborted) {
+        emit({
+          type: "tts.interrupted",
+          text: String(text || ""),
+          reason: signal.reason || "aborted"
+        });
+        return Object.freeze(chunks);
+      }
+
+      const synthesisPath = useCancellableSynthesis ? "cancellable_synthesis" : "synthesis";
+      const synthesisResponse = await fetchImpl(
+        `${root}/${synthesisPath}?speaker=${encodeURIComponent(speaker)}`,
+        {
+          method: "POST",
+          headers: {
+            accept: "audio/wav",
+            "content-type": "application/json",
+            ...headers
+          },
+          body: JSON.stringify(audioQuery),
+          signal
+        }
+      );
+      if (!synthesisResponse.ok) {
+        const responseText = await synthesisResponse.text();
+        throw new Error(`AivisSpeech synthesis ${id} failed: ${synthesisResponse.status} ${responseText}`);
+      }
+      const audio = arrayBufferToBase64(await synthesisResponse.arrayBuffer());
+      emit({
+        type: "tts.audio",
+        text: String(text || ""),
+        audio,
+        encoding: "wav",
+        final: false
+      });
+      emit({
+        type: "tts.completed",
+        text: String(text || ""),
+        audio: "",
+        final: true
+      });
+      return Object.freeze(chunks);
+    }
+  });
+};
+
+export const createStackChanRealtimeRelay = ({
+  id = "stackchan-realtime-relay",
+  url,
+  WebSocketImpl = globalThis.WebSocket,
+  stt = null,
+  tts = null,
+  queue = null,
+  latencyBudgetMs = 1000
+} = {}) => {
+  if (!url) {
+    throw new Error("createStackChanRealtimeRelay requires url");
+  }
+  if (typeof WebSocketImpl !== "function") {
+    throw new Error("createStackChanRealtimeRelay requires WebSocketImpl");
+  }
+  return Object.freeze({
+    id,
+    kind: "device-realtime-relay",
+    capabilities: Object.freeze(["stackchan", "websocket", "audio-chunks", "ptt", "speech-playback"]),
+    connect({ onEvent = () => {}, onTurn = () => {} } = {}) {
+      const socket = new WebSocketImpl(url);
+      let sequence = 0;
+      let sttSession = null;
+      const emit = (event) => {
+        const nextEvent = createAdapterEvent({ adapterId: id, sequence, event });
+        sequence += 1;
+        onEvent(nextEvent);
+        return nextEvent;
+      };
+      const send = (payload) => {
+        const raw = JSON.stringify(payload);
+        if (socket.readyState === 1 || socket.readyState === WebSocketImpl.OPEN) {
+          socket.send(raw);
+        }
+        return raw;
+      };
+      const openHandler = () => {
+        emit({
+          type: "stackchan.connected",
+          latencyBudgetMs
+        });
+        send({
+          type: "hello",
+          relayId: id,
+          latencyBudgetMs
+        });
+      };
+      const messageHandler = async (event) => {
+        const payload = typeof event.data === "string" ? JSON.parse(event.data) : event.data;
+        emit({
+          type: "stackchan.message",
+          messageType: payload.type || "unknown"
+        });
+        if (payload.type === "invoke") {
+          await onTurn({
+            source: "m5stack",
+            modality: "text",
+            text: payload.text || "",
+            actor: {
+              platform: "m5stack",
+              platformUserId: payload.userId || payload.deviceId || "stackchan",
+              displayName: payload.deviceId || "StackChan"
+            },
+            metadata: {
+              deviceId: payload.deviceId || "stackchan",
+              channel: payload.channel || "local",
+              realtimeRelayId: id
+            }
+          });
+          return;
+        }
+        if (payload.type === "audio" || payload.type === "audio.chunk" || payload.type === "ptt.audio") {
+          if (!stt) {
+            emit({
+              type: "stackchan.audio.unhandled",
+              reason: "stt_not_configured"
+            });
+            return;
+          }
+          sttSession =
+            sttSession ||
+            stt.start({
+              onEvent(event) {
+                emit({
+                  ...event,
+                  type: `stackchan.${event.type}`
+                });
+              }
+            });
+          const pushedEvents = await sttSession.push({
+            audio:
+              payload.audio || {
+                encoding: payload.encoding || "pcm_s16le",
+                sampleRate: payload.sampleRate || 16000,
+                dataBase64: payload.dataBase64 || payload.audioBase64 || ""
+              },
+            final: Boolean(payload.final)
+          });
+          if (payload.final) {
+            const finalEvents = await sttSession.end();
+            sttSession = null;
+            const allEvents = [
+              ...(Array.isArray(pushedEvents) ? pushedEvents : [pushedEvents].filter(Boolean)),
+              ...(Array.isArray(finalEvents) ? finalEvents : [finalEvents].filter(Boolean))
+            ];
+            const transcriptEvent = allEvents
+              .reverse()
+              .find((candidate) => candidate.type === "stt.final" && candidate.text);
+            if (transcriptEvent) {
+              await onTurn({
+                source: "m5stack",
+                modality: "voice",
+                text: transcriptEvent.text,
+                actor: {
+                  platform: "m5stack",
+                  platformUserId: payload.userId || payload.deviceId || "stackchan",
+                  displayName: payload.deviceId || "StackChan"
+                },
+                metadata: {
+                  deviceId: payload.deviceId || "stackchan",
+                  channel: payload.channel || "local",
+                  realtimeRelayId: id
+                }
+              });
+            }
+          }
+        }
+      };
+      if (typeof socket.addEventListener === "function") {
+        socket.addEventListener("open", openHandler);
+        socket.addEventListener("message", (event) => {
+          messageHandler(event).catch((error) => {
+            emit({ type: "stackchan.error", message: error.message });
+          });
+        });
+      } else {
+        socket.onopen = openHandler;
+        socket.onmessage = (event) => {
+          messageHandler(event).catch((error) => {
+            emit({ type: "stackchan.error", message: error.message });
+          });
+        };
+      }
+      return Object.freeze({
+        socket,
+        sendSpeech({ text, audio = null, voice = null } = {}) {
+          const item = queue?.enqueue
+            ? queue.enqueue({ text, audio, voice, source: id })
+            : { id: `${id}:speech:${sequence}`, text, audio, voice };
+          send({
+            type: "speech.audio",
+            itemId: item.id,
+            text: String(text || ""),
+            audio,
+            voice
+          });
+          return item;
+        },
+        async synthesizeAndSend({ text, voice = null } = {}) {
+          if (!tts) {
+            throw new Error(`${id} requires tts for synthesizeAndSend`);
+          }
+          const events = await tts.stream({ text, voice });
+          events
+            .filter((event) => event.type === "tts.audio")
+            .forEach((event) => {
+              this.sendSpeech({
+                text: event.text || text,
+                audio: {
+                  encoding: event.encoding || "wav",
+                  dataBase64: event.audio
+                },
+                voice
+              });
+            });
+          return Object.freeze(events);
+        },
+        close() {
+          if (typeof socket.close === "function") {
+            socket.close();
+          }
+          emit({ type: "stackchan.closed" });
+        }
+      });
     }
   });
 };

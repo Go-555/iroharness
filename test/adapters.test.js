@@ -6,6 +6,8 @@ import test from "node:test";
 
 import {
   createAIAvatarKitBridgeDevice,
+  createAivisSpeechTts,
+  createAzureSpeechStt,
   createClaudeCodeCliMicroHarness,
   createCodexAppServerBrain,
   createCodexAppServerMicroHarness,
@@ -29,6 +31,7 @@ import {
   createSlackEventsRuntime,
   createSlackMessageAdapter,
   createSnapshotStreamSessionResolver,
+  createStackChanRealtimeRelay,
   createStreamContextEnricher,
   createTextProcessMicroHarness,
   createVrmBodyBridge,
@@ -37,7 +40,7 @@ import {
   createVsCodeCompanionAdapter,
   createVsCodeCompanionWebviewHtml
 } from "../src/adapters/index.js";
-import { createInMemoryUserRegistry } from "../src/index.js";
+import { createInMemoryUserRegistry, createSpeechPlaybackQueue } from "../src/index.js";
 
 const createFakeObsWebSocket = ({ sent }) => {
   return class FakeObsWebSocket {
@@ -142,6 +145,40 @@ const createFakeDiscordGatewayWebSocket = ({ sent }) => {
           0
         );
       }
+    }
+
+    close() {
+      this.readyState = 3;
+    }
+  };
+};
+
+const createFakeStackChanWebSocket = ({ sent }) => {
+  return class FakeStackChanWebSocket {
+    static instances = [];
+
+    constructor() {
+      this.readyState = 1;
+      this.listeners = new Map();
+      FakeStackChanWebSocket.instances.push(this);
+      setTimeout(() => this.emit("open", {}), 0);
+    }
+
+    addEventListener(type, callback) {
+      const callbacks = this.listeners.get(type) || [];
+      this.listeners.set(type, [...callbacks, callback]);
+    }
+
+    emit(type, event) {
+      (this.listeners.get(type) || []).forEach((callback) => callback(event));
+    }
+
+    receive(payload) {
+      this.emit("message", { data: JSON.stringify(payload) });
+    }
+
+    send(raw) {
+      sent.push(JSON.parse(raw));
     }
 
     close() {
@@ -373,6 +410,158 @@ test("AIAvatarKit bridge device posts speech and state events", async () => {
   assert.equal(calls[2].endpoint, "http://127.0.0.1:8000/iroharness/events");
   assert.equal(calls[3].endpoint, "http://127.0.0.1:8000/iroharness/speech");
   assert.equal(calls[3].body.speechText, "こんにちは");
+});
+
+test("Azure Speech STT adapter posts buffered audio and emits final transcript", async () => {
+  const calls = [];
+  const stt = createAzureSpeechStt({
+    id: "azure-test",
+    region: "japaneast",
+    subscriptionKey: "key-test",
+    fetchImpl: async (endpoint, options) => {
+      calls.push({
+        endpoint,
+        headers: options.headers,
+        byteLength: options.body.length
+      });
+      return {
+        ok: true,
+        status: 200,
+        async text() {
+          return JSON.stringify({
+            RecognitionStatus: "Success",
+            DisplayText: "こんにちは。"
+          });
+        }
+      };
+    }
+  });
+  const events = [];
+  const session = stt.start({
+    onEvent(event) {
+      events.push(event);
+    }
+  });
+
+  session.push({ audio: { dataBase64: Buffer.from("wav").toString("base64") } });
+  const finalEvents = await session.end();
+
+  assert.equal(stt.kind, "stt");
+  assert.match(calls[0].endpoint, /japaneast\.stt\.speech\.microsoft\.com/);
+  assert.equal(calls[0].headers["Ocp-Apim-Subscription-Key"], "key-test");
+  assert.equal(calls[0].byteLength, 3);
+  assert.equal(finalEvents[0].type, "stt.final");
+  assert.equal(finalEvents[0].text, "こんにちは。");
+  assert.equal(events.at(-1).adapterId, "azure-test");
+});
+
+test("AivisSpeech TTS adapter calls audio_query then synthesis", async () => {
+  const calls = [];
+  const tts = createAivisSpeechTts({
+    id: "aivis-test",
+    baseUrl: "http://127.0.0.1:10101",
+    speaker: 888753760,
+    fetchImpl: async (endpoint, options) => {
+      calls.push({ endpoint, body: options.body || null });
+      if (endpoint.includes("/audio_query")) {
+        return {
+          ok: true,
+          status: 200,
+          async text() {
+            return JSON.stringify({ accent_phrases: [], speedScale: 1 });
+          }
+        };
+      }
+      return {
+        ok: true,
+        status: 200,
+        async arrayBuffer() {
+          return Buffer.from("wav-audio").buffer;
+        }
+      };
+    }
+  });
+
+  const events = await tts.stream({ text: "こんにちは", voice: "iroha" });
+
+  assert.equal(tts.kind, "tts");
+  assert.match(calls[0].endpoint, /\/audio_query\?/);
+  assert.match(calls[0].endpoint, /speaker=888753760/);
+  assert.match(calls[0].endpoint, /text=/);
+  assert.match(calls[1].endpoint, /\/synthesis\?/);
+  assert.equal(events[0].type, "tts.audio");
+  assert.equal(events[0].encoding, "wav");
+  assert.equal(events.at(-1).type, "tts.completed");
+});
+
+test("StackChan realtime relay turns final audio chunks into voice turns", async () => {
+  const sent = [];
+  const turns = [];
+  const events = [];
+  const WebSocketImpl = createFakeStackChanWebSocket({ sent });
+  const relay = createStackChanRealtimeRelay({
+    url: "ws://stackchan.local/ws",
+    WebSocketImpl,
+    latencyBudgetMs: 1000,
+    queue: createSpeechPlaybackQueue({ id: "relay-queue" }),
+    stt: {
+      id: "fake-stt",
+      start({ onEvent }) {
+        return {
+          async push() {
+            const event = {
+              type: "stt.partial",
+              text: "こん",
+              delta: "こん",
+              final: false
+            };
+            onEvent(event);
+            return [event];
+          },
+          async end() {
+            const event = {
+              type: "stt.final",
+              text: "こんにちは",
+              delta: "にちは",
+              final: true
+            };
+            onEvent(event);
+            return [event];
+          }
+        };
+      }
+    }
+  });
+
+  const connection = relay.connect({
+    onEvent(event) {
+      events.push(event);
+    },
+    onTurn(turn) {
+      turns.push(turn);
+    }
+  });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  WebSocketImpl.instances[0].receive({
+    type: "audio.chunk",
+    deviceId: "stackchan",
+    dataBase64: Buffer.from("pcm").toString("base64"),
+    final: true
+  });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  const speechItem = connection.sendSpeech({
+    text: "返事です",
+    audio: { encoding: "wav", dataBase64: "audio" },
+    voice: "iroha"
+  });
+
+  assert.equal(relay.kind, "device-realtime-relay");
+  assert.equal(sent[0].type, "hello");
+  assert.equal(turns[0].modality, "voice");
+  assert.equal(turns[0].text, "こんにちは");
+  assert.equal(speechItem.source, "stackchan-realtime-relay");
+  assert.equal(sent.at(-1).type, "speech.audio");
+  assert.equal(events.some((event) => event.type === "stackchan.stt.final"), true);
 });
 
 test("Codex app-server micro harness starts thread and returns assistant deltas", async () => {

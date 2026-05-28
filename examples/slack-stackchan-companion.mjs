@@ -13,6 +13,8 @@ import {
   createIroHarness
 } from "../src/index.js";
 import {
+  createAivisSpeechTts,
+  createAzureSpeechStt,
   createCodexAppServerBrain,
   createCodexAppServerMicroHarness,
   createM5StackBodyBridge,
@@ -134,6 +136,18 @@ const createBrainForSlot = ({ slot, codexWorkspace }) => {
 };
 
 const createStackChanStt = () => {
+  const provider = process.env.IROHARNESS_STACKCHAN_STT_PROVIDER || "http";
+  if (provider === "azure") {
+    return createAzureSpeechStt({
+      id: "stackchan-azure-stt",
+      region: process.env.AZURE_SPEECH_REGION,
+      endpoint: process.env.AZURE_SPEECH_STT_ENDPOINT || null,
+      subscriptionKey: process.env.AZURE_SPEECH_KEY || null,
+      authorizationToken: process.env.AZURE_SPEECH_AUTHORIZATION_TOKEN || null,
+      language: process.env.AZURE_SPEECH_LANGUAGE || "ja-JP",
+      sampleRate: Number(process.env.IROHARNESS_STACKCHAN_AUDIO_SAMPLE_RATE || "16000")
+    });
+  }
   const endpoint = process.env.IROHARNESS_STACKCHAN_STT_ENDPOINT;
   if (!endpoint) {
     return null;
@@ -143,6 +157,19 @@ const createStackChanStt = () => {
     id: "stackchan-http-stt",
     endpoint,
     headers: authorization ? { authorization } : {}
+  });
+};
+
+const createStackChanTts = () => {
+  const provider = process.env.IROHARNESS_STACKCHAN_TTS_PROVIDER || "none";
+  if (provider !== "aivis") {
+    return null;
+  }
+  return createAivisSpeechTts({
+    id: "stackchan-aivis-tts",
+    baseUrl: process.env.AIVIS_SPEECH_BASE_URL || "http://127.0.0.1:10101",
+    speaker: process.env.AIVIS_SPEECH_SPEAKER,
+    useCancellableSynthesis: process.env.AIVIS_SPEECH_CANCELLABLE === "1"
   });
 };
 
@@ -179,6 +206,7 @@ const createSlackStackChanCompanion = () => {
     id: process.env.STACKCHAN_BODY_ID || "stackchan"
   });
   const stackchanStt = createStackChanStt();
+  const stackchanTts = createStackChanTts();
 
   const projectOs = createFileProjectOs({
     path: join(runtimePaths.stateDir, "slack-stackchan-pjos.json")
@@ -302,7 +330,14 @@ const createSlackStackChanCompanion = () => {
       ok: true,
       resultKind: result.kind,
       text: result.text || result.output?.summary || "",
-      face: stackchan.snapshot()?.payload || null
+      face: stackchan.snapshot()?.payload || null,
+      speech:
+        stackchanTts && (payload.type === "audio" || payload.type === "ptt")
+          ? await stackchanTts.stream({
+              text: result.text || result.output?.summary || "",
+              voice: process.env.IROHARNESS_STACKCHAN_VOICE || "iroha"
+            })
+          : null
     };
   };
 

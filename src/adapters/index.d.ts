@@ -28,6 +28,9 @@ export function createTextProcessMicroHarness(input: JsonObject): MicroHarness;
 export function createClaudeCodeCliMicroHarness(input: JsonObject): MicroHarness;
 
 export function createAIAvatarKitBridgeDevice(input?: JsonObject): Device;
+export function createAzureSpeechStt(input: JsonObject): JsonObject;
+export function createAivisSpeechTts(input: JsonObject): JsonObject;
+export function createStackChanRealtimeRelay(input: JsonObject): JsonObject;
 export function createMotionPngTuberMapper(input?: JsonObject): JsonObject;
 export function createMotionPngTuberRendererBridge(input?: JsonObject): BodyBridgeDevice;
 export function createM5StackFaceMapper(input?: JsonObject): JsonObject;

@@ -52,6 +52,23 @@ const stt = createHttpStreamingStt({
 The endpoint receives `{ type, audio, text, final }` and can return either
 `{ events: [...] }` or `{ text, delta, final }`.
 
+For Azure Speech, use the provider adapter from `iroharness/adapters`:
+
+```js
+import { createAzureSpeechStt } from "iroharness/adapters";
+
+const stt = createAzureSpeechStt({
+  region: "japaneast",
+  subscriptionKey: process.env.AZURE_SPEECH_KEY,
+  language: "ja-JP"
+});
+```
+
+This adapter targets Azure Speech's short-audio REST path. It is useful for PTT
+and recorded device audio. For always-on sub-second streaming, keep the
+StackChan/WebSocket path open and replace this with a continuous streaming STT
+provider behind the same STT event contract.
+
 ## Streaming TTS
 
 `createTextStreamingTts` emits chunk events and supports interruption through an
@@ -92,6 +109,21 @@ const tts = createHttpStreamingTts({
 The endpoint receives `{ text, voice }` and can return `{ events: [...] }`,
 `{ chunks: [{ text, audio }] }`, or `{ audio }`.
 
+For AivisSpeech Engine, use the VOICEVOX-compatible adapter:
+
+```js
+import { createAivisSpeechTts } from "iroharness/adapters";
+
+const tts = createAivisSpeechTts({
+  baseUrl: "http://127.0.0.1:10101",
+  speaker: process.env.AIVIS_SPEECH_SPEAKER
+});
+```
+
+The adapter calls `/audio_query` and then `/synthesis`, returning WAV audio as
+base64 `tts.audio` events. If AivisSpeech Engine is launched with cancellable
+synthesis enabled, set `useCancellableSynthesis: true`.
+
 ## Speech Playback Queue
 
 `createSpeechPlaybackQueue` is the body-side playback contract. It lets
@@ -128,6 +160,31 @@ Queue event types:
 Use `enqueue(item, { mode: "replace" })` when the body should stop the current
 utterance and speak the new item immediately. Use `interrupt("barge-in")` when
 STT detects that the user started talking over the character.
+
+## StackChan Low-Latency Relay
+
+`createStackChanRealtimeRelay` in `iroharness/adapters` is the low-latency
+StackChan side path. It keeps a WebSocket open, accepts audio chunks, sends STT
+events through the same contract, and sends speech audio back to the device.
+
+```js
+import {
+  createAivisSpeechTts,
+  createAzureSpeechStt,
+  createStackChanRealtimeRelay
+} from "iroharness/adapters";
+
+const relay = createStackChanRealtimeRelay({
+  url: "ws://stackchan.local/ws",
+  stt: createAzureSpeechStt({ region: "japaneast", subscriptionKey: process.env.AZURE_SPEECH_KEY }),
+  tts: createAivisSpeechTts({ speaker: process.env.AIVIS_SPEECH_SPEAKER })
+});
+```
+
+The current adapter is the protocol/simulator layer. A full
+AIAvatarStackChan-compatible server still needs a firmware-facing WebSocket
+server implementation and real hardware latency measurements before claiming a
+guaranteed 1-second response.
 
 ## Interruption / Barge-In
 

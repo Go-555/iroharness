@@ -25,7 +25,10 @@ Status labels:
 | Provider brain gateway | example | `examples/provider-brain-gateway.mjs` | Routes voice/text/deep slots to OpenAI, Claude, or local OpenAI-compatible providers. |
 | Realtime voice contract | contract | `createRealtimeVoiceSession`, STT/TTS interfaces, schemas | JavaScript contract exists; production STT/TTS providers are replaceable. |
 | HTTP STT/TTS adapters | adapter | `createHttpStreamingStt`, `createHttpStreamingTts` | Bridge production STT/TTS providers through provider-owned HTTP endpoints. |
+| Azure Speech STT adapter | adapter | `createAzureSpeechStt` | Uses Azure Speech short-audio REST recognition for PTT and recorded device audio. |
+| AivisSpeech TTS adapter | adapter | `createAivisSpeechTts` | Uses AivisSpeech Engine's VOICEVOX-compatible `/audio_query` and `/synthesis` flow. |
 | Speech playback queue | contract | `createSpeechPlaybackQueue`, `protocols/speech-queue.schema.json` | Normalizes queued, started, completed, interrupted, and cleared speech events for bodies. |
+| StackChan realtime relay | adapter | `createStackChanRealtimeRelay` | WebSocket audio chunk and speech playback relay contract for the sub-second StackChan path. |
 | Rust realtime core | contract | `crates/realtime-core`, `createRustRealtimeCoreBinding`, `createRustRealtimeCoreCabiAdapter` | Rust crate exposes JSONL plus native/WASM C ABI fast-path bindings. |
 
 ## Micro Harnesses

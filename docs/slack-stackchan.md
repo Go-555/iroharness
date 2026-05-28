@@ -158,6 +158,30 @@ host-side STT provider. The endpoint follows the same
 If no STT endpoint is configured, IroHarness still treats the payload as a
 voice-originated device event and uses a short fallback prompt.
 
+For Azure Speech STT:
+
+```bash
+IROHARNESS_STACKCHAN_STT_PROVIDER=azure \
+AZURE_SPEECH_REGION=japaneast \
+AZURE_SPEECH_KEY=... \
+AZURE_SPEECH_LANGUAGE=ja-JP \
+npm run example:slack-stackchan
+```
+
+For AivisSpeech TTS on device audio/PTT responses:
+
+```bash
+IROHARNESS_STACKCHAN_TTS_PROVIDER=aivis \
+AIVIS_SPEECH_BASE_URL=http://127.0.0.1:10101 \
+AIVIS_SPEECH_SPEAKER=888753760 \
+npm run example:slack-stackchan
+```
+
+This HTTP invoke path is useful for first hardware checks. For the 1-second
+conversation target, use the WebSocket realtime relay in
+[realtime.md](./realtime.md) so mic audio, STT events, TTS chunks, and playback
+state stay open instead of waiting for request/response turns.
+
 IroHarness treats this as a normal device-originated turn. The same character
 identity, brain routing, Project OS state, and permissions are used.
 The invoke endpoint rejects requests without the configured device token.
