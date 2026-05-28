@@ -2331,6 +2331,136 @@ export const createHttpStreamingTts = ({
   });
 };
 
+export const createSpeechPlaybackQueue = ({
+  id = "speech-playback-queue",
+  maxSize = 32,
+  onEvent = () => {}
+} = {}) => {
+  const pending = [];
+  const history = [];
+  let sequence = 0;
+  let current = null;
+  let itemSequence = 0;
+
+  const emit = (event) => {
+    const nextEvent = freezeCopy({
+      ...event,
+      queueId: id,
+      sequence,
+      timestamp: nowIso()
+    });
+    sequence += 1;
+    history.push(nextEvent);
+    onEvent(nextEvent);
+    return nextEvent;
+  };
+
+  const normalizeItem = (item) =>
+    freezeCopy({
+      id: item?.id || `${id}:speech:${itemSequence}`,
+      text: String(item?.text || ""),
+      audio: item?.audio || null,
+      voice: item?.voice || null,
+      source: item?.source || "macro-harness",
+      priority: Number.isFinite(item?.priority) ? item.priority : 0,
+      metadata: freezeCopy(item?.metadata || {})
+    });
+
+  const startNext = () => {
+    if (current || pending.length === 0) {
+      return current;
+    }
+    current = pending.shift();
+    emit({
+      type: "speech.started",
+      item: current,
+      pendingCount: pending.length
+    });
+    return current;
+  };
+
+  return Object.freeze({
+    id,
+    kind: "speech-playback-queue",
+    enqueue(item = {}, { mode = "append", autoplay = true } = {}) {
+      if (mode === "replace") {
+        this.interrupt("replaced", { clearPending: true });
+      }
+      if (pending.length >= maxSize) {
+        throw new Error(`${id} playback queue is full`);
+      }
+      const nextItem = normalizeItem(item);
+      itemSequence += 1;
+      const insertAt = pending.findIndex((entry) => entry.priority < nextItem.priority);
+      if (insertAt === -1) {
+        pending.push(nextItem);
+      } else {
+        pending.splice(insertAt, 0, nextItem);
+      }
+      emit({
+        type: "speech.queued",
+        item: nextItem,
+        pendingCount: pending.length
+      });
+      if (autoplay) {
+        startNext();
+      }
+      return nextItem;
+    },
+    startNext,
+    complete(itemId = current?.id) {
+      if (!current || current.id !== itemId) {
+        return null;
+      }
+      const completed = current;
+      current = null;
+      const event = emit({
+        type: "speech.completed",
+        item: completed,
+        pendingCount: pending.length
+      });
+      startNext();
+      return event;
+    },
+    interrupt(reason = "interrupted", { clearPending = false } = {}) {
+      const interrupted = current;
+      current = null;
+      if (clearPending) {
+        pending.splice(0, pending.length);
+      }
+      if (!interrupted) {
+        return null;
+      }
+      return emit({
+        type: "speech.interrupted",
+        item: interrupted,
+        reason,
+        pendingCount: pending.length
+      });
+    },
+    clear(reason = "cleared") {
+      const clearedCount = pending.length + (current ? 1 : 0);
+      pending.splice(0, pending.length);
+      current = null;
+      return emit({
+        type: "speech.cleared",
+        reason,
+        clearedCount,
+        pendingCount: 0
+      });
+    },
+    snapshot() {
+      return freezeCopy({
+        id,
+        kind: "speech-playback-queue",
+        current,
+        pending,
+        events: history
+      });
+    }
+  });
+};
+
 export const createRealtimeVoiceSession = ({
   id = "realtime-voice-session",
   stt = createTextStreamingStt(),

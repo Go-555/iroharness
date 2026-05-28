@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://iroharness.dev/protocols/speech-queue.schema.json",
+  "title": "IroHarness Speech Playback Queue",
+  "type": "object",
+  "required": ["id", "kind", "current", "pending", "events"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "kind": {
+      "type": "string",
+      "const": "speech-playback-queue"
+    },
+    "current": {
+      "oneOf": [
+        { "$ref": "#/$defs/speechItem" },
+        { "type": "null" }
+      ]
+    },
+    "pending": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/speechItem"
+      }
+    },
+    "events": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/speechEvent"
+      }
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "speechItem": {
+      "type": "object",
+      "required": ["id", "text", "audio", "voice", "source", "priority", "metadata"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "text": { "type": "string" },
+        "audio": {},
+        "voice": { "type": ["string", "null"] },
+        "source": { "type": "string", "minLength": 1 },
+        "priority": { "type": "number" },
+        "metadata": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": false
+    },
+    "speechEvent": {
+      "type": "object",
+      "required": ["type", "queueId", "sequence", "timestamp"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "speech.queued",
+            "speech.started",
+            "speech.completed",
+            "speech.interrupted",
+            "speech.cleared"
+          ]
+        },
+        "queueId": { "type": "string" },
+        "sequence": { "type": "integer", "minimum": 0 },
+        "timestamp": { "type": "string" },
+        "item": { "$ref": "#/$defs/speechItem" },
+        "reason": { "type": "string" },
+        "pendingCount": { "type": "integer", "minimum": 0 },
+        "clearedCount": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": true
+    }
+  }
+}

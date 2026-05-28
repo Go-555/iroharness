@@ -92,6 +92,43 @@ const tts = createHttpStreamingTts({
 The endpoint receives `{ text, voice }` and can return `{ events: [...] }`,
 `{ chunks: [{ text, audio }] }`, or `{ audio }`.
 
+## Speech Playback Queue
+
+`createSpeechPlaybackQueue` is the body-side playback contract. It lets
+StackChan, MotionPNGTuber, Live2D, VRM, and browser pets consume the same speech
+events without each body inventing its own queue semantics.
+
+```js
+import { createSpeechPlaybackQueue } from "iroharness";
+
+const queue = createSpeechPlaybackQueue({
+  onEvent(event) {
+    console.log(event.type, event.item?.text);
+  }
+});
+
+const item = queue.enqueue({
+  text: "こんにちは。作業を進めるね。",
+  audio: "base64-audio",
+  voice: "iroha",
+  source: "voice-brain"
+});
+
+queue.complete(item.id);
+```
+
+Queue event types:
+
+- `speech.queued`
+- `speech.started`
+- `speech.completed`
+- `speech.interrupted`
+- `speech.cleared`
+
+Use `enqueue(item, { mode: "replace" })` when the body should stop the current
+utterance and speak the new item immediately. Use `interrupt("barge-in")` when
+STT detects that the user started talking over the character.
+
 ## Interruption / Barge-In
 
 `createRealtimeVoiceSession` wires STT, TTS, and latency tracking together. If a

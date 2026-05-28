@@ -260,6 +260,7 @@ export function createTextStreamingStt(input?: JsonObject): JsonObject;
 export function createHttpStreamingStt(input: JsonObject): JsonObject;
 export function createTextStreamingTts(input?: JsonObject): JsonObject;
 export function createHttpStreamingTts(input: JsonObject): JsonObject;
+export function createSpeechPlaybackQueue(input?: JsonObject): JsonObject;
 export function createRealtimeVoiceSession(input?: JsonObject): JsonObject;
 
 export function createStubMicroHarness(id: string, capabilities?: readonly string[]): MicroHarness;

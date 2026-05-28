@@ -126,6 +126,24 @@ test("realtime core JSONL command and message schemas cover golden fixtures", ()
   assert.equal(message.coreId, command.coreId);
 });
 
+test("speech playback queue schema covers golden fixture", () => {
+  const queueSchema = readProtocol("speech-queue.schema.json");
+  const queue = readFixture("speech-queue.json");
+
+  queueSchema.required.forEach((field) => {
+    assert.notEqual(queue[field], undefined);
+  });
+
+  assert.equal(queue.kind, "speech-playback-queue");
+  assert.equal(queueSchema.properties.kind.const, queue.kind);
+  assert.equal(
+    queueSchema.$defs.speechEvent.properties.type.enum.includes("speech.interrupted"),
+    true
+  );
+  assert.equal(queue.events[0].type, "speech.queued");
+  assert.equal(queue.events[1].type, "speech.started");
+});
+
 test("device config and invoke schemas cover StackChan fixtures", () => {
   const configSchema = readProtocol("device-config.schema.json");
   const invokeSchema = readProtocol("device-invoke.schema.json");

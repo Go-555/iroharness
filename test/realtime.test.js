@@ -10,6 +10,7 @@ import {
   createRealtimeVoiceSession,
   createRustRealtimeCoreCabiAdapter,
   createRustRealtimeCoreBinding,
+  createSpeechPlaybackQueue,
   createTextStreamingStt,
   createTextStreamingTts
 } from "../src/index.js";
@@ -160,6 +161,33 @@ test("HTTP streaming TTS posts text and emits audio chunks", async () => {
   assert.equal(chunks.filter((event) => event.type === "tts.audio").length, 2);
   assert.equal(chunks.at(-1).type, "tts.completed");
   assert.equal(events[0].audio, "audio-1");
+});
+
+test("speech playback queue simulates ordered body playback", () => {
+  const events = [];
+  const queue = createSpeechPlaybackQueue({
+    id: "speech-queue-test",
+    onEvent(event) {
+      events.push(event);
+    }
+  });
+
+  const first = queue.enqueue({ text: "先に話す", voice: "iroha" });
+  const second = queue.enqueue({ text: "次に話す", voice: "iroha" });
+  const firstDone = queue.complete(first.id);
+  const interrupted = queue.interrupt("barge-in");
+  const snapshot = queue.snapshot();
+
+  assert.equal(queue.kind, "speech-playback-queue");
+  assert.equal(second.id, "speech-queue-test:speech:1");
+  assert.equal(firstDone.type, "speech.completed");
+  assert.equal(interrupted.item.id, second.id);
+  assert.equal(snapshot.current, null);
+  assert.equal(snapshot.pending.length, 0);
+  assert.deepEqual(
+    events.map((event) => event.type),
+    ["speech.queued", "speech.started", "speech.queued", "speech.completed", "speech.started", "speech.interrupted"]
+  );
 });
 
 test("realtime latency tracker records turn timing metrics", () => {

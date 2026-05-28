@@ -1,0 +1,54 @@
+{
+  "id": "speech-queue-golden",
+  "kind": "speech-playback-queue",
+  "current": {
+    "id": "speech-queue-golden:speech:0",
+    "text": "こんにちは。いろはです。",
+    "audio": "base64-audio",
+    "voice": "iroha",
+    "source": "macro-harness",
+    "priority": 0,
+    "metadata": {
+      "body": "stackchan"
+    }
+  },
+  "pending": [],
+  "events": [
+    {
+      "type": "speech.queued",
+      "queueId": "speech-queue-golden",
+      "sequence": 0,
+      "timestamp": "2026-05-28T00:00:00.000Z",
+      "item": {
+        "id": "speech-queue-golden:speech:0",
+        "text": "こんにちは。いろはです。",
+        "audio": "base64-audio",
+        "voice": "iroha",
+        "source": "macro-harness",
+        "priority": 0,
+        "metadata": {
+          "body": "stackchan"
+        }
+      },
+      "pendingCount": 1
+    },
+    {
+      "type": "speech.started",
+      "queueId": "speech-queue-golden",
+      "sequence": 1,
+      "timestamp": "2026-05-28T00:00:00.000Z",
+      "item": {
+        "id": "speech-queue-golden:speech:0",
+        "text": "こんにちは。いろはです。",
+        "audio": "base64-audio",
+        "voice": "iroha",
+        "source": "macro-harness",
+        "priority": 0,
+        "metadata": {
+          "body": "stackchan"
+        }
+      },
+      "pendingCount": 0
+    }
+  ]
+}
