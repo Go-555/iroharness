@@ -1,0 +1,11 @@
+{
+  "type": "audio.chunk",
+  "deviceId": "stackchan",
+  "sessionId": "stackchan-realtime-session",
+  "sequence": 1,
+  "timestamp": "2026-05-28T00:00:00.000Z",
+  "encoding": "pcm_s16le",
+  "sampleRate": 16000,
+  "dataBase64": "cGNt",
+  "final": true
+}

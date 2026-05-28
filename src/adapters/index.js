@@ -2927,6 +2927,334 @@ export const createStackChanRealtimeRelay = ({
   });
 };
 
+const attachSocketListener = (socket, type, callback) => {
+  if (typeof socket.addEventListener === "function") {
+    socket.addEventListener(type, callback);
+    return;
+  }
+  if (typeof socket.on === "function") {
+    socket.on(type, callback);
+    return;
+  }
+  socket[`on${type}`] = callback;
+};
+
+const parseSocketMessageData = (event) => {
+  const data = event?.data ?? event;
+  if (typeof data === "string") {
+    return JSON.parse(data);
+  }
+  if (Buffer.isBuffer(data)) {
+    return JSON.parse(data.toString("utf8"));
+  }
+  if (data instanceof ArrayBuffer) {
+    return JSON.parse(Buffer.from(data).toString("utf8"));
+  }
+  return data;
+};
+
+const normalizeStackChanAudioPayload = (payload) =>
+  payload.audio || {
+    encoding: payload.encoding || "pcm_s16le",
+    sampleRate: payload.sampleRate || 16000,
+    dataBase64: payload.dataBase64 || payload.audioBase64 || ""
+  };
+
+export const createStackChanRealtimeSessionHandler = ({
+  id = "stackchan-realtime-session",
+  harness,
+  stt,
+  tts,
+  createQueue = null,
+  deviceToken = null,
+  latencyBudgetMs = 1000,
+  voice = "iroha"
+} = {}) => {
+  if (!harness || typeof harness.receive !== "function") {
+    throw new Error("createStackChanRealtimeSessionHandler requires harness.receive");
+  }
+  if (!stt || typeof stt.start !== "function") {
+    throw new Error("createStackChanRealtimeSessionHandler requires stt");
+  }
+  if (!tts || typeof tts.stream !== "function") {
+    throw new Error("createStackChanRealtimeSessionHandler requires tts");
+  }
+
+  return Object.freeze({
+    id,
+    kind: "stackchan-realtime-session-handler",
+    capabilities: Object.freeze([
+      "stackchan",
+      "aiavatarstackchan-style",
+      "websocket-session",
+      "audio-chunks",
+      "speech-playback"
+    ]),
+    handleConnection(socket, { deviceId = "stackchan", userId = deviceId, channel = "local", token = null, onEvent = () => {} } = {}) {
+      let sequence = 0;
+      let sttSession = null;
+      const queue =
+        typeof createQueue === "function"
+          ? createQueue({ deviceId, userId, channel })
+          : null;
+
+      const emit = (event) => {
+        const nextEvent = createAdapterEvent({
+          adapterId: id,
+          sequence,
+          event,
+          extra: { deviceId, channel }
+        });
+        sequence += 1;
+        onEvent(nextEvent);
+        return nextEvent;
+      };
+
+      const send = (payload) => {
+        const message = JSON.stringify({
+          ...payload,
+          sessionId: id,
+          deviceId,
+          sequence,
+          timestamp: nowIso()
+        });
+        if (typeof socket.send === "function") {
+          socket.send(message);
+        }
+        return message;
+      };
+
+      const actor = () =>
+        Object.freeze({
+          platform: "m5stack",
+          platformUserId: userId,
+          displayName: deviceId
+        });
+
+      const receiveTurn = async ({ modality, text, metadata = {} }) =>
+        harness.receive({
+          source: "m5stack",
+          modality,
+          text,
+          actor: actor(),
+          metadata: {
+            deviceId,
+            channel,
+            realtimeSessionId: id,
+            ...metadata
+          }
+        });
+
+      const speak = async ({ text }) => {
+        const responseText = String(text || "");
+        send({
+          type: "response.start",
+          text: responseText
+        });
+        const speechEvents = await tts.stream({
+          text: responseText,
+          voice,
+          onEvent(event) {
+            if (event.type !== "tts.audio") {
+              return;
+            }
+            const item = queue?.enqueue
+              ? queue.enqueue({
+                  text: event.text || responseText,
+                  audio: {
+                    encoding: event.encoding || "wav",
+                    dataBase64: event.audio
+                  },
+                  voice,
+                  source: id
+                })
+              : {
+                  id: `${id}:speech:${sequence}`,
+                  text: event.text || responseText
+                };
+            send({
+              type: "speech.audio",
+              itemId: item.id,
+              text: event.text || responseText,
+              audio: {
+                encoding: event.encoding || "wav",
+                dataBase64: event.audio
+              },
+              voice
+            });
+          }
+        });
+        const completed = queue?.snapshot?.().current;
+        if (completed?.id && queue?.complete) {
+          queue.complete(completed.id);
+        }
+        send({
+          type: "response.final",
+          text: responseText
+        });
+        return Object.freeze(speechEvents);
+      };
+
+      const handleTurnResult = async (result) => {
+        const text = result?.text || result?.output?.summary || "";
+        if (!text) {
+          send({
+            type: "response.final",
+            text: ""
+          });
+          return Object.freeze([]);
+        }
+        return speak({ text });
+      };
+
+      const handleAudio = async (payload) => {
+        sttSession =
+          sttSession ||
+          stt.start({
+            onEvent(event) {
+              emit({
+                ...event,
+                type: `stackchan.${event.type}`
+              });
+              send({
+                type: "stt.event",
+                event
+              });
+            }
+          });
+        const pushedEvents = await sttSession.push({
+          audio: normalizeStackChanAudioPayload(payload),
+          final: Boolean(payload.final)
+        });
+        if (!payload.final) {
+          return Object.freeze(pushedEvents);
+        }
+        const finalEvents = await sttSession.end();
+        sttSession = null;
+        const transcriptEvent = [
+          ...(Array.isArray(pushedEvents) ? pushedEvents : [pushedEvents].filter(Boolean)),
+          ...(Array.isArray(finalEvents) ? finalEvents : [finalEvents].filter(Boolean))
+        ]
+          .reverse()
+          .find((candidate) => candidate.type === "stt.final" && candidate.text);
+        if (!transcriptEvent) {
+          send({
+            type: "stt.empty"
+          });
+          return Object.freeze([]);
+        }
+        const result = await receiveTurn({
+          modality: "voice",
+          text: transcriptEvent.text,
+          metadata: {
+            audio: normalizeStackChanAudioPayload(payload)
+          }
+        });
+        return handleTurnResult(result);
+      };
+
+      const handlePayload = async (payload) => {
+        emit({
+          type: "stackchan.message",
+          messageType: payload.type || "unknown"
+        });
+        if (payload.type === "hello" || payload.type === "config") {
+          send({
+            type: "ready",
+            latencyBudgetMs,
+            acceptedAudio: ["pcm_s16le", "wav"],
+            acceptedInput: ["audio.chunk", "ptt.audio", "invoke", "vision", "interrupt"]
+          });
+          return null;
+        }
+        if (payload.type === "audio.chunk" || payload.type === "audio" || payload.type === "ptt.audio") {
+          return handleAudio(payload);
+        }
+        if (payload.type === "invoke" || payload.type === "vision") {
+          const result = await receiveTurn({
+            modality: payload.type === "vision" ? "vision" : "text",
+            text: payload.text || "",
+            metadata: {
+              imageDataUrl: payload.imageDataUrl || null,
+              invokeType: payload.type
+            }
+          });
+          return handleTurnResult(result);
+        }
+        if (payload.type === "interrupt" || payload.type === "stop") {
+          queue?.interrupt?.("device-interrupt", { clearPending: true });
+          send({
+            type: "speech.interrupted",
+            reason: "device-interrupt"
+          });
+          return null;
+        }
+        send({
+          type: "error",
+          message: `Unsupported StackChan realtime message: ${payload.type || "(missing)"}`
+        });
+        return null;
+      };
+
+      if (deviceToken && token !== deviceToken) {
+        send({
+          type: "error",
+          code: "invalid_device_token"
+        });
+        if (typeof socket.close === "function") {
+          socket.close();
+        }
+        return Object.freeze({
+          accepted: false,
+          send,
+          close: () => {}
+        });
+      }
+
+      attachSocketListener(socket, "message", (event) => {
+        Promise.resolve()
+          .then(() => handlePayload(parseSocketMessageData(event)))
+          .catch((error) => {
+            emit({
+              type: "stackchan.error",
+              message: error.message
+            });
+            send({
+              type: "error",
+              message: error.message
+            });
+          });
+      });
+      attachSocketListener(socket, "close", () => {
+        sttSession?.cancel?.("socket-closed");
+        queue?.clear?.("socket-closed");
+        emit({
+          type: "stackchan.closed"
+        });
+      });
+      send({
+        type: "ready",
+        latencyBudgetMs,
+        acceptedAudio: ["pcm_s16le", "wav"],
+        acceptedInput: ["audio.chunk", "ptt.audio", "invoke", "vision", "interrupt"]
+      });
+      emit({
+        type: "stackchan.accepted",
+        latencyBudgetMs
+      });
+      return Object.freeze({
+        accepted: true,
+        send,
+        close() {
+          if (typeof socket.close === "function") {
+            socket.close();
+          }
+        }
+      });
+    }
+  });
+};
+
 export const createJsonlProcessMicroHarness = ({
   id,
   command,

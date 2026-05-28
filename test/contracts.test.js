@@ -144,6 +144,20 @@ test("speech playback queue schema covers golden fixture", () => {
   assert.equal(queue.events[1].type, "speech.started");
 });
 
+test("StackChan realtime message schema covers golden fixture", () => {
+  const messageSchema = readProtocol("stackchan-realtime-message.schema.json");
+  const message = readFixture("stackchan-realtime-message.json");
+
+  messageSchema.required.forEach((field) => {
+    assert.notEqual(message[field], undefined);
+  });
+
+  assert.equal(message.type, "audio.chunk");
+  assert.equal(message.final, true);
+  assert.equal(messageSchema.properties.type.enum.includes("speech.audio"), true);
+  assert.equal(messageSchema.properties.type.enum.includes("response.final"), true);
+});
+
 test("device config and invoke schemas cover StackChan fixtures", () => {
   const configSchema = readProtocol("device-config.schema.json");
   const invokeSchema = readProtocol("device-invoke.schema.json");

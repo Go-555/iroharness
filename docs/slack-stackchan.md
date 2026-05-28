@@ -182,6 +182,10 @@ conversation target, use the WebSocket realtime relay in
 [realtime.md](./realtime.md) so mic audio, STT events, TTS chunks, and playback
 state stay open instead of waiting for request/response turns.
 
+`iroharness connect stackchan` writes `realtime_ws_url` into
+`.iroharness/connections/stackchan-firmware-config.json`. Use that URL for the
+AIAvatarStackChan-style realtime path.
+
 IroHarness treats this as a normal device-originated turn. The same character
 identity, brain routing, Project OS state, and permissions are used.
 The invoke endpoint rejects requests without the configured device token.

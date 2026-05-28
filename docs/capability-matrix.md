@@ -28,7 +28,7 @@ Status labels:
 | Azure Speech STT adapter | adapter | `createAzureSpeechStt` | Uses Azure Speech short-audio REST recognition for PTT and recorded device audio. |
 | AivisSpeech TTS adapter | adapter | `createAivisSpeechTts` | Uses AivisSpeech Engine's VOICEVOX-compatible `/audio_query` and `/synthesis` flow. |
 | Speech playback queue | contract | `createSpeechPlaybackQueue`, `protocols/speech-queue.schema.json` | Normalizes queued, started, completed, interrupted, and cleared speech events for bodies. |
-| StackChan realtime relay | adapter | `createStackChanRealtimeRelay` | WebSocket audio chunk and speech playback relay contract for the sub-second StackChan path. |
+| StackChan realtime relay | adapter | `createStackChanRealtimeRelay`, `createStackChanRealtimeSessionHandler`, `protocols/stackchan-realtime-message.schema.json` | WebSocket audio chunk and speech playback relay plus firmware-facing session handler for the sub-second StackChan path. |
 | Rust realtime core | contract | `crates/realtime-core`, `createRustRealtimeCoreBinding`, `createRustRealtimeCoreCabiAdapter` | Rust crate exposes JSONL plus native/WASM C ABI fast-path bindings. |
 
 ## Micro Harnesses

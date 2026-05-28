@@ -416,7 +416,9 @@ test("CLI connect prepares Slack and StackChan onboarding files", () => {
   assert.equal(stackchanDevice.kind, "stackchan");
   assert.equal(stackchanDevice.server.facePath, "/stackchan/face");
   assert.equal(stackchanDevice.server.invokePath, "/device/stackchan/invoke");
+  assert.equal(stackchanDevice.server.realtimePath, "/device/stackchan/realtime");
   assert.equal(stackchanDevice.metadata.connectionMode, "http-polling");
+  assert.equal(stackchanDevice.metadata.realtimeConnectionMode, "websocket");
   assert.equal(stackchanDevice.metadata.auth, "x-iroharness-device-token");
   assert.equal(
     stackchanDevice.metadata.provisioning,
@@ -427,6 +429,7 @@ test("CLI connect prepares Slack and StackChan onboarding files", () => {
   assert.equal(stackchanResult.provisioningPath.endsWith("stackchan-provisioning.md"), true);
   assert.equal(firmwareConfig.face_url, "http://100.64.0.10:4182/stackchan/face");
   assert.equal(firmwareConfig.invoke_url, "http://100.64.0.10:4182/device/stackchan/invoke");
+  assert.equal(firmwareConfig.realtime_ws_url, "ws://100.64.0.10:4182/device/stackchan/realtime");
   assert.equal(firmwareConfig.device_token, "device-secret-test");
   assert.equal(firmwareConfig.poll_interval_ms, 750);
   assert.equal(firmwareConfig.wifi_retry_base_ms, 1000);
@@ -434,6 +437,8 @@ test("CLI connect prepares Slack and StackChan onboarding files", () => {
   assert.equal(firmwareConfig.http_retry_base_ms, 1000);
   assert.equal(firmwareConfig.http_retry_max_ms, 15000);
   assert.match(stackchanProvisioning, /First Flash/);
+  assert.match(stackchanProvisioning, /Realtime WebSocket/);
+  assert.match(stackchanProvisioning, /1-second conversation path/);
   assert.match(stackchanProvisioning, /OTA should be added in the firmware package/);
   assert.equal(stackchanResult.firmwareConfig.wifi_pass, "[redacted]");
   assert.equal(stackchanResult.firmwareConfig.device_token, "[redacted]");

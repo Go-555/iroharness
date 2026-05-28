@@ -177,11 +177,14 @@ IroHarness now has the provider and relay-side building blocks for this phase:
 - `createAivisSpeechTts` for AivisSpeech Engine `/audio_query` + `/synthesis`
 - `createStackChanRealtimeRelay` for WebSocket audio chunk and speech playback
   relay simulation
+- `createStackChanRealtimeSessionHandler` for firmware-facing WebSocket sessions
 
-The remaining gap is the firmware-facing WebSocket server that speaks the exact
-AIAvatarStackChan wire protocol. Until that exists, `/device/stackchan/invoke`
-can validate audio/PTT end-to-end, but it should not be treated as the final
-1-second realtime path.
+`iroharness connect stackchan` now generates `realtime_ws_url` in the firmware
+config. That URL should be the default for the 1-second conversation path.
+
+The remaining gap is exact upstream wire compatibility and real hardware latency
+measurement. Until those are done, `/device/stackchan/invoke` can validate
+audio/PTT end-to-end, but it should not be treated as the final realtime path.
 
 ### Phase 4: Dedicated Firmware Package
 
@@ -245,9 +248,9 @@ contract stable.
 4. Done: add a minimal StackChan/CoreS3 face polling sketch.
 5. Done: add Wi-Fi reconnect and HTTP retry backoff to the face poller.
 6. Done: add audio invoke fixture and host-side STT relay hook.
-7. Add a WebSocket/SSE relay sketch.
+7. Done: add a WebSocket realtime session handler and message schema.
 8. Done: generate a StackChan provisioning runbook from `connect stackchan`.
-9. Add AIAvatarStackChan-compatible WebSocket mode.
+9. Add exact AIAvatarStackChan wire-compatibility tests against upstream firmware.
 
 The first firmware should be intentionally small. It should prove networking,
 display, and shared identity before attempting STT/TTS, camera, servo, and

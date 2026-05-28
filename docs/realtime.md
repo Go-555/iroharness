@@ -163,28 +163,43 @@ STT detects that the user started talking over the character.
 
 ## StackChan Low-Latency Relay
 
-`createStackChanRealtimeRelay` in `iroharness/adapters` is the low-latency
-StackChan side path. It keeps a WebSocket open, accepts audio chunks, sends STT
-events through the same contract, and sends speech audio back to the device.
+IroHarness exposes two StackChan realtime pieces in `iroharness/adapters`:
+
+- `createStackChanRealtimeRelay`: client-side relay/simulator that connects out
+  to a WebSocket endpoint
+- `createStackChanRealtimeSessionHandler`: server-side session handler for a
+  firmware-facing WebSocket connection
 
 ```js
 import {
   createAivisSpeechTts,
   createAzureSpeechStt,
-  createStackChanRealtimeRelay
+  createStackChanRealtimeSessionHandler
 } from "iroharness/adapters";
 
-const relay = createStackChanRealtimeRelay({
-  url: "ws://stackchan.local/ws",
+const handler = createStackChanRealtimeSessionHandler({
+  harness,
   stt: createAzureSpeechStt({ region: "japaneast", subscriptionKey: process.env.AZURE_SPEECH_KEY }),
-  tts: createAivisSpeechTts({ speaker: process.env.AIVIS_SPEECH_SPEAKER })
+  tts: createAivisSpeechTts({ speaker: process.env.AIVIS_SPEECH_SPEAKER }),
+  deviceToken: process.env.STACKCHAN_DEVICE_TOKEN
+});
+
+// Pass a WebSocket object from your server framework.
+handler.handleConnection(socket, {
+  deviceId: "stackchan",
+  token: requestToken
 });
 ```
 
-The current adapter is the protocol/simulator layer. A full
-AIAvatarStackChan-compatible server still needs a firmware-facing WebSocket
-server implementation and real hardware latency measurements before claiming a
-guaranteed 1-second response.
+The session handler accepts `hello`, `audio.chunk`, `ptt.audio`, `invoke`,
+`vision`, `interrupt`, and `stop` messages, then returns `ready`, `stt.event`,
+`response.start`, `speech.audio`, `response.final`, or `error` messages.
+The message shape is documented in
+`protocols/stackchan-realtime-message.schema.json`.
+
+This is now enough to mount on a real WebSocket server. The remaining work is
+matching the exact upstream AIAvatarStackChan wire protocol and measuring real
+hardware latency before claiming a guaranteed 1-second response.
 
 ## Interruption / Barge-In
 

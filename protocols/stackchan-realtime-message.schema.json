@@ -1,0 +1,101 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://iroharness.dev/protocols/stackchan-realtime-message.schema.json",
+  "title": "IroHarness StackChan Realtime Message",
+  "type": "object",
+  "required": ["type"],
+  "properties": {
+    "type": {
+      "type": "string",
+      "enum": [
+        "hello",
+        "config",
+        "ready",
+        "audio",
+        "audio.chunk",
+        "ptt.audio",
+        "stt.event",
+        "stt.empty",
+        "invoke",
+        "vision",
+        "response.start",
+        "response.final",
+        "speech.audio",
+        "speech.interrupted",
+        "interrupt",
+        "stop",
+        "error"
+      ]
+    },
+    "deviceId": {
+      "type": "string"
+    },
+    "sessionId": {
+      "type": "string"
+    },
+    "sequence": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "timestamp": {
+      "type": "string"
+    },
+    "latencyBudgetMs": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "text": {
+      "type": "string"
+    },
+    "audio": {
+      "type": "object",
+      "properties": {
+        "encoding": {
+          "type": "string",
+          "enum": ["pcm_s16le", "wav", "opus", "mp3"]
+        },
+        "sampleRate": {
+          "type": "integer",
+          "minimum": 8000
+        },
+        "dataBase64": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": true
+    },
+    "dataBase64": {
+      "type": "string"
+    },
+    "encoding": {
+      "type": "string"
+    },
+    "sampleRate": {
+      "type": "integer",
+      "minimum": 8000
+    },
+    "final": {
+      "type": "boolean"
+    },
+    "event": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "imageDataUrl": {
+      "type": "string"
+    },
+    "itemId": {
+      "type": "string"
+    },
+    "voice": {
+      "type": ["string", "null"]
+    },
+    "message": {
+      "type": "string"
+    },
+    "code": {
+      "type": "string"
+    }
+  },
+  "additionalProperties": true
+}

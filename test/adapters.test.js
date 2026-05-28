@@ -32,6 +32,7 @@ import {
   createSlackMessageAdapter,
   createSnapshotStreamSessionResolver,
   createStackChanRealtimeRelay,
+  createStackChanRealtimeSessionHandler,
   createStreamContextEnricher,
   createTextProcessMicroHarness,
   createVrmBodyBridge,
@@ -183,6 +184,27 @@ const createFakeStackChanWebSocket = ({ sent }) => {
 
     close() {
       this.readyState = 3;
+    }
+  };
+};
+
+const createFakeServerSocket = ({ sent }) => {
+  const listeners = new Map();
+  return {
+    addEventListener(type, callback) {
+      const callbacks = listeners.get(type) || [];
+      listeners.set(type, [...callbacks, callback]);
+    },
+    receive(payload) {
+      (listeners.get("message") || []).forEach((callback) =>
+        callback({ data: JSON.stringify(payload) })
+      );
+    },
+    send(raw) {
+      sent.push(JSON.parse(raw));
+    },
+    close() {
+      (listeners.get("close") || []).forEach((callback) => callback({}));
     }
   };
 };
@@ -562,6 +584,136 @@ test("StackChan realtime relay turns final audio chunks into voice turns", async
   assert.equal(speechItem.source, "stackchan-realtime-relay");
   assert.equal(sent.at(-1).type, "speech.audio");
   assert.equal(events.some((event) => event.type === "stackchan.stt.final"), true);
+});
+
+test("StackChan realtime session handler accepts firmware audio and returns speech", async () => {
+  const sent = [];
+  const turns = [];
+  const events = [];
+  const socket = createFakeServerSocket({ sent });
+  const handler = createStackChanRealtimeSessionHandler({
+    deviceToken: "device-token",
+    createQueue: () => createSpeechPlaybackQueue({ id: "server-queue" }),
+    harness: {
+      async receive(turn) {
+        turns.push(turn);
+        return {
+          kind: "spoken",
+          text: `返事: ${turn.text}`
+        };
+      }
+    },
+    stt: {
+      id: "fake-stt",
+      start({ onEvent }) {
+        return {
+          async push() {
+            const event = {
+              type: "stt.partial",
+              text: "こん",
+              delta: "こん",
+              final: false
+            };
+            onEvent(event);
+            return [event];
+          },
+          async end() {
+            const event = {
+              type: "stt.final",
+              text: "こんにちは",
+              delta: "にちは",
+              final: true
+            };
+            onEvent(event);
+            return [event];
+          },
+          cancel() {
+            return null;
+          }
+        };
+      }
+    },
+    tts: {
+      id: "fake-tts",
+      async stream({ text, onEvent }) {
+        const events = [
+          {
+            type: "tts.audio",
+            text,
+            audio: "wav-base64",
+            encoding: "wav",
+            final: false
+          },
+          {
+            type: "tts.completed",
+            text,
+            audio: "",
+            final: true
+          }
+        ];
+        events.forEach(onEvent);
+        return events;
+      }
+    }
+  });
+
+  const session = handler.handleConnection(socket, {
+    deviceId: "stackchan",
+    token: "device-token",
+    onEvent(event) {
+      events.push(event);
+    }
+  });
+  socket.receive({
+    type: "hello"
+  });
+  socket.receive({
+    type: "audio.chunk",
+    dataBase64: Buffer.from("pcm").toString("base64"),
+    final: true
+  });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  assert.equal(handler.kind, "stackchan-realtime-session-handler");
+  assert.equal(session.accepted, true);
+  assert.equal(sent[0].type, "ready");
+  assert.equal(sent.some((message) => message.type === "stt.event"), true);
+  assert.equal(sent.some((message) => message.type === "speech.audio"), true);
+  assert.equal(sent.at(-1).type, "response.final");
+  assert.equal(turns[0].modality, "voice");
+  assert.equal(turns[0].text, "こんにちは");
+  assert.equal(events.some((event) => event.type === "stackchan.accepted"), true);
+});
+
+test("StackChan realtime session handler rejects invalid device token", () => {
+  const sent = [];
+  const socket = createFakeServerSocket({ sent });
+  const handler = createStackChanRealtimeSessionHandler({
+    deviceToken: "device-token",
+    harness: {
+      async receive() {
+        return { text: "unused" };
+      }
+    },
+    stt: {
+      start() {
+        return {};
+      }
+    },
+    tts: {
+      async stream() {
+        return [];
+      }
+    }
+  });
+
+  const session = handler.handleConnection(socket, {
+    token: "wrong-token"
+  });
+
+  assert.equal(session.accepted, false);
+  assert.equal(sent[0].type, "error");
+  assert.equal(sent[0].code, "invalid_device_token");
 });
 
 test("Codex app-server micro harness starts thread and returns assistant deltas", async () => {
