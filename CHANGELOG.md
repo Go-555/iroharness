@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Browser E2E Stability
+
+- replaced Playwright `waitUntil: "networkidle"` with `"domcontentloaded"` in `examples/browser-screenshot-check.mjs` so the demo's long-lived `/events` SSE stream no longer prevents the 30s navigation timer from settling, which had made the Browser E2E workflow flaky
+- added a configurable navigation timeout (`IROHARNESS_E2E_NAVIGATION_TIMEOUT_MS`) so CI can tighten or relax the navigation budget independently of the server health timeout
+
 ### Public-Safe Operation
 
 - public-mode runtime in `iroharness/public-mode` that handles every public-surface turn through a single, audited boundary
