@@ -13,12 +13,36 @@ struct AppConfig {
   String deviceToken;
   String deviceId;
   uint32_t pollIntervalMs;
+  uint32_t wifiRetryBaseMs;
+  uint32_t wifiRetryMaxMs;
+  uint32_t httpRetryBaseMs;
+  uint32_t httpRetryMaxMs;
 };
 
 static AppConfig config;
-static uint32_t lastPollMs = 0;
+static uint32_t nextPollMs = 0;
+static uint32_t nextWifiAttemptMs = 0;
+static uint32_t wifiRetryMs = 0;
+static uint32_t httpRetryMs = 0;
 static String lastFace;
 static String lastText;
+
+static uint32_t clampDelay(uint32_t value, uint32_t minimum, uint32_t maximum) {
+  if (value < minimum) {
+    return minimum;
+  }
+  if (value > maximum) {
+    return maximum;
+  }
+  return value;
+}
+
+static uint32_t nextBackoff(uint32_t current, uint32_t base, uint32_t maximum) {
+  if (current == 0) {
+    return clampDelay(base, 250, maximum);
+  }
+  return clampDelay(current * 2, base, maximum);
+}
 
 static void drawStatus(const String& line1, const String& line2 = "") {
   M5.Display.fillScreen(TFT_BLACK);
@@ -53,21 +77,44 @@ static bool loadConfig() {
   config.deviceToken = doc["device_token"] | "";
   config.deviceId = doc["device_id"] | "stackchan";
   config.pollIntervalMs = doc["poll_interval_ms"] | 500;
+  config.wifiRetryBaseMs = doc["wifi_retry_base_ms"] | 1000;
+  config.wifiRetryMaxMs = doc["wifi_retry_max_ms"] | 30000;
+  config.httpRetryBaseMs = doc["http_retry_base_ms"] | 1000;
+  config.httpRetryMaxMs = doc["http_retry_max_ms"] | 15000;
+  config.pollIntervalMs = clampDelay(config.pollIntervalMs, 250, 60000);
+  config.wifiRetryBaseMs = clampDelay(config.wifiRetryBaseMs, 250, config.wifiRetryMaxMs);
+  config.httpRetryBaseMs = clampDelay(config.httpRetryBaseMs, 250, config.httpRetryMaxMs);
   return config.wifiSsid.length() > 0 && config.faceUrl.length() > 0;
 }
 
-static void connectWifi() {
+static bool connectWifi() {
+  uint32_t now = millis();
+  if (WiFi.status() == WL_CONNECTED) {
+    wifiRetryMs = 0;
+    nextWifiAttemptMs = 0;
+    return true;
+  }
+  if (nextWifiAttemptMs > 0 && now < nextWifiAttemptMs) {
+    return false;
+  }
   WiFi.mode(WIFI_STA);
   WiFi.begin(config.wifiSsid.c_str(), config.wifiPass.c_str());
   drawStatus("Wi-Fi", "Connecting...");
   uint32_t start = millis();
-  while (WiFi.status() != WL_CONNECTED && millis() - start < 20000) {
+  while (WiFi.status() != WL_CONNECTED && millis() - start < 8000) {
     delay(250);
+    M5.update();
   }
   if (WiFi.status() == WL_CONNECTED) {
+    wifiRetryMs = 0;
+    nextWifiAttemptMs = 0;
     drawStatus("Wi-Fi OK", WiFi.localIP().toString());
+    return true;
   } else {
-    drawStatus("Wi-Fi failed", config.wifiSsid);
+    wifiRetryMs = nextBackoff(wifiRetryMs, config.wifiRetryBaseMs, config.wifiRetryMaxMs);
+    nextWifiAttemptMs = millis() + wifiRetryMs;
+    drawStatus("Wi-Fi failed", "Retry in " + String(wifiRetryMs / 1000) + "s");
+    return false;
   }
 }
 
@@ -89,17 +136,26 @@ static void drawFace(const String& face, const String& mode, const String& text)
   M5.Display.drawString(text.substring(0, 48), 8, M5.Display.height() - 28);
 }
 
+static void resetHttpBackoff() {
+  httpRetryMs = 0;
+}
+
+static void scheduleHttpBackoff(const String& reason) {
+  httpRetryMs = nextBackoff(httpRetryMs, config.httpRetryBaseMs, config.httpRetryMaxMs);
+  nextPollMs = millis() + httpRetryMs;
+  drawStatus(reason, "Retry in " + String(httpRetryMs / 1000) + "s");
+}
+
 static void pollFace() {
-  if (WiFi.status() != WL_CONNECTED) {
-    connectWifi();
+  if (!connectWifi()) {
     return;
   }
   HTTPClient http;
   http.begin(config.faceUrl);
   int status = http.GET();
   if (status != 200) {
-    drawStatus("HTTP error", String(status));
     http.end();
+    scheduleHttpBackoff("HTTP " + String(status));
     return;
   }
   String body = http.getString();
@@ -107,9 +163,11 @@ static void pollFace() {
   JsonDocument doc;
   DeserializationError error = deserializeJson(doc, body);
   if (error) {
-    drawStatus("JSON error", error.c_str());
+    scheduleHttpBackoff("JSON error");
     return;
   }
+  resetHttpBackoff();
+  nextPollMs = millis() + config.pollIntervalMs;
   String face = doc["face"] | ":)";
   String mode = doc["mode"] | "idle";
   String text = doc["text"] | "";
@@ -117,7 +175,7 @@ static void pollFace() {
 }
 
 static void sendTouchInvoke() {
-  if (WiFi.status() != WL_CONNECTED || config.invokeUrl.length() == 0) {
+  if (!connectWifi() || config.invokeUrl.length() == 0) {
     return;
   }
   JsonDocument doc;
@@ -150,6 +208,7 @@ void setup() {
     return;
   }
   connectWifi();
+  nextPollMs = millis();
 }
 
 void loop() {
@@ -157,8 +216,8 @@ void loop() {
   if (M5.BtnA.wasClicked()) {
     sendTouchInvoke();
   }
-  if (millis() - lastPollMs >= config.pollIntervalMs) {
-    lastPollMs = millis();
+  if (millis() >= nextPollMs) {
+    nextPollMs = millis() + config.pollIntervalMs;
     pollFace();
   }
   delay(10);

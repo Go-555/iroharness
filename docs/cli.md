@@ -180,6 +180,13 @@ Rules:
 The gateway should be started from a view directory, not from the full source
 app, when running as a public or trusted service account.
 
+The Slack + StackChan example can use an exported trusted view directly:
+
+```bash
+IROHARNESS_VIEW_DIR=/Users/iroharness-trusted/iroha-view \
+npm run example:slack-stackchan
+```
+
 ## Audience Setup
 
 The generated app stores local audience data in `.iroharness/users.json`.

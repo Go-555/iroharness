@@ -86,7 +86,9 @@ Response:
 ```
 
 This is enough to verify that Slack and the physical body share one character
-state.
+state. The first poller also handles local Wi-Fi reconnect and HTTP retry
+backoff so host restarts or temporary network drops do not create a tight retry
+loop.
 
 ### Phase 1: SSE Body Relay
 
@@ -193,9 +195,10 @@ Until then, keep contracts and examples in the main monorepo.
 2. Done: add `protocols/device-config.schema.json`.
 3. Done: add `protocols/device-invoke.schema.json`.
 4. Done: add a minimal StackChan/CoreS3 face polling sketch.
-5. Add deeper integration tests around `/device/stackchan/invoke`.
-6. Add a WebSocket/SSE relay sketch.
-7. Add AIAvatarStackChan-compatible WebSocket mode.
+5. Done: add Wi-Fi reconnect and HTTP retry backoff to the face poller.
+6. Add deeper integration tests around `/device/stackchan/invoke`.
+7. Add a WebSocket/SSE relay sketch.
+8. Add AIAvatarStackChan-compatible WebSocket mode.
 
 The first firmware should be intentionally small. It should prove networking,
 display, and shared identity before attempting STT/TTS, camera, servo, and

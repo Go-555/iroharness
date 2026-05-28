@@ -116,6 +116,41 @@ micro harnesses.
   and robot projects
 - [x] monorepo absorption architecture for upstream ideas
 
+## Implementation Backlog Toward The Designed Product
+
+The checklist above means the OSS skeleton, contracts, examples, and package
+surface are in place. The designed product is not finished until the runtime
+boundaries and first real devices are comfortable for daily use.
+
+### P0: Slack + StackChan First Use
+
+- [x] View export writes gateway and work-runner boundary policies
+- [x] StackChan face poller handles Wi-Fi reconnect and HTTP retry backoff
+- [x] Slack + StackChan companion can boot directly from an exported trusted view
+- [ ] Slack onboarding produces a copy-paste checklist for Slack App settings
+- [ ] StackChan setup validates that the device can reach the Mac mini URL
+
+### P1: Zero-Trust Work Runner
+
+- [ ] Work Runner executable reads `work-runner-policy.json`
+- [ ] Work Runner scopes Codex/browser/repo access per requested workspace
+- [ ] Gateway-to-runner delegation records permission checks in Project OS
+- [ ] Public gateway cannot delegate work even when prompted through chat
+
+### P2: Voice And Physical Bodies
+
+- [ ] Production STT provider adapter
+- [ ] Production TTS provider adapter
+- [ ] Speech playback queue protocol and simulator
+- [ ] StackChan richer audio invoke path based on AIAvatarStackChan
+- [ ] OTA/provisioning strategy for physical devices
+
+### P3: Public Streaming Surfaces
+
+- [ ] YouTube live companion deployment preset
+- [ ] X/public chat gateway deployment preset
+- [ ] OBS/streamer runbook for public-safe memory and permissions
+
 ## Guiding Principle
 
 The macro harness owns identity. Models and external harnesses are engines,

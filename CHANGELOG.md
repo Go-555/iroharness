@@ -44,9 +44,11 @@ Initial OSS skeleton for a character macro harness.
 - Slack + Codex companion recipe that uses Slack Events API plus the host
   machine's Codex OAuth session
 - Slack + StackChan companion recipe with M5Stack face JSON polling and SSE
-  body output
+  body output, including `IROHARNESS_VIEW_DIR` support for exported trusted
+  views
 - device config and device invoke protocol schemas for physical bodies
-- minimal StackChan/CoreS3 PlatformIO face poller sketch with touch invoke
+- StackChan/CoreS3 PlatformIO face poller sketch with touch invoke, Wi-Fi
+  reconnect, and HTTP retry backoff
 - StackChan firmware strategy using AIAvatarStackChan as the reference while
   keeping macro identity in IroHarness
 - OBS browser overlay and OBS WebSocket stream controller

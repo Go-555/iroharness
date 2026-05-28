@@ -120,7 +120,11 @@ Use a LAN or Tailscale address that the M5Stack can reach. Do not use
   "invoke_url": "http://MAC_MINI_IP:4182/device/stackchan/invoke",
   "device_token": "YOUR_STACKCHAN_DEVICE_TOKEN",
   "device_id": "stackchan",
-  "poll_interval_ms": 500
+  "poll_interval_ms": 500,
+  "wifi_retry_base_ms": 1000,
+  "wifi_retry_max_ms": 30000,
+  "http_retry_base_ms": 1000,
+  "http_retry_max_ms": 15000
 }
 ```
 

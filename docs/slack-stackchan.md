@@ -21,6 +21,7 @@ Good now:
 - StackChan face JSON polling
 - StackChan Server-Sent Events stream
 - minimal StackChan/CoreS3 PlatformIO face poller sketch
+- device-side Wi-Fi reconnect and HTTP retry backoff in the face poller
 - shared character state between Slack and StackChan
 - optional Codex OAuth model use through `codex app-server`
 
@@ -28,7 +29,6 @@ Still early:
 
 - no full AIAvatarStackChan-compatible firmware yet
 - no built-in STT/TTS on the M5Stack device
-- no device-side reconnect/backoff helper yet
 - no OTA or provisioning flow yet
 
 For the firmware plan and how AIAvatarStackChan will be used as the main
@@ -56,6 +56,26 @@ StackChan SSE: http://127.0.0.1:4182/body/stackchan/events
 
 Expose `/slack/events` with Tailscale Serve, Cloudflare Tunnel, ngrok, or
 another trusted HTTPS ingress and set it as Slack's Events API Request URL.
+
+To run from an exported trusted view instead of the full source app:
+
+```bash
+npx iroharness view export ./my-companion \
+  --zone trusted \
+  --out /Users/iroharness-trusted/iroha-view \
+  --force
+
+IROHARNESS_VIEW_DIR=/Users/iroharness-trusted/iroha-view \
+SLACK_BOT_TOKEN=xoxb-... \
+SLACK_SIGNING_SECRET=... \
+STACKCHAN_DEVICE_TOKEN=... \
+SLACK_BOT_USER_ID=UIROHA \
+npm run example:slack-stackchan
+```
+
+In this mode, character files are read from `current/` and runtime state is
+written to the view's `state/` directory. The gateway does not need the full Core
+SSOT folder.
 
 ## StackChan Polling Contract
 
@@ -134,6 +154,22 @@ It does two things:
 
 Edit `examples/stackchan-face-poller/data/config.json`, then build/upload with
 PlatformIO.
+
+The face poller supports local retry settings:
+
+```json
+{
+  "poll_interval_ms": 500,
+  "wifi_retry_base_ms": 1000,
+  "wifi_retry_max_ms": 30000,
+  "http_retry_base_ms": 1000,
+  "http_retry_max_ms": 15000
+}
+```
+
+The device backs off locally when Wi-Fi or the host endpoint is unavailable, so
+temporary Mac mini restarts or network drops should not create a tight retry
+loop.
 
 ## Optional Codex OAuth
 

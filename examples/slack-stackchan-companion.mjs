@@ -1,9 +1,11 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
+import { existsSync, readFileSync } from "node:fs";
 import { createServer } from "node:http";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 
 import {
   createEchoBrain,
+  createFileCharacterProfile,
   createFileProjectOs,
   createFileUserRegistry,
   createHeuristicRouter,
@@ -67,6 +69,53 @@ const parseJson = (body) => {
   }
 };
 
+const readOptionalJson = (path) => {
+  if (!existsSync(path)) {
+    return null;
+  }
+  return JSON.parse(readFileSync(path, "utf8"));
+};
+
+const resolveRuntimePaths = () => {
+  const viewDir = process.env.IROHARNESS_VIEW_DIR;
+  if (!viewDir) {
+    const stateDir = process.env.IROHARNESS_STATE_DIR || join(process.cwd(), ".iroharness");
+    return Object.freeze({
+      profileDir: resolve(process.env.IROHARNESS_PROFILE_DIR || process.cwd()),
+      stateDir: resolve(stateDir),
+      viewDir: null,
+      manifest: null
+    });
+  }
+  const root = resolve(viewDir);
+  const currentDir = join(root, "current");
+  return Object.freeze({
+    profileDir: currentDir,
+    stateDir: resolve(process.env.IROHARNESS_STATE_DIR || join(root, "state")),
+    viewDir: root,
+    manifest: readOptionalJson(join(currentDir, "view-manifest.json"))
+  });
+};
+
+const createCharacterFromRuntime = ({ profileDir }) => {
+  const fileCharacter = createFileCharacterProfile({
+    dir: profileDir,
+    id: process.env.IROHARNESS_CHARACTER_ID || "iroha",
+    name: process.env.IROHARNESS_CHARACTER_NAME || "Iroha"
+  });
+  return Object.freeze({
+    ...fileCharacter,
+    id: process.env.IROHARNESS_CHARACTER_ID || fileCharacter.id,
+    name: process.env.IROHARNESS_CHARACTER_NAME || fileCharacter.name,
+    soul:
+      process.env.IROHARNESS_CHARACTER_SOUL ||
+      fileCharacter.soul ||
+      "A stable character macro harness that talks in Slack and appears through StackChan.",
+    voiceStyle:
+      process.env.IROHARNESS_CHARACTER_VOICE || fileCharacter.voiceStyle || "short, practical, warm"
+  });
+};
+
 const createBrainForSlot = ({ slot, codexWorkspace }) => {
   const prefix = `IROHARNESS_${slot.toUpperCase()}_BRAIN`;
   const provider = process.env[`${prefix}_PROVIDER`] || "echo";
@@ -90,15 +139,16 @@ const createSlackStackChanCompanion = () => {
   const port = Number(process.env.PORT || "4182");
   const host = process.env.HOST || "127.0.0.1";
   const codexWorkspace = process.env.CODEX_WORKSPACE || process.cwd();
+  const runtimePaths = resolveRuntimePaths();
   const stackchan = createM5StackBodyBridge({
     id: process.env.STACKCHAN_BODY_ID || "stackchan"
   });
 
   const projectOs = createFileProjectOs({
-    path: join(process.cwd(), ".iroharness", "slack-stackchan-pjos.json")
+    path: join(runtimePaths.stateDir, "slack-stackchan-pjos.json")
   });
   const userRegistry = createFileUserRegistry({
-    path: join(process.cwd(), ".iroharness", "users.json")
+    path: resolve(process.env.IROHARNESS_USERS_PATH || join(runtimePaths.stateDir, "users.json"))
   });
 
   if (process.env.IROHARNESS_SLACK_OWNER_USER_ID) {
@@ -130,14 +180,7 @@ const createSlackStackChanCompanion = () => {
       : [];
 
   const harness = createIroHarness({
-    character: {
-      id: process.env.IROHARNESS_CHARACTER_ID || "iroha",
-      name: process.env.IROHARNESS_CHARACTER_NAME || "Iroha",
-      soul:
-        process.env.IROHARNESS_CHARACTER_SOUL ||
-        "A stable character macro harness that talks in Slack and appears through StackChan.",
-      voiceStyle: process.env.IROHARNESS_CHARACTER_VOICE || "short, practical, warm"
-    },
+    character: createCharacterFromRuntime(runtimePaths),
     projectOs,
     userRegistry,
     router: createHeuristicRouter(),
@@ -228,7 +271,14 @@ const createSlackStackChanCompanion = () => {
       sendJson(response, 200, {
         ok: true,
         service: "iroharness-slack-stackchan",
-        body: stackchan.id
+        body: stackchan.id,
+        view: runtimePaths.viewDir
+          ? {
+              zone: runtimePaths.manifest?.zone || null,
+              profileDir: runtimePaths.profileDir,
+              stateDir: runtimePaths.stateDir
+            }
+          : null
       });
       return;
     }
@@ -333,3 +383,6 @@ console.log(`Slack Events URL: ${urls.slackEventsUrl}`);
 console.log(`StackChan face JSON: ${urls.stackchanFaceUrl}`);
 console.log(`StackChan invoke URL: ${urls.stackchanInvokeUrl}`);
 console.log(`StackChan SSE: ${urls.stackchanEventsUrl}`);
+if (process.env.IROHARNESS_VIEW_DIR) {
+  console.log(`IroHarness view: ${resolve(process.env.IROHARNESS_VIEW_DIR)}`);
+}

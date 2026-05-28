@@ -359,8 +359,11 @@ test("OSS contribution metadata is present and aligned with harness boundaries",
   assert.match(stackchanFirmware, /examples\/stackchan-face-poller/);
   assert.match(slackStackchan, /\/device\/stackchan\/invoke/);
   assert.match(slackStackchan, /STACKCHAN_DEVICE_TOKEN/);
+  assert.match(slackStackchan, /IROHARNESS_VIEW_DIR/);
   assert.match(slackStackchanExample, /requireEnv\("SLACK_SIGNING_SECRET"\)/);
   assert.match(slackStackchanExample, /requireEnv\("STACKCHAN_DEVICE_TOKEN"\)/);
+  assert.match(slackStackchanExample, /createFileCharacterProfile/);
+  assert.match(slackStackchanExample, /IROHARNESS_VIEW_DIR/);
   assert.match(slackStackchanExample, /invalid_device_token/);
   assert.doesNotMatch(slackStackchanExample, /if \(!signingSecret\)/);
   assert.match(slackCodexExample, /requireEnv\("SLACK_SIGNING_SECRET"\)/);
@@ -368,6 +371,10 @@ test("OSS contribution metadata is present and aligned with harness boundaries",
   assert.match(stackchanPoller, /\/config\.json/);
   assert.match(stackchanPoller, /\/device\/stackchan\/invoke/);
   assert.match(stackchanPoller, /x-iroharness-device-token/);
+  assert.match(stackchanPoller, /wifi_retry_base_ms/);
+  assert.match(stackchanPoller, /http_retry_base_ms/);
+  assert.match(stackchanPoller, /nextBackoff/);
+  assert.match(stackchanPoller, /nextWifiAttemptMs/);
   assert.match(postgresBackup, /pg_dump/);
   assert.match(postgresBackup, /--table=public\.iroharness_audit_log/);
   assert.match(postgresRestore, /IROHARNESS_RESTORE_CONFIRM/);
