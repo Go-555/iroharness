@@ -119,6 +119,52 @@ Copy the firmware config values into
 PlatformIO sketch directory. The M5Stack must use a LAN or Tailscale address it
 can reach; `127.0.0.1` only points back to the M5Stack itself.
 
+## View Export
+
+`iroharness view export` creates a zone-limited runtime view. This is the first
+implementation step toward Public Gateway / Trusted Gateway separation.
+
+```bash
+npx iroharness view export ./my-companion \
+  --zone trusted \
+  --out /Users/iroharness-trusted/iroha-view \
+  --force
+```
+
+The output shape is:
+
+```text
+/Users/iroharness-trusted/iroha-view/
+├── current/
+│   ├── SOUL.md
+│   ├── IDENTITY.md
+│   ├── VOICE.md
+│   ├── MEMORY.md
+│   ├── MEMORY.public.md
+│   ├── MEMORY.trusted.md
+│   ├── connections/
+│   └── view-manifest.json
+└── state/
+    ├── logs/
+    └── proposals/
+```
+
+Rules:
+
+- `current/` is generated from the source app and should be treated as read-only.
+- `state/` is where the gateway can write logs and proposals.
+- `.env` is never copied into a view.
+- Root `MEMORY.md` from the source app is treated as owner/core memory. Public
+  and trusted views only receive `memory/public.md` and `memory/trusted.md`
+  layers when they exist. The exported `MEMORY.md` is rebuilt from the allowed
+  layers for that zone.
+- Public views do not receive Slack or StackChan trusted connection files.
+- Trusted views receive sanitized connection metadata; Wi-Fi passwords and
+  device tokens are redacted in exported connection JSON.
+
+The gateway should be started from a view directory, not from the full source
+app, when running as a public or trusted service account.
+
 ## Audience Setup
 
 The generated app stores local audience data in `.iroharness/users.json`.

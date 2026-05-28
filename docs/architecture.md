@@ -18,6 +18,39 @@ Micro Harnesses
   execute specialized work such as coding, research, review, or automation
 ```
 
+For zero-trust deployments, those layers run behind explicit gateway and view
+boundaries:
+
+```text
+Core SSOT
+  owns SOUL, memory, policy, skills, users, and source connection records
+
+View Export
+  materializes only the files a zone is allowed to see
+
+Public Gateway
+  handles YouTube, X, and public chat from a public view only
+
+Trusted Gateway
+  handles Slack, StackChan, and private team channels from a trusted view
+
+Work Runner
+  handles Codex, OpenClaw, browser control, and repo work in scoped workspaces
+```
+
+The initial CLI support for this boundary is:
+
+```bash
+iroharness view export ./my-companion --zone public --out /Users/iroharness-public/iroha-view
+iroharness view export ./my-companion --zone trusted --out /Users/iroharness-trusted/iroha-view
+```
+
+Generated views contain a `current/view-manifest.json` allowlist and a separate
+`state/` directory for logs and proposals. They do not copy `.env`, firmware
+secrets, root/core memory, or the whole `.iroharness/` runtime directory. The
+exported `MEMORY.md` is generated from allowed memory layers such as
+`memory/public.md`, `memory/trusted.md`, and `memory/owner.md`.
+
 ## Runtime Flow
 
 ```text

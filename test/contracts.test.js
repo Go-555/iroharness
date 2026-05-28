@@ -249,6 +249,7 @@ test("OSS contribution metadata is present and aligned with harness boundaries",
   [
     "OpenClaw-style `install.sh`",
     "installation guide",
+    "iroharness view export",
     "HTTP brain adapters",
     "permission override expiry and revoke support",
     "file-backed audience audit log plus export/import",
@@ -334,6 +335,7 @@ test("OSS contribution metadata is present and aligned with harness boundaries",
   assert.match(matrix, /StackChan face poller firmware/);
   assert.match(matrix, /Device config\/invoke protocol/);
   assert.match(matrix, /OpenClaw-style installer/);
+  assert.match(matrix, /Zone view export/);
   assert.match(installScript, /IROHARNESS_INSTALL_METHOD/);
   assert.match(installScript, /npm run example:slack-stackchan/);
   assert.match(installScript, /\/device\/stackchan\/invoke/);

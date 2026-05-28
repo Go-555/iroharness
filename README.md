@@ -243,6 +243,22 @@ npx iroharness connect slack ~/iroharness-apps/iroha --owner-slack-user-id UOWNE
 npx iroharness connect stackchan ~/iroharness-apps/iroha --host-url http://MAC_MINI_IP:4182
 ```
 
+外部公開する入口は、Core全体ではなくzone別Viewから起動する前提にします。
+`view export` は `.env` やルートのcore memoryをコピーせず、許可されたmemory
+layerとredact済み接続情報だけを `current/` に出します。
+
+```bash
+npx iroharness view export ~/iroharness-apps/iroha \
+  --zone public \
+  --out /Users/iroharness-public/iroha-view \
+  --force
+
+npx iroharness view export ~/iroharness-apps/iroha \
+  --zone trusted \
+  --out /Users/iroharness-trusted/iroha-view \
+  --force
+```
+
 CLIの詳細は [docs/cli.md](./docs/cli.md) を見てください。
 browser screenshot E2E は [docs/ci.md](./docs/ci.md) にあります。
 

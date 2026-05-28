@@ -75,6 +75,9 @@ Initial OSS skeleton for a character macro harness.
   identity; `.iroharness/` is ignored recursively
 - Slack examples now require signing secrets, and StackChan invoke requires a
   per-device token
+- `iroharness view export` creates public/trusted/owner runtime views with a
+  `view-manifest.json`, read-only `current/` files, and writable `state/`
+  directories for zero-trust gateway separation
 - CLI `init`, `doctor`, `doctor --json`, and `audience`
   `user/link/grant/revoke/stream/export/import/list`
 - generated `AGENTS.md` companion instructions for character, permission, and

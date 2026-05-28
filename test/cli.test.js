@@ -412,6 +412,104 @@ test("CLI connect prepares Slack and StackChan onboarding files", () => {
   assert.equal(stackchanResult.firmwareConfig.device_token, "[redacted]");
 });
 
+test("CLI view export creates zone-limited runtime views", () => {
+  const dir = mkdtempSync(join(tmpdir(), "iroharness-view-export-"));
+  const appDir = join(dir, "companion");
+  const publicView = join(dir, "public-view");
+  const trustedView = join(dir, "trusted-view");
+  const init = runCli(["init", appDir, "--character", "Iroha"]);
+  const slack = runCli([
+    "connect",
+    "slack",
+    appDir,
+    "--bot-token",
+    "xoxb-test",
+    "--signing-secret",
+    "secret-test",
+    "--bot-user-id",
+    "UIROHA",
+    "--owner-slack-user-id",
+    "UOWNER"
+  ]);
+  const stackchan = runCli([
+    "connect",
+    "stackchan",
+    appDir,
+    "--host-url",
+    "http://100.64.0.10:4182",
+    "--wifi-ssid",
+    "ssid-test",
+    "--wifi-pass",
+    "pass-test",
+    "--device-token",
+    "device-secret-test"
+  ]);
+  mkdirSync(join(appDir, "memory"), { recursive: true });
+  writeFileSync(join(appDir, "MEMORY.md"), "# Core Memory\nprivate-core-secret\n", "utf8");
+  writeFileSync(join(appDir, "memory", "public.md"), "# Public Memory\npublic-safe\n", "utf8");
+  writeFileSync(join(appDir, "memory", "trusted.md"), "# Trusted Memory\ntrusted-safe\n", "utf8");
+  const publicExport = runCli([
+    "view",
+    "export",
+    appDir,
+    "--zone",
+    "public",
+    "--out",
+    publicView,
+    "--force",
+    "--json"
+  ]);
+  const trustedExport = runCli([
+    "view",
+    "export",
+    appDir,
+    "--zone",
+    "trusted",
+    "--out",
+    trustedView,
+    "--force",
+    "--json"
+  ]);
+  const publicResult = JSON.parse(publicExport.stdout);
+  const trustedResult = JSON.parse(trustedExport.stdout);
+  const publicManifest = JSON.parse(
+    readFileSync(join(publicView, "current", "view-manifest.json"), "utf8")
+  );
+  const trustedManifest = JSON.parse(
+    readFileSync(join(trustedView, "current", "view-manifest.json"), "utf8")
+  );
+  const trustedStackchan = JSON.parse(
+    readFileSync(join(trustedView, "current", "connections", "stackchan.device.json"), "utf8")
+  );
+  const publicMemory = readFileSync(join(publicView, "current", "MEMORY.md"), "utf8");
+  const trustedMemory = readFileSync(join(trustedView, "current", "MEMORY.md"), "utf8");
+
+  assert.equal(init.status, 0, init.stderr);
+  assert.equal(slack.status, 0, slack.stderr);
+  assert.equal(stackchan.status, 0, stackchan.stderr);
+  assert.equal(publicExport.status, 0, publicExport.stderr);
+  assert.equal(trustedExport.status, 0, trustedExport.stderr);
+  assert.equal(publicResult.manifest.zone, "public");
+  assert.equal(trustedResult.manifest.zone, "trusted");
+  assert.equal(existsSync(join(publicView, "current", "SOUL.md")), true);
+  assert.equal(existsSync(join(publicView, "current", "MEMORY.md")), true);
+  assert.match(publicMemory, /public-safe/);
+  assert.doesNotMatch(publicMemory, /private-core-secret/);
+  assert.match(trustedMemory, /public-safe/);
+  assert.match(trustedMemory, /trusted-safe/);
+  assert.doesNotMatch(trustedMemory, /private-core-secret/);
+  assert.equal(existsSync(join(publicView, "current", ".env")), false);
+  assert.equal(existsSync(join(publicView, "current", "connections", "slack.json")), false);
+  assert.equal(existsSync(join(publicView, "state", "logs")), true);
+  assert.equal(trustedManifest.rules.envCopied, false);
+  assert.equal(trustedManifest.rules.unknownFilesAllowed, false);
+  assert.equal(trustedManifest.files.includes("view-manifest.json"), true);
+  assert.equal(trustedManifest.files.includes("connections/slack.json"), true);
+  assert.equal(trustedManifest.files.includes("connections/stackchan.device.json"), true);
+  assert.equal(publicManifest.files.includes("connections/slack.json"), false);
+  assert.equal(trustedStackchan.wifiNetworks[0].pass, "[redacted]");
+});
+
 test("CLI doctor production profile requires a strong admin token", () => {
   const dir = mkdtempSync(join(tmpdir(), "iroharness-doctor-production-"));
   const appDir = join(dir, "companion");

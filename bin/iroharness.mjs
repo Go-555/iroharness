@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { randomBytes } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 
 import { createFileUserRegistry } from "../src/index.js";
@@ -19,6 +19,7 @@ Usage:
   iroharness audience list [dir] [--json]
   iroharness connect slack [dir] [--bot-token <xoxb-token>] [--signing-secret <secret>] [--bot-user-id <user-id>] [--owner-slack-user-id <user-id>]
   iroharness connect stackchan [dir] [--host-url <url>] [--wifi-ssid <ssid>] [--wifi-pass <password>] [--device-id <id>] [--device-token <token>] [--poll-interval-ms <ms>]
+  iroharness view export [dir] --zone <public|trusted|owner> --out <view-dir> [--force]
   iroharness doctor [dir] [--production] [--json]
   iroharness --help
 
@@ -31,6 +32,7 @@ Examples:
   iroharness audience import ./my-companion --file ./audience-backup.json --force
   iroharness connect slack ./my-companion --owner-slack-user-id UOWNER
   iroharness connect stackchan ./my-companion --host-url http://100.64.0.10:4182
+  iroharness view export ./my-companion --zone trusted --out /Users/iroharness-trusted/iroha-view --force
   iroharness doctor ./my-companion
   IROHARNESS_ADMIN_TOKEN=... iroharness doctor ./my-companion --production
   iroharness doctor ./my-companion --production --json
@@ -70,6 +72,8 @@ const parseArgs = (argv) => {
   let deviceId = "stackchan";
   let deviceToken = null;
   let pollIntervalMs = "500";
+  let zone = null;
+  let out = null;
   const identities = {};
   const positional = [];
 
@@ -227,6 +231,16 @@ const parseArgs = (argv) => {
       index += 1;
       continue;
     }
+    if (value === "--zone") {
+      zone = rest[index + 1];
+      index += 1;
+      continue;
+    }
+    if (value === "--out") {
+      out = rest[index + 1];
+      index += 1;
+      continue;
+    }
     if (["--youtube", "--discord", "--slack", "--vscode", "--browser", "--m5stack", "--even-g2"].includes(value)) {
       identities[value.slice(2)] = rest[index + 1];
       index += 1;
@@ -236,7 +250,7 @@ const parseArgs = (argv) => {
       positional.push(value);
     }
   }
-  if (command === "audience" || command === "connect") {
+  if (command === "audience" || command === "connect" || command === "view") {
     [action = null, dir = "."] = positional;
   } else if (positional.length > 0) {
     dir = positional[positional.length - 1];
@@ -276,6 +290,8 @@ const parseArgs = (argv) => {
     deviceId,
     deviceToken,
     pollIntervalMs,
+    zone,
+    out,
     identities
   };
 };
@@ -991,6 +1007,8 @@ const writeJsonFile = (path, value) => {
   writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`, "utf8");
 };
 
+const readJsonFile = (path) => JSON.parse(readFileSync(path, "utf8"));
+
 const envLineValue = (value) => {
   const text = String(value || "");
   return /^[A-Za-z0-9_./:@-]*$/.test(text) ? text : JSON.stringify(text);
@@ -1029,6 +1047,175 @@ const redactConnectionSecrets = (value) => {
       return [key, redactConnectionSecrets(item)];
     })
   );
+};
+
+const sanitizeViewJson = (value) => redactConnectionSecrets(value);
+
+const copyViewFile = ({ sourceRoot, targetRoot, sourcePath, targetPath = sourcePath, files }) => {
+  const source = join(sourceRoot, sourcePath);
+  if (!existsSync(source)) {
+    return;
+  }
+  const target = join(targetRoot, targetPath);
+  mkdirSync(dirname(target), { recursive: true });
+  cpSync(source, target, { recursive: true });
+  files.push(targetPath);
+};
+
+const writeViewText = ({ targetRoot, targetPath, content, files }) => {
+  const target = join(targetRoot, targetPath);
+  mkdirSync(dirname(target), { recursive: true });
+  writeFileSync(target, content, "utf8");
+  files.push(targetPath);
+};
+
+const writeViewJson = ({ targetRoot, targetPath, value, files }) => {
+  writeJsonFile(join(targetRoot, targetPath), value);
+  files.push(targetPath);
+};
+
+const optionalTextFile = (path) => (existsSync(path) ? readFileSync(path, "utf8") : null);
+
+const defaultPublicMemory = `# Public Memory
+
+No public memory has been exported yet.
+`;
+
+const memoryLayer = ({ sourceRoot, name, sourcePath, fallback = null }) => {
+  const content = optionalTextFile(join(sourceRoot, sourcePath)) || fallback;
+  if (!content) {
+    return null;
+  }
+  return {
+    name,
+    content: content.endsWith("\n") ? content : `${content}\n`
+  };
+};
+
+const exportMemoryFiles = ({ sourceRoot, targetRoot, zone, files }) => {
+  const layers = [
+    memoryLayer({
+      sourceRoot,
+      name: "public",
+      sourcePath: join("memory", "public.md"),
+      fallback: defaultPublicMemory
+    }),
+    ...(zone !== "public"
+      ? [
+          memoryLayer({
+            sourceRoot,
+            name: "trusted",
+            sourcePath: join("memory", "trusted.md")
+          })
+        ]
+      : []),
+    ...(zone === "owner"
+      ? [
+          memoryLayer({
+            sourceRoot,
+            name: "owner",
+            sourcePath: join("memory", "owner.md"),
+            fallback: optionalTextFile(join(sourceRoot, "MEMORY.md"))
+          })
+        ]
+      : [])
+  ].filter(Boolean);
+
+  const aggregate = layers
+    .map(({ name, content }) => `<!-- iroharness-memory-layer: ${name} -->\n${content}`)
+    .join("\n");
+
+  writeViewText({
+    targetRoot,
+    targetPath: "MEMORY.md",
+    content: aggregate,
+    files
+  });
+
+  layers.forEach(({ name, content }) => {
+    writeViewText({
+      targetRoot,
+      targetPath: `MEMORY.${name}.md`,
+      content,
+      files
+    });
+  });
+};
+
+const viewConnectionFilesForZone = (zone) => {
+  if (zone === "public") {
+    return Object.freeze([]);
+  }
+  if (zone === "trusted") {
+    return Object.freeze(["slack.json", "stackchan.device.json"]);
+  }
+  return Object.freeze(["slack.json", "stackchan.device.json"]);
+};
+
+const exportConnectionFiles = ({ sourceRoot, targetRoot, zone, files }) => {
+  const connectionDir = join(sourceRoot, ".iroharness", "connections");
+  viewConnectionFilesForZone(zone).forEach((fileName) => {
+    const source = join(connectionDir, fileName);
+    if (!existsSync(source)) {
+      return;
+    }
+    writeViewJson({
+      targetRoot,
+      targetPath: join("connections", fileName),
+      value: sanitizeViewJson(readJsonFile(source)),
+      files
+    });
+  });
+};
+
+const exportView = (args) => {
+  if (args.action !== "export") {
+    throw new Error(`Unknown view action: ${args.action || "(missing)"}\n\n${usage}`);
+  }
+  const zone = requireValue(args.zone, "--zone");
+  if (!["public", "trusted", "owner"].includes(zone)) {
+    throw new Error("--zone must be public, trusted, or owner");
+  }
+  const sourceRoot = resolve(args.dir);
+  const viewRoot = resolve(requireValue(args.out, "--out"));
+  const currentRoot = join(viewRoot, "current");
+  if (existsSync(currentRoot) && !args.force) {
+    throw new Error(`${currentRoot} already exists. Use --force to replace generated view files.`);
+  }
+  rmSync(currentRoot, { recursive: true, force: true });
+  mkdirSync(currentRoot, { recursive: true });
+  mkdirSync(join(viewRoot, "state", "logs"), { recursive: true });
+  mkdirSync(join(viewRoot, "state", "proposals"), { recursive: true });
+
+  const files = [];
+  ["SOUL.md", "IDENTITY.md", "VOICE.md"].forEach((fileName) => {
+    copyViewFile({ sourceRoot, targetRoot: currentRoot, sourcePath: fileName, files });
+  });
+  exportMemoryFiles({ sourceRoot, targetRoot: currentRoot, zone, files });
+  exportConnectionFiles({ sourceRoot, targetRoot: currentRoot, zone, files });
+
+  const manifestFiles = [...files, "view-manifest.json"].sort();
+  const manifest = {
+    kind: "iroharness.view",
+    zone,
+    source: sourceRoot,
+    exportedAt: new Date().toISOString(),
+    files: manifestFiles,
+    statePath: join(viewRoot, "state"),
+    rules: {
+      coreReadableByRunner: false,
+      envCopied: false,
+      secretsCopied: false,
+      unknownFilesAllowed: false
+    }
+  };
+  writeViewJson({ targetRoot: currentRoot, targetPath: "view-manifest.json", value: manifest, files });
+  return {
+    sourceRoot,
+    viewRoot,
+    currentRoot,
+    manifest
+  };
 };
 
 const createCliAuditRecord = ({ action, resourceType, resourceId, metadata = {} }) => ({
@@ -1385,6 +1572,16 @@ const main = () => {
   }
   if (args.command === "connect") {
     connect(args);
+    return;
+  }
+  if (args.command === "view") {
+    const result = exportView(args);
+    if (args.json) {
+      console.log(JSON.stringify(result, null, 2));
+      return;
+    }
+    console.log(`exported ${result.manifest.zone} view to ${result.currentRoot}`);
+    console.log(`files: ${result.manifest.files.length}`);
     return;
   }
   if (args.command !== "init") {
