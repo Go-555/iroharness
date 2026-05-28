@@ -152,9 +152,19 @@ mini and physical device.
 
 ### P3: Public Streaming Surfaces
 
+- [x] OBS/streamer runbook for public-safe memory and permissions
+- [x] public-mode runtime, public-memory drawers, redactor, prompt-injection detector, kill switch, viewer identity hasher
 - [ ] YouTube live companion deployment preset
 - [ ] X/public chat gateway deployment preset
-- [ ] OBS/streamer runbook for public-safe memory and permissions
+
+P3 now ships the safety boundary that every public surface must use
+(`iroharness/public-mode`, `iroharness/public-safety`,
+`iroharness/public-memory`) plus three operational documents
+(`docs/streamer-runbook.md`, `docs/public-memory-policy.md`,
+`docs/redaction-policy.md`). The YouTube and X deployment presets are
+intentionally kept open: the next public surface that actually goes live picks
+up the existing public-mode runtime through `examples/public-mode-companion.mjs`
+and adds only the platform-specific adapter wiring.
 
 ## Guiding Principle
 

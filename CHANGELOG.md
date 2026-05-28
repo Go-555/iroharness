@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+### Public-Safe Operation
+
+- public-mode runtime in `iroharness/public-mode` that handles every public-surface turn through a single, audited boundary
+- four-drawer memory model in `iroharness/public-memory` (`private_long_term`, `private_user`, `public_long_term`, `public_stream_log`) with a routed facade that only exposes the public drawers to the brain
+- `iroharness/public-safety` primitives: hot-reloadable customer-name redactor, prompt-injection detector with Japanese + English defaults, three-state kill switch (running / paused / stopped), safe failure gate that stays silent on brain errors, viewer-identity hasher for deletable analytics
+- runnable companion example in `examples/public-mode-companion.mjs` that demonstrates an allowed turn, a blocked injection turn, and a blocked delegation turn
+- operational documentation: `docs/streamer-runbook.md`, `docs/public-memory-policy.md`, `docs/redaction-policy.md`
+- exported the three new modules through `package.json` `exports` (`./public-mode`, `./public-safety`, `./public-memory`) so adapters can depend on the safety boundary without reaching into `src/`
+
 ## 0.1.0
 
 Initial OSS skeleton for a character macro harness.
