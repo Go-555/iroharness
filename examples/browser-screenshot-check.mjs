@@ -6,6 +6,9 @@ const port = Number(process.env.IROHARNESS_E2E_PORT || 4179);
 const baseUrl = process.env.IROHARNESS_E2E_URL || `http://127.0.0.1:${port}`;
 const outputDir = resolve(process.env.IROHARNESS_E2E_OUTPUT_DIR || "agent-output/browser-e2e");
 const timeoutMs = Number(process.env.IROHARNESS_E2E_TIMEOUT_MS || 20000);
+const navigationTimeoutMs = Number(
+  process.env.IROHARNESS_E2E_NAVIGATION_TIMEOUT_MS || 20000
+);
 
 const sleep = (ms) => new Promise((resolveSleep) => setTimeout(resolveSleep, ms));
 
@@ -99,13 +102,15 @@ const run = async () => {
   const browser = await chromium.launch();
   try {
     const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+    page.setDefaultNavigationTimeout(navigationTimeoutMs);
+    page.setDefaultTimeout(navigationTimeoutMs);
 
-    await page.goto(baseUrl, { waitUntil: "networkidle" });
+    await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
     await assertLocatorVisible(page, "#avatar");
     await assertLocatorVisible(page, "#turn-form");
     const chatPath = await screenshot({ page, name: "chat" });
 
-    await page.goto(`${baseUrl}/?view=overlay`, { waitUntil: "networkidle" });
+    await page.goto(`${baseUrl}/?view=overlay`, { waitUntil: "domcontentloaded" });
     await assertLocatorVisible(page, "#avatar");
     const overlayHidden = await page.locator(".panel").evaluate((node) => {
       const style = window.getComputedStyle(node);
@@ -116,7 +121,7 @@ const run = async () => {
     }
     const overlayPath = await screenshot({ page, name: "overlay" });
 
-    await page.goto(`${baseUrl}/?view=admin&token=e2e-admin-token`, { waitUntil: "networkidle" });
+    await page.goto(`${baseUrl}/?view=admin&token=e2e-admin-token`, { waitUntil: "domcontentloaded" });
     await assertLocatorVisible(page, "#admin-token-form");
     await assertLocatorVisible(page, "#user-form");
     await assertLocatorVisible(page, "#audience-table");
