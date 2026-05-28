@@ -77,6 +77,9 @@ npx iroharness connect slack ./my-companion \
 
 This updates `.env`, writes `.iroharness/connections/slack.json`, and links the
 owner Slack user in `.iroharness/users.json` when an owner Slack ID is supplied.
+It also writes `.iroharness/connections/slack-onboarding.md`, a copy-paste
+checklist for Slack Bot Token Scopes, Event Subscriptions, Request URL, and the
+local `.env` values.
 
 Current prototype runtime:
 

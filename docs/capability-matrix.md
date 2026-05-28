@@ -74,7 +74,7 @@ Status labels:
 |---|---|---|---|
 | File-backed local app | built-in | `iroharness init` | Generates a runnable local companion app. |
 | OpenClaw-style installer | script | `install.sh`, `docs/install.md` | Installs from GitHub or npm, creates a per-user companion app, and points to StackChan setup. |
-| Connection onboarding | CLI | `iroharness connect slack`, `iroharness connect stackchan` | Generates first Slack env and StackChan device/firmware config files. |
+| Connection onboarding | CLI | `iroharness connect slack`, `iroharness connect stackchan` | Generates first Slack env/checklist and StackChan device/firmware config files. |
 | Zone view export | CLI | `iroharness view export` | Creates public/trusted/owner runtime views with allowlisted files, redacted source paths for public/trusted views, redacted connection metadata, gateway/work-runner policies, and zone-filtered Project OS snapshots. |
 | Doctor checks | built-in | `iroharness doctor --production --json` | CI/deployment preflight for generated apps, including StackChan firmware URL checks when connected. |
 | PostgreSQL/Supabase audience schema | contract | `protocols/sql/postgres-audience.sql` | Production table layer for users, identities, permissions, stream sessions, and audit logs. |

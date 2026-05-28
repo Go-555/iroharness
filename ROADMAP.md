@@ -127,7 +127,7 @@ boundaries and first real devices are comfortable for daily use.
 - [x] View export writes gateway and work-runner boundary policies
 - [x] StackChan face poller handles Wi-Fi reconnect and HTTP retry backoff
 - [x] Slack + StackChan companion can boot directly from an exported trusted view
-- [ ] Slack onboarding produces a copy-paste checklist for Slack App settings
+- [x] Slack onboarding produces a copy-paste checklist for Slack App settings
 - [x] StackChan setup validates that firmware is not pointed at loopback/local-only URLs
 
 ### P1: Zero-Trust Work Runner

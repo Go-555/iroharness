@@ -373,6 +373,10 @@ test("CLI connect prepares Slack and StackChan onboarding files", () => {
   const slackResult = JSON.parse(slack.stdout);
   const stackchanResult = JSON.parse(stackchan.stdout);
   const env = readFileSync(join(appDir, ".env"), "utf8");
+  const slackOnboarding = readFileSync(
+    join(appDir, ".iroharness", "connections", "slack-onboarding.md"),
+    "utf8"
+  );
   const slackConnection = JSON.parse(
     readFileSync(join(appDir, ".iroharness", "connections", "slack.json"), "utf8")
   );
@@ -397,6 +401,12 @@ test("CLI connect prepares Slack and StackChan onboarding files", () => {
   assert.equal(slackConnection.preset, "slack-text");
   assert.equal(slackConnection.body.kind, "presence");
   assert.equal(slackResult.connection.requiredEnv.includes("SLACK_BOT_TOKEN"), true);
+  assert.equal(slackResult.onboardingPath.endsWith("slack-onboarding.md"), true);
+  assert.match(slackOnboarding, /app_mentions:read/);
+  assert.match(slackOnboarding, /chat:write/);
+  assert.match(slackOnboarding, /https:\/\/YOUR_HOST\/slack\/events/);
+  assert.match(slackOnboarding, /SLACK_BOT_USER_ID=UIROHA/);
+  assert.match(slackOnboarding, /IROHARNESS_SLACK_OWNER_USER_ID=UOWNER/);
   assert.equal(audience.users.some((user) => user.id === "owner"), true);
   assert.equal(stackchanResult.deviceConfig.server.baseUrl, "http://100.64.0.10:4182");
   assert.equal(stackchanDevice.kind, "stackchan");

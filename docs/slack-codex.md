@@ -77,6 +77,9 @@ Minimum Slack app setup:
 - Request URL:
   - `https://your-host.example/slack/events`
 
+`iroharness connect slack` writes the same setup as a local checklist at
+`.iroharness/connections/slack-onboarding.md`.
+
 By default, the example uses `mentionOnly: true`, so normal channel messages are
 ignored unless the bot is mentioned. Set `SLACK_MENTION_ONLY=0` only in trusted
 channels.

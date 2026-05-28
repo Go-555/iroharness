@@ -73,6 +73,8 @@ Initial OSS skeleton for a character macro harness.
   StackChan connection
 - `iroharness connect slack` and `iroharness connect stackchan` for first
   onboarding files, `.env` setup, owner Slack identity, and firmware config
+- `iroharness connect slack` writes a copy-paste Slack App onboarding checklist
+  at `.iroharness/connections/slack-onboarding.md`
 - `iroharness doctor` validates StackChan firmware host URLs and fails on
   loopback/local-only addresses that a physical M5Stack cannot reach
 - generated apps no longer map unauthenticated browser guests to local owner

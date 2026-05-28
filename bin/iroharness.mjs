@@ -1505,9 +1505,57 @@ const createCliAuditRecord = ({ action, resourceType, resourceId, metadata = {} 
   resourceType,
   resourceId,
   userId: null,
-  metadata,
-  createdAt: new Date().toISOString()
+    metadata,
+    createdAt: new Date().toISOString()
 });
+
+const createSlackOnboardingMarkdown = ({ botUserId, ownerSlackUserId }) => `# Slack App Onboarding
+
+Use this checklist after running \`iroharness connect slack\`.
+
+## 1. Create Or Open The Slack App
+
+- [ ] Create a Slack app in the target workspace.
+- [ ] Open **OAuth & Permissions**.
+- [ ] Add Bot Token Scopes:
+  - [ ] \`app_mentions:read\`
+  - [ ] \`chat:write\`
+  - [ ] \`channels:history\` when using public-channel message events
+  - [ ] \`groups:history\` when using private-channel message events
+- [ ] Install the app to the workspace.
+- [ ] Copy the Bot User OAuth Token into \`.env\` as \`SLACK_BOT_TOKEN\`.
+
+## 2. Configure Events
+
+- [ ] Open **Event Subscriptions**.
+- [ ] Enable events.
+- [ ] Set Request URL to:
+
+\`\`\`text
+https://YOUR_HOST/slack/events
+\`\`\`
+
+- [ ] Subscribe to bot events:
+  - [ ] \`app_mention\`
+  - [ ] \`message.channels\` only when public channel listening is needed
+  - [ ] \`message.groups\` only when private channel listening is needed
+
+## 3. Fill Local Environment
+
+- [ ] Copy the Slack signing secret into \`.env\` as \`SLACK_SIGNING_SECRET\`.
+- [ ] Set \`SLACK_BOT_USER_ID=${botUserId}\`.
+- [ ] Set \`IROHARNESS_SLACK_OWNER_USER_ID=${ownerSlackUserId}\`.
+- [ ] Keep \`SLACK_MENTION_ONLY=1\` unless every channel is trusted.
+
+## 4. Run
+
+\`\`\`bash
+npm run example:slack-stackchan
+\`\`\`
+
+Expose \`/slack/events\` from the running host with Tailscale Serve, Cloudflare
+Tunnel, ngrok, or another trusted HTTPS ingress.
+`;
 
 const optionalIsoDate = (value, label) => {
   if (!value) {
@@ -1679,10 +1727,11 @@ const connectSlack = (args) => {
   const envPath = join(targetDir, ".env");
   mkdirSync(connectionDir, { recursive: true });
   const ownerSlackUserId = args.ownerSlackUserId || "UOWNER";
+  const botUserId = args.botUserId || "UIROHA";
   mergeEnvFile(envPath, {
     SLACK_BOT_TOKEN: args.botToken || "xoxb-...",
     SLACK_SIGNING_SECRET: args.signingSecret || "...",
-    SLACK_BOT_USER_ID: args.botUserId || "UIROHA",
+    SLACK_BOT_USER_ID: botUserId,
     SLACK_MENTION_ONLY: "1",
     IROHARNESS_SLACK_OWNER_USER_ID: ownerSlackUserId
   });
@@ -1708,7 +1757,13 @@ const connectSlack = (args) => {
     ]
   };
   const connectionPath = join(connectionDir, "slack.json");
+  const onboardingPath = join(connectionDir, "slack-onboarding.md");
   writeJsonFile(connectionPath, connection);
+  writeFileSync(
+    onboardingPath,
+    createSlackOnboardingMarkdown({ botUserId, ownerSlackUserId }),
+    "utf8"
+  );
   if (args.ownerSlackUserId) {
     audienceRegistry(args.dir).registerUser({
       id: "owner",
@@ -1724,6 +1779,7 @@ const connectSlack = (args) => {
     targetDir,
     envPath,
     connectionPath,
+    onboardingPath,
     connection
   };
 };
@@ -1811,6 +1867,7 @@ const connect = (args) => {
     console.log(`configured Slack in ${result.targetDir}`);
     console.log(`env: ${result.envPath}`);
     console.log(`connection: ${result.connectionPath}`);
+    console.log(`onboarding: ${result.onboardingPath}`);
     console.log("next: fill real Slack values in .env, then expose /slack/events on the running host");
     return;
   }
