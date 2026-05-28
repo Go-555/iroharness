@@ -170,6 +170,62 @@ const connectWebSocket = ({ url, token }) =>
 
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+const createLatencyProbe = ({ budgetMs }) => {
+  const startedAt = Date.now();
+  const marks = new Map([["started", startedAt]]);
+  const mark = (name) => {
+    if (!marks.has(name)) {
+      marks.set(name, Date.now());
+    }
+  };
+  const delta = (name) => {
+    const value = marks.get(name);
+    return typeof value === "number" ? value - startedAt : null;
+  };
+  return Object.freeze({
+    mark,
+    observe(message) {
+      if (message.type === "ready") {
+        mark("ready");
+      }
+      if (message.type === "stt.event" && message.event?.type === "stt.final") {
+        mark("stt.final");
+      }
+      if (message.type === "response.start") {
+        mark("response.start");
+      }
+      if (message.type === "speech.audio") {
+        mark("speech.audio");
+      }
+      if (message.type === "response.final") {
+        mark("response.final");
+      }
+      if (message.type === "speech.interrupted") {
+        mark("speech.interrupted");
+      }
+    },
+    summary({ url, deviceId, receivedCount }) {
+      const firstAudioMs = delta("speech.audio");
+      return Object.freeze({
+        url,
+        deviceId,
+        receivedCount,
+        budgetMs,
+        withinBudget: typeof firstAudioMs === "number" ? firstAudioMs <= budgetMs : false,
+        marksMs: Object.freeze({
+          ready: delta("ready"),
+          audioSent: delta("audio.sent"),
+          sttFinal: delta("stt.final"),
+          responseStart: delta("response.start"),
+          firstAudio: firstAudioMs,
+          responseFinal: delta("response.final"),
+          interrupted: delta("speech.interrupted")
+        })
+      });
+    }
+  });
+};
+
 const main = async () => {
   const args = parseArgs(process.argv.slice(2));
   const url =
@@ -185,7 +241,10 @@ const main = async () => {
     process.env.IROHARNESS_STACKCHAN_SIM_AUDIO_BASE64 ||
     Buffer.from("simulated-pcm-audio").toString("base64");
   const keepOpenMs = Number(args["keep-open-ms"] || process.env.IROHARNESS_STACKCHAN_SIM_KEEP_OPEN_MS || "1500");
+  const budgetMs = Number(args["budget-ms"] || process.env.IROHARNESS_STACKCHAN_SIM_BUDGET_MS || "1000");
   const dryRun = Boolean(args["dry-run"]);
+  const printSummary = Boolean(args.summary || args["json-summary"]);
+  const failOverBudget = Boolean(args["fail-over-budget"]);
   const messages = [
     {
       type: "hello",
@@ -209,6 +268,8 @@ const main = async () => {
       final: true
     }
   ];
+  const latency = createLatencyProbe({ budgetMs });
+  const received = [];
 
   if (dryRun) {
     console.log(
@@ -216,8 +277,10 @@ const main = async () => {
         {
           url,
           deviceId,
+          budgetMs,
           messageTypes: messages.map((message) => message.type),
-          auth: token ? "device-token" : "none"
+          auth: token ? "device-token" : "none",
+          summary: printSummary
         },
         null,
         2
@@ -228,9 +291,16 @@ const main = async () => {
 
   const socket = await connectWebSocket({ url, token });
   socket.onMessage((message) => {
+    received.push(message);
+    latency.observe(message);
     console.log(JSON.stringify(message));
   });
-  messages.forEach((message) => socket.send(message));
+  messages.forEach((message) => {
+    if (message.type === "audio.chunk") {
+      latency.mark("audio.sent");
+    }
+    socket.send(message);
+  });
   await wait(keepOpenMs);
   socket.send({
     type: "interrupt",
@@ -239,6 +309,13 @@ const main = async () => {
   });
   await wait(100);
   socket.close();
+  if (printSummary) {
+    const summary = latency.summary({ url, deviceId, receivedCount: received.length });
+    console.log(JSON.stringify({ type: "simulator.summary", ...summary }));
+    if (failOverBudget && !summary.withinBudget) {
+      process.exitCode = 1;
+    }
+  }
 };
 
 main().catch((error) => {

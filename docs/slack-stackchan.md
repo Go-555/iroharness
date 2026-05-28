@@ -214,13 +214,19 @@ Then connect the simulator from another terminal:
 STACKCHAN_DEVICE_TOKEN=dev-device-token \
 npm run example:stackchan-sim -- \
   --url ws://127.0.0.1:4182/device/stackchan/realtime \
-  --text "こんにちは"
+  --text "こんにちは" \
+  --summary \
+  --fail-over-budget
 ```
 
 The simulator sends `hello`, `invoke`, `audio.chunk`, and `interrupt` messages
-over the same WebSocket contract that the physical device will use. This does
-not prove real microphone, speaker, Azure, AivisSpeech, or Wi-Fi latency, but it
-does prove the host-side realtime route without StackChan hardware.
+over the same WebSocket contract that the physical device will use. With
+`--summary`, it also prints a `simulator.summary` JSON line with host-side marks
+for `sttFinal`, `responseStart`, `firstAudio`, and `responseFinal`.
+`--fail-over-budget` exits non-zero when `firstAudio` exceeds the configured
+budget. This does not prove real microphone, speaker, Azure, AivisSpeech, or
+Wi-Fi latency, but it does prove the host-side realtime route without StackChan
+hardware.
 
 IroHarness treats this as a normal device-originated turn. The same character
 identity, brain routing, Project OS state, and permissions are used.

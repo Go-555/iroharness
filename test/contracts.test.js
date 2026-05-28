@@ -415,6 +415,8 @@ test("OSS contribution metadata is present and aligned with harness boundaries",
   assert.match(stackchanSimulator, /encodeClientTextFrame/);
   assert.match(stackchanSimulator, /audio\.chunk/);
   assert.match(stackchanSimulator, /interrupt/);
+  assert.match(stackchanSimulator, /simulator\.summary/);
+  assert.match(stackchanSimulator, /fail-over-budget/);
   assert.match(pkg.scripts["example:stackchan-sim"], /stackchan-realtime-simulator/);
   assert.doesNotMatch(slackStackchanExample, /if \(!signingSecret\)/);
   assert.match(slackCodexExample, /requireEnv\("SLACK_SIGNING_SECRET"\)/);
