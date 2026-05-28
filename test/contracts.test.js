@@ -401,6 +401,9 @@ test("OSS contribution metadata is present and aligned with harness boundaries",
   assert.match(slackStackchanExample, /createFileCharacterProfile/);
   assert.match(slackStackchanExample, /IROHARNESS_VIEW_DIR/);
   assert.match(slackStackchanExample, /invalid_device_token/);
+  assert.match(slackStackchanExample, /server\.on\("upgrade"/);
+  assert.match(slackStackchanExample, /createStackChanRealtimeSessionHandler/);
+  assert.match(slackStackchanExample, /StackChan realtime WS/);
   assert.doesNotMatch(slackStackchanExample, /if \(!signingSecret\)/);
   assert.match(slackCodexExample, /requireEnv\("SLACK_SIGNING_SECRET"\)/);
   assert.doesNotMatch(slackCodexExample, /if \(!signingSecret\)/);

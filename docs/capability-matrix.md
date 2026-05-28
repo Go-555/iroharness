@@ -52,7 +52,7 @@ Status labels:
 | Browser companion | runtime | `createIroHarnessDevServer`, `npm run demo:browser` | Local chat, overlay, admin UI, state, events, OpenAPI. |
 | Discord | runtime | `createDiscordMessageAdapter`, `createDiscordBotRuntime` | Multi-person fan rooms and developer channels. |
 | Slack | runtime | `createSlackMessageAdapter`, `createSlackEventsRuntime` | Events API payload handling and replies. |
-| Slack + StackChan companion | example | `examples/slack-stackchan-companion.mjs`, `docs/slack-stackchan.md` | Slack text interface plus StackChan/M5Stack face JSON and SSE body output. |
+| Slack + StackChan companion | example | `examples/slack-stackchan-companion.mjs`, `docs/slack-stackchan.md` | Slack text interface plus StackChan/M5Stack face JSON, SSE body output, invoke endpoint, and realtime WebSocket route. |
 | StackChan audio invoke relay | example | `examples/slack-stackchan-companion.mjs`, `fixtures/golden/device-invoke-audio.json` | Device audio/PTT payloads can be relayed through host STT and routed as voice turns. |
 | YouTube Live Chat | runtime | `createYouTubeLiveChatAdapter`, `createYouTubeLiveChatPollingRuntime` | Polling runtime for live chat turns. |
 | VS Code | adapter | `createVsCodeCompanionAdapter`, `examples/vscode-companion` | Companion panel and developer turns. |

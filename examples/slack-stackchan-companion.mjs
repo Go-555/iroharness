@@ -1,4 +1,4 @@
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { join, resolve } from "node:path";
@@ -10,6 +10,7 @@ import {
   createFileUserRegistry,
   createHeuristicRouter,
   createHttpStreamingStt,
+  createSpeechPlaybackQueue,
   createIroHarness
 } from "../src/index.js";
 import {
@@ -18,6 +19,7 @@ import {
   createCodexAppServerBrain,
   createCodexAppServerMicroHarness,
   createM5StackBodyBridge,
+  createStackChanRealtimeSessionHandler,
   createSlackEventsRuntime,
   createSlackMessageAdapter
 } from "../src/adapters/index.js";
@@ -70,6 +72,132 @@ const parseJson = (body) => {
   } catch (error) {
     throw new Error(`Invalid JSON payload: ${error.message}`);
   }
+};
+
+const websocketGuid = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
+
+const encodeWebSocketTextFrame = (text) => {
+  const payload = Buffer.from(String(text), "utf8");
+  if (payload.length < 126) {
+    return Buffer.concat([Buffer.from([0x81, payload.length]), payload]);
+  }
+  if (payload.length <= 65535) {
+    const header = Buffer.alloc(4);
+    header[0] = 0x81;
+    header[1] = 126;
+    header.writeUInt16BE(payload.length, 2);
+    return Buffer.concat([header, payload]);
+  }
+  const header = Buffer.alloc(10);
+  header[0] = 0x81;
+  header[1] = 127;
+  header.writeBigUInt64BE(BigInt(payload.length), 2);
+  return Buffer.concat([header, payload]);
+};
+
+const decodeWebSocketFrames = (buffer) => {
+  const messages = [];
+  let offset = 0;
+  while (buffer.length - offset >= 2) {
+    const first = buffer[offset];
+    const second = buffer[offset + 1];
+    const opcode = first & 0x0f;
+    const masked = Boolean(second & 0x80);
+    let payloadLength = second & 0x7f;
+    let headerLength = 2;
+    if (payloadLength === 126) {
+      if (buffer.length - offset < 4) {
+        break;
+      }
+      payloadLength = buffer.readUInt16BE(offset + 2);
+      headerLength = 4;
+    } else if (payloadLength === 127) {
+      if (buffer.length - offset < 10) {
+        break;
+      }
+      payloadLength = Number(buffer.readBigUInt64BE(offset + 2));
+      headerLength = 10;
+    }
+    const maskLength = masked ? 4 : 0;
+    const frameLength = headerLength + maskLength + payloadLength;
+    if (buffer.length - offset < frameLength) {
+      break;
+    }
+    const mask = masked ? buffer.subarray(offset + headerLength, offset + headerLength + 4) : null;
+    const payloadStart = offset + headerLength + maskLength;
+    const payload = Buffer.from(buffer.subarray(payloadStart, payloadStart + payloadLength));
+    if (mask) {
+      payload.forEach((byte, index) => {
+        payload[index] = byte ^ mask[index % 4];
+      });
+    }
+    messages.push({
+      opcode,
+      text: payload.toString("utf8")
+    });
+    offset += frameLength;
+  }
+  return Object.freeze({
+    messages,
+    rest: buffer.subarray(offset)
+  });
+};
+
+const createWebSocketAdapter = (socket) => {
+  const listeners = new Map();
+  let pending = Buffer.alloc(0);
+  const emit = (type, event) => {
+    (listeners.get(type) || []).forEach((listener) => listener(event));
+  };
+  socket.on("data", (chunk) => {
+    pending = Buffer.concat([pending, chunk]);
+    const decoded = decodeWebSocketFrames(pending);
+    pending = decoded.rest;
+    decoded.messages.forEach((message) => {
+      if (message.opcode === 0x8) {
+        emit("close", {});
+        socket.end();
+        return;
+      }
+      if (message.opcode === 0x1) {
+        emit("message", { data: message.text });
+      }
+    });
+  });
+  socket.on("close", () => emit("close", {}));
+  socket.on("error", (error) => emit("error", error));
+  return Object.freeze({
+    addEventListener(type, callback) {
+      const callbacks = listeners.get(type) || [];
+      listeners.set(type, [...callbacks, callback]);
+    },
+    send(text) {
+      socket.write(encodeWebSocketTextFrame(text));
+    },
+    close() {
+      socket.end(Buffer.from([0x88, 0x00]));
+    }
+  });
+};
+
+const acceptWebSocket = ({ request, socket }) => {
+  const key = request.headers["sec-websocket-key"];
+  if (!key) {
+    socket.write("HTTP/1.1 400 Bad Request\r\n\r\n");
+    socket.destroy();
+    return false;
+  }
+  const accept = createHash("sha1").update(`${key}${websocketGuid}`).digest("base64");
+  socket.write(
+    [
+      "HTTP/1.1 101 Switching Protocols",
+      "Upgrade: websocket",
+      "Connection: Upgrade",
+      `Sec-WebSocket-Accept: ${accept}`,
+      "\r\n"
+    ].join("\r\n")
+  );
+  return true;
 };
 
 const readOptionalJson = (path) => {
@@ -256,6 +384,22 @@ const createSlackStackChanCompanion = () => {
     devices: [stackchan],
     microHarnesses
   });
+  const realtimeHandler =
+    stackchanStt && stackchanTts
+      ? createStackChanRealtimeSessionHandler({
+          id: "stackchan-realtime",
+          harness,
+          stt: stackchanStt,
+          tts: stackchanTts,
+          deviceToken: stackchanDeviceToken,
+          voice: process.env.IROHARNESS_STACKCHAN_VOICE || "iroha",
+          latencyBudgetMs: Number(process.env.IROHARNESS_STACKCHAN_LATENCY_BUDGET_MS || "1000"),
+          createQueue: () =>
+            createSpeechPlaybackQueue({
+              id: "stackchan-speech-queue"
+            })
+        })
+      : null;
 
   const seenEventIds = new Set();
   const runtime = createSlackEventsRuntime({
@@ -350,6 +494,15 @@ const createSlackStackChanCompanion = () => {
     );
   };
 
+  const readDeviceToken = (request) => {
+    const url = new URL(request.url || "/", `http://${request.headers.host || "localhost"}`);
+    const queryToken = url.searchParams.get("token");
+    const headerToken = request.headers["x-iroharness-device-token"];
+    const authorization = request.headers.authorization || "";
+    const bearerToken = authorization.startsWith("Bearer ") ? authorization.slice("Bearer ".length) : "";
+    return queryToken || headerToken || bearerToken || null;
+  };
+
   const server = createServer(async (request, response) => {
     if (request.method === "GET" && request.url === "/health") {
       sendJson(response, 200, {
@@ -441,6 +594,39 @@ const createSlackStackChanCompanion = () => {
       console.error(error.stack || error.message);
     });
   });
+  server.on("upgrade", (request, socket) => {
+    const url = new URL(request.url || "/", `http://${request.headers.host || "localhost"}`);
+    if (url.pathname !== `/device/${stackchan.id}/realtime`) {
+      socket.write("HTTP/1.1 404 Not Found\r\n\r\n");
+      socket.destroy();
+      return;
+    }
+    if (!realtimeHandler) {
+      socket.write("HTTP/1.1 503 Service Unavailable\r\ncontent-type: text/plain\r\n\r\nSet StackChan STT and TTS providers before using realtime WebSocket.\n");
+      socket.destroy();
+      return;
+    }
+    if (!acceptWebSocket({ request, socket })) {
+      return;
+    }
+    const websocket = createWebSocketAdapter(socket);
+    realtimeHandler.handleConnection(websocket, {
+      deviceId: stackchan.id,
+      userId: url.searchParams.get("userId") || stackchan.id,
+      channel: url.searchParams.get("channel") || "local",
+      token: readDeviceToken(request),
+      onEvent(event) {
+        console.log(
+          JSON.stringify({
+            realtime: event.type,
+            deviceId: event.deviceId,
+            channel: event.channel,
+            sequence: event.sequence
+          })
+        );
+      }
+    });
+  });
 
   return Object.freeze({
     listen() {
@@ -450,6 +636,7 @@ const createSlackStackChanCompanion = () => {
             slackEventsUrl: `http://${host}:${port}/slack/events`,
             stackchanFaceUrl: `http://${host}:${port}/stackchan/face`,
             stackchanInvokeUrl: `http://${host}:${port}/device/stackchan/invoke`,
+            stackchanRealtimeUrl: `ws://${host}:${port}/device/${stackchan.id}/realtime`,
             stackchanEventsUrl: `http://${host}:${port}/body/${stackchan.id}/events`
           });
         });
@@ -466,6 +653,7 @@ const urls = await companion.listen();
 console.log(`Slack Events URL: ${urls.slackEventsUrl}`);
 console.log(`StackChan face JSON: ${urls.stackchanFaceUrl}`);
 console.log(`StackChan invoke URL: ${urls.stackchanInvokeUrl}`);
+console.log(`StackChan realtime WS: ${urls.stackchanRealtimeUrl}`);
 console.log(`StackChan SSE: ${urls.stackchanEventsUrl}`);
 if (process.env.IROHARNESS_VIEW_DIR) {
   console.log(`IroHarness view: ${resolve(process.env.IROHARNESS_VIEW_DIR)}`);

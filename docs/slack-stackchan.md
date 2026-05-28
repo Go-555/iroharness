@@ -186,6 +186,17 @@ state stay open instead of waiting for request/response turns.
 `.iroharness/connections/stackchan-firmware-config.json`. Use that URL for the
 AIAvatarStackChan-style realtime path.
 
+The companion process now mounts that route:
+
+```text
+GET /device/stackchan/realtime
+```
+
+The WebSocket requires the same device token. Send it as `?token=...`,
+`x-iroharness-device-token`, or `Authorization: Bearer ...`.
+Realtime mode requires both an STT provider and a TTS provider. Without those,
+the server rejects the WebSocket upgrade with `503`.
+
 IroHarness treats this as a normal device-originated turn. The same character
 identity, brain routing, Project OS state, and permissions are used.
 The invoke endpoint rejects requests without the configured device token.
