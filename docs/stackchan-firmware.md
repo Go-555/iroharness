@@ -178,6 +178,8 @@ IroHarness now has the provider and relay-side building blocks for this phase:
 - `createStackChanRealtimeRelay` for WebSocket audio chunk and speech playback
   relay simulation
 - `createStackChanRealtimeSessionHandler` for firmware-facing WebSocket sessions
+- `examples/stackchan-realtime-simulator.mjs` for hardware-free WebSocket smoke
+  tests against the same companion route
 
 `iroharness connect stackchan` now generates `realtime_ws_url` in the firmware
 config. That URL should be the default for the 1-second conversation path.
@@ -250,7 +252,8 @@ contract stable.
 6. Done: add audio invoke fixture and host-side STT relay hook.
 7. Done: add a WebSocket realtime session handler and message schema.
 8. Done: generate a StackChan provisioning runbook from `connect stackchan`.
-9. Add exact AIAvatarStackChan wire-compatibility tests against upstream firmware.
+9. Done: add a hardware-free StackChan realtime simulator.
+10. Add exact AIAvatarStackChan wire-compatibility tests against upstream firmware.
 
 The first firmware should be intentionally small. It should prove networking,
 display, and shared identity before attempting STT/TTS, camera, servo, and

@@ -197,6 +197,31 @@ The WebSocket requires the same device token. Send it as `?token=...`,
 Realtime mode requires both an STT provider and a TTS provider. Without those,
 the server rejects the WebSocket upgrade with `503`.
 
+For a hardware-free smoke test, run the companion with mock speech providers:
+
+```bash
+SLACK_BOT_TOKEN=xoxb-dev \
+SLACK_SIGNING_SECRET=dev-secret \
+STACKCHAN_DEVICE_TOKEN=dev-device-token \
+IROHARNESS_STACKCHAN_STT_PROVIDER=mock \
+IROHARNESS_STACKCHAN_TTS_PROVIDER=mock \
+npm run example:slack-stackchan
+```
+
+Then connect the simulator from another terminal:
+
+```bash
+STACKCHAN_DEVICE_TOKEN=dev-device-token \
+npm run example:stackchan-sim -- \
+  --url ws://127.0.0.1:4182/device/stackchan/realtime \
+  --text "こんにちは"
+```
+
+The simulator sends `hello`, `invoke`, `audio.chunk`, and `interrupt` messages
+over the same WebSocket contract that the physical device will use. This does
+not prove real microphone, speaker, Azure, AivisSpeech, or Wi-Fi latency, but it
+does prove the host-side realtime route without StackChan hardware.
+
 IroHarness treats this as a normal device-originated turn. The same character
 identity, brain routing, Project OS state, and permissions are used.
 The invoke endpoint rejects requests without the configured device token.

@@ -265,6 +265,42 @@ const createBrainForSlot = ({ slot, codexWorkspace }) => {
 
 const createStackChanStt = () => {
   const provider = process.env.IROHARNESS_STACKCHAN_STT_PROVIDER || "http";
+  if (provider === "mock") {
+    const transcript = process.env.IROHARNESS_STACKCHAN_MOCK_TRANSCRIPT || "こんにちは";
+    return Object.freeze({
+      id: "stackchan-mock-stt",
+      kind: "stt",
+      start({ onEvent = () => {} } = {}) {
+        let pushed = false;
+        return Object.freeze({
+          async push() {
+            pushed = true;
+            const partial = {
+              type: "stt.partial",
+              text: transcript.slice(0, Math.max(1, Math.ceil(transcript.length / 2))),
+              delta: transcript.slice(0, Math.max(1, Math.ceil(transcript.length / 2))),
+              final: false
+            };
+            onEvent(partial);
+            return [partial];
+          },
+          async end() {
+            const final = {
+              type: "stt.final",
+              text: pushed ? transcript : "",
+              delta: "",
+              final: true
+            };
+            onEvent(final);
+            return [final];
+          },
+          cancel() {
+            return null;
+          }
+        });
+      }
+    });
+  }
   if (provider === "azure") {
     return createAzureSpeechStt({
       id: "stackchan-azure-stt",
@@ -290,6 +326,32 @@ const createStackChanStt = () => {
 
 const createStackChanTts = () => {
   const provider = process.env.IROHARNESS_STACKCHAN_TTS_PROVIDER || "none";
+  if (provider === "mock") {
+    return Object.freeze({
+      id: "stackchan-mock-tts",
+      kind: "tts",
+      async stream({ text, onEvent = () => {} }) {
+        const audio = Buffer.from(`mock-audio:${text || ""}`).toString("base64");
+        const events = [
+          {
+            type: "tts.audio",
+            text,
+            audio,
+            encoding: "wav",
+            final: false
+          },
+          {
+            type: "tts.completed",
+            text,
+            audio: "",
+            final: true
+          }
+        ];
+        events.forEach(onEvent);
+        return Object.freeze(events);
+      }
+    });
+  }
   if (provider !== "aivis") {
     return null;
   }

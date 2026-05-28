@@ -237,6 +237,10 @@ test("OSS contribution metadata is present and aligned with harness boundaries",
   const stackchanFirmware = readFileSync(join("docs", "stackchan-firmware.md"), "utf8");
   const slackStackchan = readFileSync(join("docs", "slack-stackchan.md"), "utf8");
   const slackStackchanExample = readFileSync(join("examples", "slack-stackchan-companion.mjs"), "utf8");
+  const stackchanSimulator = readFileSync(
+    join("examples", "stackchan-realtime-simulator.mjs"),
+    "utf8"
+  );
   const slackCodexExample = readFileSync(join("examples", "slack-codex-companion.mjs"), "utf8");
   const stackchanPoller = readFileSync(
     join("examples", "stackchan-face-poller", "src", "main.cpp"),
@@ -393,7 +397,9 @@ test("OSS contribution metadata is present and aligned with harness boundaries",
   assert.match(absorptionArchitecture, /Device config schema/);
   assert.match(stackchanFirmware, /AIAvatarStackChan/);
   assert.match(stackchanFirmware, /examples\/stackchan-face-poller/);
+  assert.match(stackchanFirmware, /stackchan-realtime-simulator/);
   assert.match(slackStackchan, /\/device\/stackchan\/invoke/);
+  assert.match(slackStackchan, /example:stackchan-sim/);
   assert.match(slackStackchan, /STACKCHAN_DEVICE_TOKEN/);
   assert.match(slackStackchan, /IROHARNESS_VIEW_DIR/);
   assert.match(slackStackchanExample, /requireEnv\("SLACK_SIGNING_SECRET"\)/);
@@ -404,6 +410,12 @@ test("OSS contribution metadata is present and aligned with harness boundaries",
   assert.match(slackStackchanExample, /server\.on\("upgrade"/);
   assert.match(slackStackchanExample, /createStackChanRealtimeSessionHandler/);
   assert.match(slackStackchanExample, /StackChan realtime WS/);
+  assert.match(slackStackchanExample, /stackchan-mock-stt/);
+  assert.match(slackStackchanExample, /stackchan-mock-tts/);
+  assert.match(stackchanSimulator, /encodeClientTextFrame/);
+  assert.match(stackchanSimulator, /audio\.chunk/);
+  assert.match(stackchanSimulator, /interrupt/);
+  assert.match(pkg.scripts["example:stackchan-sim"], /stackchan-realtime-simulator/);
   assert.doesNotMatch(slackStackchanExample, /if \(!signingSecret\)/);
   assert.match(slackCodexExample, /requireEnv\("SLACK_SIGNING_SECRET"\)/);
   assert.doesNotMatch(slackCodexExample, /if \(!signingSecret\)/);

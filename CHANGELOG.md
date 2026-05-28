@@ -69,6 +69,8 @@ Initial OSS skeleton for a character macro harness.
 - StackChan WebSocket realtime relay contract for audio chunks and speech playback
 - StackChan firmware-facing realtime session handler and message schema
 - `/device/stackchan/realtime` WebSocket route in the Slack + StackChan companion
+- hardware-free StackChan realtime simulator plus mock STT/TTS providers for
+  host-side WebSocket route testing before real M5Stack/Azure/AivisSpeech setup
 - generated StackChan provisioning runbook from the connection onboarding CLI
 - Rust realtime core crate scaffold, JSONL process binary, and native/WASM C ABI
   path

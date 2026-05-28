@@ -50,6 +50,7 @@ Slack / Web / VS Code / M5Stack / Even G2 / Live2D / MotionPNGTuber
 | 身体 adapter | MotionPNGTuber、M5Stack、Even G2、Live2D、VRM/3D、AIAvatarKit への状態マッピングがある |
 | StackChan実機 | `/stackchan/face`、`/device/stackchan/invoke`、最小PlatformIO face poller sketch がある |
 | realtime 音声契約 | STT partial、TTS chunk、barge-in、latency tracking を扱う JS contract がある |
+| StackChan疑似実機 | `npm run example:stackchan-sim` で WebSocket realtime 経路を実機なしに叩ける |
 | Rust fast path | `crates/realtime-core` に native/WASM C ABI 対応の realtime core がある |
 | 生成アプリ | `npx iroharness init` で相棒AIアプリのひな形を作れる |
 | 運用準備 | doctor、production doctor、OSS readiness、publish preflight、GitHub Actions、npm release workflow がある |
@@ -787,6 +788,8 @@ examples/
   codex-app-server.mjs
   discord-bot.mjs
   slack-events.mjs
+  slack-stackchan-companion.mjs
+  stackchan-realtime-simulator.mjs
   external-bridges.mjs
   youtube-live-poller.mjs
   obs-overlay-control.mjs
