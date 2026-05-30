@@ -115,7 +115,7 @@ curl -fsSL https://raw.githubusercontent.com/Go-555/iroharness/main/install.sh |
 ```
 
 これは `~/.iroharness/source` にOSS本体を入れ、
-`~/iroharness-apps/iroha` に個人用の相棒アプリを作ります。
+`~/.iroharness/apps/iroha` に個人用の相棒アプリを作ります。
 詳しくは [docs/install.md](./docs/install.md) を見てください。
 
 手動でリポジトリを触る場合:
@@ -240,8 +240,8 @@ npm run demo:browser
 Slack と StackChan を先に試す場合は、生成アプリで接続設定を作れます。
 
 ```bash
-npx iroharness connect slack ~/iroharness-apps/iroha --owner-slack-user-id UOWNER
-npx iroharness connect stackchan ~/iroharness-apps/iroha --host-url http://MAC_MINI_IP:4182
+npx iroharness connect slack ~/.iroharness/apps/iroha --owner-slack-user-id UOWNER
+npx iroharness connect stackchan ~/.iroharness/apps/iroha --host-url http://MAC_MINI_IP:4182
 ```
 
 外部公開する入口は、Core全体ではなくzone別Viewから起動する前提にします。
@@ -249,12 +249,12 @@ npx iroharness connect stackchan ~/iroharness-apps/iroha --host-url http://MAC_M
 layer、zoneで絞ったProject OS、redact済み接続情報だけを `current/` に出します。
 
 ```bash
-npx iroharness view export ~/iroharness-apps/iroha \
+npx iroharness view export ~/.iroharness/apps/iroha \
   --zone public \
   --out /Users/iroharness-public/iroha-view \
   --force
 
-npx iroharness view export ~/iroharness-apps/iroha \
+npx iroharness view export ~/.iroharness/apps/iroha \
   --zone trusted \
   --out /Users/iroharness-trusted/iroha-view \
   --force

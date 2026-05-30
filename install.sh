@@ -14,7 +14,7 @@ Options:
   --install-method git|npm      Choose install method
   --version <version>           Git branch/tag or npm version/spec (default: main)
   --git-dir <path>              Source checkout directory (default: ~/.iroharness/source)
-  --app-dir <path>              Companion app directory (default: ~/iroharness-apps/iroha)
+  --app-dir <path>              Companion app directory (default: ~/.iroharness/apps/iroha)
   --character <name>            Character name for generated app (default: Iroha)
   --no-app                      Install CLI only, skip companion app generation
   --no-git-update               Do not update an existing git checkout
@@ -26,7 +26,7 @@ Environment:
   IROHARNESS_VERSION=main
   IROHARNESS_GIT_REPO=https://github.com/Go-555/iroharness.git
   IROHARNESS_GIT_DIR=~/.iroharness/source
-  IROHARNESS_APP_DIR=~/iroharness-apps/iroha
+  IROHARNESS_APP_DIR=~/.iroharness/apps/iroha
   IROHARNESS_CHARACTER=Iroha
   IROHARNESS_NO_APP=0|1
   IROHARNESS_GIT_UPDATE=0|1
@@ -73,7 +73,7 @@ INSTALL_METHOD="${IROHARNESS_INSTALL_METHOD:-git}"
 VERSION="${IROHARNESS_VERSION:-main}"
 GIT_REPO="${IROHARNESS_GIT_REPO:-https://github.com/Go-555/iroharness.git}"
 GIT_DIR="${IROHARNESS_GIT_DIR:-~/.iroharness/source}"
-APP_DIR="${IROHARNESS_APP_DIR:-~/iroharness-apps/iroha}"
+APP_DIR="${IROHARNESS_APP_DIR:-~/.iroharness/apps/iroha}"
 CHARACTER="${IROHARNESS_CHARACTER:-Iroha}"
 NO_APP="${IROHARNESS_NO_APP:-0}"
 GIT_UPDATE="${IROHARNESS_GIT_UPDATE:-1}"
@@ -160,7 +160,7 @@ if [ "$INSTALL_METHOD" = "git" ]; then
     run mkdir -p "$(dirname "$GIT_DIR")"
     run git clone --branch "$VERSION" "$GIT_REPO" "$GIT_DIR"
   fi
-  run_in_dir "$GIT_DIR" npm install
+  run_in_dir "$GIT_DIR" npm install --package-lock=false
   run_in_dir "$GIT_DIR" npm link
 else
   run npm install -g "iroharness@$VERSION"
