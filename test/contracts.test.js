@@ -380,7 +380,7 @@ test("OSS contribution metadata is present and aligned with harness boundaries",
   assert.match(installScript, /npm run example:slack-stackchan/);
   assert.match(installScript, /\/device\/stackchan\/invoke/);
   assert.match(installGuide, /OpenClaw/);
-  assert.match(installGuide, /~\/iroharness-apps\/iroha/);
+  assert.match(installGuide, /~\/\.iroharness\/apps\/iroha/);
   assert.match(installGuide, /StackChan First Connection/);
   assert.match(installGuide, /MAC_MINI_IP/);
   assert.match(inspirationMap, /CursorTuberKit/);

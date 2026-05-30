@@ -20,7 +20,7 @@ This does four things:
 
 1. clones or updates the source checkout at `~/.iroharness/source`
 2. installs dependencies and links the `iroharness` CLI
-3. creates a companion app at `~/iroharness-apps/iroha`
+3. creates a companion app at `~/.iroharness/apps/iroha`
 4. runs `npm run doctor`
 
 Custom character and app directory:
@@ -28,7 +28,7 @@ Custom character and app directory:
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Go-555/iroharness/main/install.sh | bash -s -- \
   --character Iroha \
-  --app-dir ~/iroharness-apps/iroha
+  --app-dir ~/.iroharness/apps/iroha
 ```
 
 Dry run:
@@ -43,8 +43,8 @@ After npm publication, the intended route is:
 
 ```bash
 npm install -g iroharness@latest
-iroharness init ~/iroharness-apps/iroha --character Iroha
-cd ~/iroharness-apps/iroha
+iroharness init ~/.iroharness/apps/iroha --character Iroha
+cd ~/.iroharness/apps/iroha
 npm install
 npm run doctor
 npm start
@@ -58,31 +58,30 @@ curl -fsSL https://raw.githubusercontent.com/Go-555/iroharness/main/install.sh |
 
 ## Directory Layout
 
-Keep source, personal apps, and runtime state separate:
+Keep source, personal apps, and runtime state under one IroHarness home:
 
 ```text
 ~/.iroharness/
-└── source/                 # OSS checkout installed by install.sh
-
-~/iroharness-apps/
-└── iroha/                  # one person's companion app
-    ├── AGENTS.md
-    ├── SOUL.md
-    ├── IDENTITY.md
-    ├── MEMORY.md
-    ├── VOICE.md
-    ├── .env
-    ├── src/
-    │   └── app.mjs
-    └── .iroharness/
-        ├── pjos.json
-        └── users.json
+├── source/                 # OSS checkout installed by install.sh
+└── apps/
+    └── iroha/              # one person's companion app
+        ├── AGENTS.md
+        ├── SOUL.md
+        ├── IDENTITY.md
+        ├── MEMORY.md
+        ├── VOICE.md
+        ├── .env
+        ├── src/
+        │   └── app.mjs
+        └── .iroharness/
+            ├── pjos.json
+            └── users.json
 ```
 
 Rules:
 
 - `~/.iroharness/source` is disposable OSS source.
-- `~/iroharness-apps/iroha` is the user's actual character instance.
+- `~/.iroharness/apps/iroha` is the user's actual character instance.
 - `.env` and `.iroharness/` are local/private and should not be committed.
 - `SOUL.md`, `IDENTITY.md`, `MEMORY.md`, and `VOICE.md` are the character profile.
 
@@ -131,7 +130,7 @@ Use a LAN or Tailscale address that the M5Stack can reach. Do not use
 Run doctor after `connect stackchan`:
 
 ```bash
-npx iroharness doctor ~/iroharness-apps/iroha
+npx iroharness doctor ~/.iroharness/apps/iroha
 ```
 
 Doctor fails if the saved StackChan URL points at `localhost`, `127.*`,

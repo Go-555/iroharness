@@ -86,7 +86,7 @@ Current prototype runtime:
 ```bash
 cd ~/.iroharness/source
 set -a
-source ~/iroharness-apps/iroha/.env
+source ~/.iroharness/apps/iroha/.env
 set +a
 npm run example:slack-stackchan
 ```
