@@ -160,7 +160,7 @@ if [ "$INSTALL_METHOD" = "git" ]; then
     run mkdir -p "$(dirname "$GIT_DIR")"
     run git clone --branch "$VERSION" "$GIT_REPO" "$GIT_DIR"
   fi
-  run_in_dir "$GIT_DIR" npm install
+  run_in_dir "$GIT_DIR" npm install --package-lock=false
   run_in_dir "$GIT_DIR" npm link
 else
   run npm install -g "iroharness@$VERSION"
