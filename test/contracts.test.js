@@ -242,10 +242,6 @@ test("OSS contribution metadata is present and aligned with harness boundaries",
     "utf8"
   );
   const slackCodexExample = readFileSync(join("examples", "slack-codex-companion.mjs"), "utf8");
-  const stackchanPoller = readFileSync(
-    join("examples", "stackchan-face-poller", "src", "main.cpp"),
-    "utf8"
-  );
 
   ["AGENTS.md", "CONTRIBUTING.md", "CODE_OF_CONDUCT.md", "install.sh"].forEach((file) => {
     assert.equal(pkg.files.includes(file), true);
@@ -372,7 +368,7 @@ test("OSS contribution metadata is present and aligned with harness boundaries",
   assert.match(matrix, /PostgreSQL audience backup\/restore/);
   assert.match(matrix, /Inspiration map/);
   assert.match(matrix, /Absorption architecture/);
-  assert.match(matrix, /StackChan face poller firmware/);
+  assert.match(matrix, /StackChan device runtime strategy/);
   assert.match(matrix, /Device config\/invoke protocol/);
   assert.match(matrix, /OpenClaw-style installer/);
   assert.match(matrix, /Zone view export/);
@@ -396,7 +392,8 @@ test("OSS contribution metadata is present and aligned with harness boundaries",
   assert.match(absorptionArchitecture, /Serialized speech playback queue/);
   assert.match(absorptionArchitecture, /Device config schema/);
   assert.match(stackchanFirmware, /AIAvatarStackChan/);
-  assert.match(stackchanFirmware, /examples\/stackchan-face-poller/);
+  assert.match(stackchanFirmware, /Brain, STT, And TTS SSOT/);
+  assert.match(stackchanFirmware, /AIAvatarStackChan WebSocket compatibility/);
   assert.match(stackchanFirmware, /stackchan-realtime-simulator/);
   assert.match(slackStackchan, /\/device\/stackchan\/invoke/);
   assert.match(slackStackchan, /example:stackchan-sim/);
@@ -421,13 +418,6 @@ test("OSS contribution metadata is present and aligned with harness boundaries",
   assert.doesNotMatch(slackStackchanExample, /if \(!signingSecret\)/);
   assert.match(slackCodexExample, /requireEnv\("SLACK_SIGNING_SECRET"\)/);
   assert.doesNotMatch(slackCodexExample, /if \(!signingSecret\)/);
-  assert.match(stackchanPoller, /\/config\.json/);
-  assert.match(stackchanPoller, /\/device\/stackchan\/invoke/);
-  assert.match(stackchanPoller, /x-iroharness-device-token/);
-  assert.match(stackchanPoller, /wifi_retry_base_ms/);
-  assert.match(stackchanPoller, /http_retry_base_ms/);
-  assert.match(stackchanPoller, /nextBackoff/);
-  assert.match(stackchanPoller, /nextWifiAttemptMs/);
   assert.match(postgresBackup, /pg_dump/);
   assert.match(postgresBackup, /--table=public\.iroharness_audit_log/);
   assert.match(postgresRestore, /IROHARNESS_RESTORE_CONFIRM/);

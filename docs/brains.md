@@ -11,6 +11,26 @@ same character
   + work brain  -> delegated micro harness such as Codex
 ```
 
+## Provider SSOT
+
+Brain, STT, and TTS provider configuration belongs on the host side, not inside
+interfaces or device firmware.
+
+IroHarness owns the SSOT for:
+
+- voice/text/deep/work brain slot selection
+- LLM provider endpoints and model names
+- STT provider endpoints and credentials
+- TTS provider endpoints, voices, and credentials
+- Codex OAuth usage through `codex app-server`
+- routing policy that chooses a slot for each turn
+
+Slack, StackChan, browser avatars, Live2D, VRM, OBS, and other interfaces should
+send normalized turns into IroHarness. They should not each define their own
+LLM/STT/TTS API keys or model routing. For StackChan specifically, firmware can
+own microphone and speaker settings, but STT, LLM, and TTS providers stay behind
+the trusted device gateway.
+
 ## Routing Order
 
 The default heuristic router uses this priority:

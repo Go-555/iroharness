@@ -1,8 +1,8 @@
-# StackChan Firmware Strategy
+# StackChan Device Runtime Strategy
 
-IroHarness can use AIAvatarStackChan as the main reference for the physical
-StackChan path, but it should absorb the design in layers instead of copying the
-whole runtime into the macro harness.
+IroHarness should absorb the useful StackChan runtime ideas from
+AIAvatarStackChan instead of treating that project as only an external
+recommendation.
 
 Reference: <https://github.com/uezo/AIAvatarStackChan>
 
@@ -11,40 +11,50 @@ and AIAvatarKit. It already covers voice conversation, push-to-talk, pluggable
 server-side STT/LLM/TTS, expressions, blinking, mouth animation, vision, touch
 events, and agent harness integration.
 
+IroHarness has not copied source code from AIAvatarStackChan yet. If code is
+imported later, preserve the upstream MIT license notice and keep the copied
+runtime isolated from the macro harness core.
+
 ## Boundary
 
 Keep this split:
 
-| Layer | Owns |
+| Layer | SSOT |
 |---|---|
-| IroHarness | identity, memory, Project OS, Slack/users/permissions, model routing, micro harness delegation |
-| StackChan firmware | Wi-Fi, display, touch, mic, speaker, camera, servo, LEDs, local reconnect |
-| Relay protocol | state, speech, invoke, audio, image, device health |
+| Core SSOT | character identity, memory, voice style, Project OS, policies, audience registry, connection records |
+| Brain provider config | LLM/STT/TTS provider endpoints, models, credentials, OAuth sessions, routing by voice/text/deep/work slot |
+| Trusted StackChan gateway | device auth, actor mapping, device events, realtime session admission, redacted trusted view |
+| StackChan device runtime | Wi-Fi, display, touch, mic, speaker, camera, servo, LEDs, local reconnect, local buffering |
+| Wire protocol | start/data/invoke/stop, accepted/final/tool/vision, TTS audio chunks, face/lip-sync state, health |
 
 StackChan must not own the character. It renders and invokes the same character
-state that Slack, browser, OBS, Live2D, and other bodies use.
+state that Slack, browser, OBS, Live2D, VRM, and other bodies use.
+
+LLM API keys, STT credentials, TTS credentials, Codex OAuth, memory files, and
+Project OS state must not be written to the firmware or SD card. The firmware
+receives only a host URL, a device identity, a device token, and hardware-local
+settings.
 
 ## What To Absorb From AIAvatarStackChan
 
-Useful ideas to bring into IroHarness:
+Bring these ideas into the IroHarness StackChan device runtime:
 
 - PlatformIO project shape for `m5stack-cores3`
-- SD-card `config.json`
-- Wi-Fi profile list
+- SD-card `/config.json`
+- Wi-Fi profile list and Wi-Fi picker
 - WebSocket host/port/path configuration
-- user/channel identifiers
-- mic sample rate and buffer sizing
+- `user_id` and `channel` fields for device-originated turns
+- microphone sample rate, gain, buffer sizing, and upload backoff
 - VAD threshold and push-to-talk limits
-- playback queue depth and start threshold
+- playback queue depth, start threshold, and drain timeout
 - speaker volume levels
-- reconnect and keepalive intervals
-- display brightness/rotation/status overlay
+- display brightness, rotation, and status overlay
 - touch/nade invoke prompt
 - vision invoke prompt
 - callback model for speech detected, accepted, final text, tool call, overlay
-- short, non-blocking loop design
+- non-blocking task split for microphone, speaker, WebSocket, and display work
 
-Do not absorb directly into core:
+Keep these outside the macro harness core:
 
 - firmware task scheduling
 - board-specific pins
@@ -53,147 +63,152 @@ Do not absorb directly into core:
 - StackChan-BSP-specific servo handling
 - AIAvatarKit-specific server protocol assumptions
 
-Those belong in firmware or a device relay package.
+Those belong in a firmware package or a device-runtime adapter package.
 
-## Phased Implementation
+## Upstream Runtime Shape
 
-### Phase 0: Simple Face Polling
+The upstream runtime is centered around:
 
-This is implemented as the first firmware skeleton:
+| Upstream component | IroHarness interpretation |
+|---|---|
+| `Config` | hardware-local config loaded from `/config.json` |
+| `AIAvatar` | device runtime orchestrator, not character identity |
+| `WebSocketClient` | firmware-facing realtime transport |
+| `MicrophoneInput` / `SpeakerOutput` | device audio IO |
+| `FaceController` / `MotionController` / `LedController` | body rendering and physical expression |
+| example AIAvatarKit server | replace with IroHarness trusted device gateway and brain provider slots |
 
-```text
-examples/stackchan-face-poller/
-```
+The upstream client sends WebSocket messages such as:
 
-```text
-Slack -> IroHarness -> /stackchan/face -> StackChan display
-```
+- `start` with `session_id`, `user_id`, and optional `channel`
+- `data` with microphone audio frames
+- `invoke` with text, image, or recorded audio
+- `stop`
 
-StackChan polls:
+It receives messages such as:
 
-```text
-GET /stackchan/face
-```
+- `accepted`, `voiced`, `start`, `chunk`, `final`, `stop`
+- `tool_call`
+- `vision`
+- audio metadata and optional `avatar_control_request.face_name`
 
-Response:
+IroHarness already has its own StackChan realtime schema and simulator. The next
+implementation step is to make the trusted gateway speak this upstream-compatible
+wire shape while still routing the turn through IroHarness identity, audience,
+brain, Project OS, and permission policy.
 
-```json
-{
-  "face": ":D",
-  "mode": "speaking",
-  "text": "Irohaとして受け取ったよ。"
-}
-```
+## Firmware Config Ownership
 
-This is enough to verify that Slack and the physical body share one character
-state. The first poller also handles local Wi-Fi reconnect and HTTP retry
-backoff so host restarts or temporary network drops do not create a tight retry
-loop.
+The AIAvatarStackChan `/config.json` fields map to IroHarness ownership like
+this:
 
-### Phase 1: SSE Body Relay
+| AIAvatarStackChan config | IroHarness target |
+|---|---|
+| `wifi_networks` | firmware only |
+| `ws_host`, `ws_port`, `ws_path` | trusted StackChan gateway URL generated by `iroharness connect stackchan` |
+| `user_id`, `channel` | audience/device identity |
+| device token | IroHarness connection record and firmware secret, never a character secret |
+| `mic_sample_rate`, `mic_buffer_samples`, `mic_magnification` | realtime audio contract plus firmware-local capture tuning |
+| `vad_threshold_db`, `ptt_*` | voice trigger policy, with defaults generated by IroHarness and local override on firmware |
+| `playback_queue_depth`, `start_threshold`, `drain_timeout_ms` | TTS playback queue contract |
+| `speaker_volume`, `volume_levels` | firmware settings |
+| `display_rotation`, `display_brightness`, `status_overlay_enabled` | body config |
+| `vision_invoke_prompt`, `nade_invoke_prompt` | device invoke templates; should be generated from host-side policy defaults |
+| `accepted_led_color`, `tool_led_color`, `pitch_home`, `stackchan_auto_angle_sync` | body hardware settings |
+| `debug_log` | firmware logging |
 
-Use the existing body bridge stream:
+The generated firmware config should be treated as a deployment artifact. The
+Core SSOT remains the source for character, policy, provider routing, and
+connections; the firmware config is just the device-local projection.
 
-```text
-GET /body/stackchan/events
-```
+## Brain, STT, And TTS SSOT
 
-This avoids polling and gives firmware or a Raspberry Pi relay immediate state
-changes.
+Do not create a second LLM/STT/TTS configuration system inside StackChan.
 
-### Phase 2: IroHarness Device Invoke
+IroHarness owns provider selection through the existing brain and realtime
+contracts:
 
-Device-originated events are available in `examples/slack-stackchan-companion.mjs`:
+- voice/text/deep/work brain slots are documented in [brains.md](./brains.md)
+- streaming STT/TTS and barge-in are documented in [realtime.md](./realtime.md)
+- StackChan uses the same providers through the trusted device gateway
 
-```text
-POST /device/stackchan/invoke
-```
+This means:
 
-Payloads:
+- firmware sends microphone frames or audio invoke payloads
+- host-side STT converts audio to text
+- IroHarness routes the turn to the selected voice/text/deep brain
+- host-side TTS returns audio chunks
+- firmware plays chunks and renders face/lip-sync state
 
-```json
-{
-  "type": "touch",
-  "deviceId": "stackchan",
-  "text": "$頭を撫でられました。短く反応してください。"
-}
-```
+Only the host knows provider endpoints, model names, API keys, OAuth sessions,
+and routing policy.
 
-```json
-{
-  "type": "vision",
-  "deviceId": "stackchan",
-  "text": "$見えているものに反応してください。",
-  "imageDataUrl": "data:image/jpeg;base64,..."
-}
-```
+## Implementation Path
 
-```json
-{
-  "type": "audio",
-  "deviceId": "stackchan",
-  "audio": {
-    "encoding": "wav",
-    "sampleRate": 16000,
-    "dataBase64": "..."
-  }
-}
-```
+### Phase 1: Keep The Host Contract Stable
 
-This maps AIAvatarStackChan's `sendInvoke`, `sendInvokeWithImage`, and
-`sendInvokeWithAudio` idea into an IroHarness-owned contract.
-The first HTTP endpoint requires `x-iroharness-device-token` so public network
-traffic cannot forge device-originated turns.
+Keep these host pieces:
 
-The Mac mini host can translate audio invoke payloads through
-`IROHARNESS_STACKCHAN_STT_ENDPOINT`, then pass the transcript into the voice
-brain while preserving StackChan as the body/interface rather than the identity.
+- `examples/slack-stackchan-companion.mjs`
+- `POST /device/stackchan/invoke`
+- `GET /body/stackchan/events`
+- `GET /device/stackchan/realtime`
+- `protocols/device-config.schema.json`
+- `protocols/device-invoke.schema.json`
+- `protocols/stackchan-realtime-message.schema.json`
+- `examples/stackchan-realtime-simulator.mjs`
 
-### Phase 3: AIAvatarStackChan-Compatible WebSocket
+The current simulator proves the host-side realtime route without hardware. It
+does not prove exact AIAvatarStackChan wire compatibility.
 
-Add an optional compatibility server so the upstream AIAvatarStackChan firmware
-can connect with minimal changes:
+### Phase 2: Absorb The Device Runtime
 
-```text
-StackChan firmware -> WebSocket -> IroHarness device gateway
-```
-
-This phase should cover:
-
-- mic PCM input
-- partial/final transcript events
-- TTS audio chunks
-- accepted/final/tool-call metadata
-- mouth/lip-sync state
-- vision request/response
-- reconnect and keepalive
-
-This is the point where the full AIAvatarStackChan firmware becomes the main
-reference instead of the simplified face poller.
-
-IroHarness now has the provider and relay-side building blocks for this phase:
-
-- `createAzureSpeechStt` for Azure Speech short-audio STT
-- `createAivisSpeechTts` for AivisSpeech Engine `/audio_query` + `/synthesis`
-- `createStackChanRealtimeRelay` for WebSocket audio chunk and speech playback
-  relay simulation
-- `createStackChanRealtimeSessionHandler` for firmware-facing WebSocket sessions
-- `examples/stackchan-realtime-simulator.mjs` for hardware-free WebSocket smoke
-  tests against the same companion route
-
-`iroharness connect stackchan` now generates `realtime_ws_url` in the firmware
-config. That URL should be the default for the 1-second conversation path.
-
-The remaining gap is exact upstream wire compatibility and real hardware latency
-measurement. Until those are done, `/device/stackchan/invoke` can validate
-audio/PTT end-to-end, but it should not be treated as the final realtime path.
-
-### Phase 4: Dedicated Firmware Package
-
-Split only when the toolchain forces it:
+Create an IroHarness-owned StackChan runtime package or example that starts from
+the AIAvatarStackChan structure:
 
 ```text
-iroharness-stackchan-firmware/
+iroharness-stackchan-runtime/
+```
+
+It should keep the upstream hardware/runtime split but replace the server target
+with IroHarness' trusted device gateway.
+
+The first absorbed runtime should be close to AIAvatarStackChan's basic example:
+
+- load `/config.json`
+- connect to `ws_host`, `ws_port`, `ws_path`
+- send `start`, audio `data`, `invoke`, and `stop`
+- receive `accepted`, `start`, `chunk`, `final`, `tool_call`, `vision`, and face
+  control
+- keep local button/touch/PTT/vision hooks
+
+### Phase 3: Upstream-Compatible Gateway
+
+Add a compatibility layer in the trusted gateway so unmodified or lightly
+modified AIAvatarStackChan firmware can connect.
+
+This layer translates upstream WebSocket messages into IroHarness turns:
+
+```text
+AIAvatarStackChan firmware
+  -> upstream-style WebSocket
+  -> trusted StackChan gateway
+  -> IroHarness macro harness
+  -> brain/STT/TTS providers
+  -> trusted StackChan gateway
+  -> TTS chunks + face control
+  -> firmware
+```
+
+This is a trusted body/device path, not a fourth top-level gateway and not a
+micro harness worker.
+
+### Phase 4: Firmware Release And OTA
+
+Split the firmware runtime only when the toolchain forces it:
+
+```text
+iroharness-stackchan-runtime/
 ```
 
 Reasons to split:
@@ -201,60 +216,42 @@ Reasons to split:
 - PlatformIO release cadence differs from npm package cadence
 - firmware binaries and board assets are large
 - Arduino dependencies should not affect the Node/Rust package
-- hardware CI is different from IroHarness core CI
+- hardware CI and OTA are different from IroHarness core CI
 
-Until then, keep contracts and examples in the main monorepo.
+OTA should live in the firmware runtime or device relay. The macro harness core
+should generate signed/authorized configuration and keep the device contract
+stable.
 
-### OTA / Provisioning Strategy
+## Provisioning
 
-The current monorepo ships a generated provisioning runbook, not an OTA updater.
 Running `iroharness connect stackchan` writes:
 
 ```text
+.iroharness/connections/stackchan.device.json
+.iroharness/connections/stackchan-firmware-config.json
 .iroharness/connections/stackchan-provisioning.md
 ```
 
-Use that file as the owner-facing setup checklist. It deliberately separates:
+Use those files as the owner-facing setup checklist and firmware config source.
+They deliberately separate:
 
 - host-side updates: character, brain routing, permissions, Project OS, Slack
   settings, and STT/TTS endpoints
 - device-side updates: Wi-Fi, display, retry settings, device token, host URL,
   and future OTA firmware
 
-OTA should live in the firmware package or device relay. The macro harness core
-should only generate the signed/authorized configuration and keep the device
-contract stable.
-
-## Config Mapping
-
-| AIAvatarStackChan config | IroHarness target |
-|---|---|
-| `wifi_networks` | firmware only |
-| `ws_host`, `ws_port`, `ws_path` | device gateway URL |
-| `user_id`, `channel` | audience/device identity |
-| `mic_sample_rate`, `mic_buffer_samples` | realtime audio contract |
-| `vad_threshold_db` | voice trigger policy |
-| `playback_queue_depth`, `start_threshold` | TTS playback queue contract |
-| `speaker_volume`, `volume_levels` | firmware settings |
-| `display_rotation`, `display_brightness` | body config |
-| `status_overlay_enabled` | body config |
-| `vision_invoke_prompt` | device invoke template |
-| `nade_invoke_prompt` | device invoke template |
-| `debug_log` | firmware logging |
+The generated `realtime_ws_url` should become the default StackChan connection
+target once the upstream-compatible gateway is implemented.
 
 ## Near-Term Work
 
-1. Done: keep `examples/slack-stackchan-companion.mjs` as the Mac mini host process.
-2. Done: add `protocols/device-config.schema.json`.
-3. Done: add `protocols/device-invoke.schema.json`.
-4. Done: add a minimal StackChan/CoreS3 face polling sketch.
-5. Done: add Wi-Fi reconnect and HTTP retry backoff to the face poller.
-6. Done: add audio invoke fixture and host-side STT relay hook.
-7. Done: add a WebSocket realtime session handler and message schema.
-8. Done: generate a StackChan provisioning runbook from `connect stackchan`.
-9. Done: add a hardware-free StackChan realtime simulator.
-10. Add exact AIAvatarStackChan wire-compatibility tests against upstream firmware.
-
-The first firmware should be intentionally small. It should prove networking,
-display, and shared identity before attempting STT/TTS, camera, servo, and
-full-duplex audio.
+1. Done: remove the one-off minimal face poller from the public surface.
+2. Add exact AIAvatarStackChan WebSocket compatibility to the trusted gateway.
+3. Generate an AIAvatarStackChan-style `/config.json` from
+   `iroharness connect stackchan`.
+4. Import or wrap the AIAvatarStackChan device runtime with MIT notice
+   preservation.
+5. Measure real CoreS3 microphone-to-first-audio latency against the Mac mini
+   host.
+6. Decide whether the runtime stays in this repository or splits into
+   `iroharness-stackchan-runtime`.

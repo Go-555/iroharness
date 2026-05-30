@@ -1,13 +1,14 @@
 # Slack + StackChan Companion
 
 This recipe runs one IroHarness character through Slack and a StackChan-style
-M5Stack face at the same time.
+M5Stack body at the same time.
 
-It is the recommended first hardware experiment:
+It is the first trusted device route:
 
 - Slack is the text interface.
 - IroHarness owns identity, memory, permissions, routing, and Project OS.
-- StackChan is a body renderer that reads the current character state.
+- StackChan is a trusted body/device runtime that renders state and sends local
+  mic, touch, button, and vision events.
 - Codex can be added later as a text/deep brain or delegated micro harness.
 
 ## Current Maturity
@@ -21,19 +22,20 @@ Good now:
 - StackChan face JSON polling
 - StackChan Server-Sent Events stream
 - StackChan device invoke for touch, push-to-talk/audio, and vision payloads
-- minimal StackChan/CoreS3 PlatformIO face poller sketch
-- device-side Wi-Fi reconnect and HTTP retry backoff in the face poller
+- StackChan realtime WebSocket route and hardware-free simulator
 - shared character state between Slack and StackChan
 - optional Codex OAuth model use through `codex app-server`
 
 Still early:
 
-- no full AIAvatarStackChan-compatible firmware yet
-- no built-in STT/TTS on the M5Stack device; audio invoke can use a host STT relay
+- exact AIAvatarStackChan WebSocket compatibility is not finished yet
+- no bundled IroHarness-owned StackChan firmware runtime yet
+- no built-in STT/TTS on the M5Stack device; providers stay host-side
 - no OTA or provisioning flow yet
 
-For the firmware plan and how AIAvatarStackChan will be used as the main
-reference, see [stackchan-firmware.md](./stackchan-firmware.md).
+For the firmware plan and how AIAvatarStackChan will be absorbed into an
+IroHarness-owned device runtime, see
+[stackchan-firmware.md](./stackchan-firmware.md).
 
 ## Run Locally
 
@@ -232,21 +234,22 @@ IroHarness treats this as a normal device-originated turn. The same character
 identity, brain routing, Project OS state, and permissions are used.
 The invoke endpoint rejects requests without the configured device token.
 
-## Minimal Firmware Example
+## AIAvatarStackChan Absorption Path
 
-A first PlatformIO sketch is included at:
+IroHarness no longer keeps a one-off minimal face poller as the public firmware
+path. The device runtime should instead follow AIAvatarStackChan's proven shape:
 
 ```text
-examples/stackchan-face-poller/
+Config -> AIAvatar orchestrator -> WebSocketClient -> mic/speaker/face/motion
 ```
 
-It does two things:
+In that design, firmware owns Wi-Fi, display, touch, mic, speaker, camera,
+servo, LEDs, and local buffering. IroHarness owns the character, audience,
+permissions, Project OS, provider routing, STT, LLM, and TTS credentials.
 
-- polls `/stackchan/face` and draws the face/text on an M5Stack CoreS3 display
-- sends a touch/button invoke to `/device/stackchan/invoke`
-
-Edit `examples/stackchan-face-poller/data/config.json`, then build/upload with
-PlatformIO.
+The next implementation step is an upstream-compatible trusted gateway and an
+AIAvatarStackChan-style generated `/config.json`, not another separate firmware
+prototype.
 
 `iroharness connect stackchan` also writes:
 
@@ -258,22 +261,6 @@ That file is the generated first-flash and update runbook for non-engineers. It
 keeps today's path explicit: firmware config is copied and flashed manually now,
 while OTA belongs in the future firmware package or device relay rather than the
 macro harness core.
-
-The face poller supports local retry settings:
-
-```json
-{
-  "poll_interval_ms": 500,
-  "wifi_retry_base_ms": 1000,
-  "wifi_retry_max_ms": 30000,
-  "http_retry_base_ms": 1000,
-  "http_retry_max_ms": 15000
-}
-```
-
-The device backs off locally when Wi-Fi or the host endpoint is unavailable, so
-temporary Mac mini restarts or network drops should not create a tight retry
-loop.
 
 ## Optional Codex OAuth
 

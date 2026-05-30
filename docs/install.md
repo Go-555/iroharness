@@ -102,28 +102,39 @@ StackChan invoke URL: http://127.0.0.1:4182/device/stackchan/invoke
 StackChan SSE: http://127.0.0.1:4182/body/stackchan/events
 ```
 
-On the StackChan firmware side, edit:
+Generate the StackChan connection files first:
+
+```bash
+npx iroharness connect stackchan ~/.iroharness/apps/iroha \
+  --host-url http://MAC_MINI_IP:4182 \
+  --wifi-ssid YOUR_WIFI_SSID \
+  --wifi-pass YOUR_WIFI_PASSWORD
+```
+
+This writes:
 
 ```text
-~/.iroharness/source/examples/stackchan-face-poller/data/config.json
+~/.iroharness/apps/iroha/.iroharness/connections/stackchan.device.json
+~/.iroharness/apps/iroha/.iroharness/connections/stackchan-firmware-config.json
+~/.iroharness/apps/iroha/.iroharness/connections/stackchan-provisioning.md
 ```
 
 Use a LAN or Tailscale address that the M5Stack can reach. Do not use
-`127.0.0.1` from the device:
+`127.0.0.1` from the device.
+
+The future AIAvatarStackChan-style `/config.json` should be generated from the
+connection file. The important mapping is:
 
 ```json
 {
-  "wifi_ssid": "YOUR_WIFI_SSID",
-  "wifi_pass": "YOUR_WIFI_PASSWORD",
-  "face_url": "http://MAC_MINI_IP:4182/stackchan/face",
-  "invoke_url": "http://MAC_MINI_IP:4182/device/stackchan/invoke",
-  "device_token": "YOUR_STACKCHAN_DEVICE_TOKEN",
-  "device_id": "stackchan",
-  "poll_interval_ms": 500,
-  "wifi_retry_base_ms": 1000,
-  "wifi_retry_max_ms": 30000,
-  "http_retry_base_ms": 1000,
-  "http_retry_max_ms": 15000
+  "wifi_networks": [
+    { "name": "home", "ssid": "YOUR_WIFI_SSID", "pass": "YOUR_WIFI_PASSWORD" }
+  ],
+  "ws_host": "MAC_MINI_IP",
+  "ws_port": 4182,
+  "ws_path": "/device/stackchan/realtime?token=YOUR_STACKCHAN_DEVICE_TOKEN",
+  "user_id": "stackchan",
+  "channel": "local"
 }
 ```
 
@@ -137,25 +148,19 @@ Doctor fails if the saved StackChan URL points at `localhost`, `127.*`,
 `0.0.0.0`, or `::1`, because those addresses point back to the M5Stack itself
 instead of the Mac mini.
 
-Then build/upload from:
-
-```bash
-cd ~/.iroharness/source/examples/stackchan-face-poller
-pio run
-pio run --target upload
-pio run --target uploadfs
-```
-
 Connection responsibilities:
 
 | Side | Responsibility |
 |---|---|
-| IroHarness host | identity, memory, PJOS, Slack, model routing, permissions |
-| StackChan firmware | Wi-Fi, display, buttons/touch, polling, local reconnect |
+| IroHarness host | identity, memory, PJOS, Slack, model routing, STT/TTS provider config, permissions |
+| Trusted StackChan gateway | device token validation, realtime session admission, device event mapping |
+| StackChan firmware | Wi-Fi, display, buttons/touch, mic, speaker, camera, servo, local reconnect |
 | `/stackchan/face` | current face/mode/text |
 | `/device/stackchan/invoke` | touch/button/vision/audio events from the device |
-| `/body/stackchan/events` | future richer state streaming |
+| `/device/stackchan/realtime` | WebSocket path for audio frames, TTS chunks, face/lip-sync state |
+| `/body/stackchan/events` | richer state streaming |
 
-The first version intentionally uses HTTP polling and invoke POSTs. Full
-AIAvatarStackChan-compatible WebSocket, STT, TTS, servo, and camera support
-should be added after this base loop works on real hardware.
+IroHarness no longer treats a separate minimal PlatformIO face poller as the
+main firmware path. The intended device runtime should follow AIAvatarStackChan
+and connect to the IroHarness trusted gateway. Exact upstream WebSocket
+compatibility is still the next implementation step.
