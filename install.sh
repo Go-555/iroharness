@@ -200,13 +200,16 @@ StackChan first connection:
      cd "$GIT_DIR"
      npm run example:slack-stackchan
 
-  2. Edit firmware config:
-     "$GIT_DIR/examples/stackchan-face-poller/data/config.json"
+  2. Generate connection and firmware config:
+     npx iroharness connect stackchan "$APP_DIR" --host-url http://<MAC_MINI_IP>:4182
 
-     Use the Mac mini LAN/Tailscale IP, not 127.0.0.1:
-       face_url   = http://<MAC_MINI_IP>:4182/stackchan/face
-       invoke_url = http://<MAC_MINI_IP>:4182/device/stackchan/invoke
+     Use the Mac mini LAN/Tailscale IP, not 127.0.0.1.
 
-  3. Build/upload with PlatformIO from:
-     "$GIT_DIR/examples/stackchan-face-poller"
+  3. Copy the generated AIAvatarStackChan-style values into the StackChan
+     device /config.json:
+     "$APP_DIR/.iroharness/connections/stackchan-firmware-config.json"
+
+     The trusted host keeps device invoke and realtime routes:
+       invoke   = http://<MAC_MINI_IP>:4182/device/stackchan/invoke
+       realtime = ws://<MAC_MINI_IP>:4182/device/stackchan/realtime
 EOF

@@ -366,8 +366,6 @@ test("CLI connect prepares Slack and StackChan onboarding files", () => {
     "pass-test",
     "--device-token",
     "device-secret-test",
-    "--poll-interval-ms",
-    "750",
     "--json"
   ]);
   const slackResult = JSON.parse(slack.stdout);
@@ -417,9 +415,8 @@ test("CLI connect prepares Slack and StackChan onboarding files", () => {
   assert.equal(stackchanDevice.server.facePath, "/stackchan/face");
   assert.equal(stackchanDevice.server.invokePath, "/device/stackchan/invoke");
   assert.equal(stackchanDevice.server.realtimePath, "/device/stackchan/realtime");
-  assert.equal(stackchanDevice.metadata.connectionMode, "http-polling");
-  assert.equal(stackchanDevice.metadata.realtimeConnectionMode, "websocket");
-  assert.equal(stackchanDevice.metadata.auth, "x-iroharness-device-token");
+  assert.equal(stackchanDevice.metadata.connectionMode, "aiavatarstackchan-websocket");
+  assert.equal(stackchanDevice.metadata.auth, "websocket-query-or-device-token-header");
   assert.equal(
     stackchanDevice.metadata.provisioning,
     "manual-flash-now-ota-firmware-package-later"
@@ -427,20 +424,22 @@ test("CLI connect prepares Slack and StackChan onboarding files", () => {
   assert.equal(stackchanDevice.metadata.deviceReachability.ok, true);
   assert.equal(stackchanResult.deviceReachability.ok, true);
   assert.equal(stackchanResult.provisioningPath.endsWith("stackchan-provisioning.md"), true);
-  assert.equal(firmwareConfig.face_url, "http://100.64.0.10:4182/stackchan/face");
-  assert.equal(firmwareConfig.invoke_url, "http://100.64.0.10:4182/device/stackchan/invoke");
+  assert.equal(firmwareConfig.wifi_networks[0].ssid, "ssid-test");
+  assert.equal(firmwareConfig.wifi_networks[0].pass, "pass-test");
+  assert.equal(firmwareConfig.ws_host, "100.64.0.10");
+  assert.equal(firmwareConfig.ws_port, 4182);
+  assert.equal(firmwareConfig.ws_path, "/device/stackchan/realtime?token=device-secret-test");
+  assert.equal(firmwareConfig.user_id, "stackchan");
+  assert.equal(firmwareConfig.channel, "local");
   assert.equal(firmwareConfig.realtime_ws_url, "ws://100.64.0.10:4182/device/stackchan/realtime");
   assert.equal(firmwareConfig.device_token, "device-secret-test");
-  assert.equal(firmwareConfig.poll_interval_ms, 750);
-  assert.equal(firmwareConfig.wifi_retry_base_ms, 1000);
-  assert.equal(firmwareConfig.wifi_retry_max_ms, 30000);
-  assert.equal(firmwareConfig.http_retry_base_ms, 1000);
-  assert.equal(firmwareConfig.http_retry_max_ms, 15000);
+  assert.equal(firmwareConfig.iroharness.invoke_url, "http://100.64.0.10:4182/device/stackchan/invoke");
   assert.match(stackchanProvisioning, /First Flash/);
   assert.match(stackchanProvisioning, /Realtime WebSocket/);
   assert.match(stackchanProvisioning, /1-second conversation path/);
   assert.match(stackchanProvisioning, /OTA should be added in the firmware package/);
-  assert.equal(stackchanResult.firmwareConfig.wifi_pass, "[redacted]");
+  assert.equal(stackchanResult.firmwareConfig.wifi_networks[0].pass, "[redacted]");
+  assert.equal(stackchanResult.firmwareConfig.ws_path, "/device/stackchan/realtime?token=[redacted]");
   assert.equal(stackchanResult.firmwareConfig.device_token, "[redacted]");
 });
 

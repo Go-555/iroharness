@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+### StackChan Runtime Absorption
+
+- removed the one-off minimal StackChan face poller from the public firmware
+  path so the hardware direction can follow AIAvatarStackChan's proven runtime
+  shape
+- documented the StackChan SSOT split: IroHarness owns character, policy,
+  Project OS, provider routing, STT, LLM, and TTS credentials; firmware owns
+  Wi-Fi, display, mic, speaker, touch, camera, servo, LEDs, and local buffering
+- changed `iroharness connect stackchan` firmware config output toward
+  AIAvatarStackChan-style `wifi_networks`, `ws_host`, `ws_port`, `ws_path`,
+  `user_id`, and `channel` fields
+
 ### Browser E2E Stability
 
 - replaced Playwright `waitUntil: "networkidle"` with `"domcontentloaded"` in `examples/browser-screenshot-check.mjs` so the demo's long-lived `/events` SSE stream no longer prevents the 30s navigation timer from settling, which had made the Browser E2E workflow flaky

@@ -68,10 +68,9 @@ Status labels:
 | OBS WebSocket | adapter | `createObsWebSocketAdapter` | Scene, overlay, and mute operations after `manage_stream` approval. |
 | MotionPNGTuber | adapter | `createMotionPngTuberMapper`, `createMotionPngTuberRendererBridge` | Maps normalized character state to PNG state. |
 | M5Stack | adapter | `createM5StackFaceMapper`, `createM5StackBodyBridge` | Maps character state to compact device face payloads. |
-| StackChan face poller firmware | example | `examples/stackchan-face-poller/` | PlatformIO/CoreS3 sketch that polls `/stackchan/face`, posts touch invokes, and uses Wi-Fi/HTTP retry backoff. |
+| StackChan device runtime strategy | guide | `docs/stackchan-firmware.md` | Absorbs AIAvatarStackChan as the reference runtime while keeping firmware, body rendering, brain providers, and macro identity separated. |
 | StackChan provisioning runbook | CLI output | `.iroharness/connections/stackchan-provisioning.md` from `iroharness connect stackchan` | Non-engineer first-flash/update checklist while OTA remains a firmware-package responsibility. |
 | Device config/invoke protocol | contract | `protocols/device-config.schema.json`, `protocols/device-invoke.schema.json` | Stable contract for physical body settings and device-originated events. |
-| StackChan firmware strategy | guide | `docs/stackchan-firmware.md` | Uses AIAvatarStackChan as the reference while keeping firmware, body rendering, and macro identity separated. |
 | Even G2 | adapter | `createEvenG2DisplayMapper`, `createEvenG2DisplayBridge` | Maps state and speech to display payloads. |
 | Live2D | adapter | `createLive2DMapper`, `createLive2DBodyBridge` | Maps state to expression, motion, and lip sync. |
 | VRM/3D | adapter | `createVrmMapper`, `createVrmBodyBridge` | Maps state to expression, animation, and gaze. |

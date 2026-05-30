@@ -114,16 +114,18 @@ This writes:
 - `.iroharness/connections/stackchan-firmware-config.json`
 
 It also writes `STACKCHAN_DEVICE_TOKEN` to `.env`. The token is required for
-`POST /device/stackchan/invoke`; render-only face polling remains separate.
-CLI JSON output redacts Wi-Fi passwords and device tokens.
+`POST /device/stackchan/invoke` and the StackChan realtime WebSocket. CLI JSON
+output redacts Wi-Fi passwords and device tokens.
 
-Copy the firmware config values into
-`examples/stackchan-face-poller/data/config.json`, then build/upload from the
-PlatformIO sketch directory. The M5Stack must use a LAN or Tailscale address it
-can reach; `127.0.0.1` only points back to the M5Stack itself. `connect
-stackchan` records a firmware reachability check, and `iroharness doctor` fails
-when the saved StackChan host URL is `localhost`, `127.*`, `0.0.0.0`, `::1`, or
-another local-only URL.
+Use `.iroharness/connections/stackchan-firmware-config.json` and the generated
+provisioning runbook as the source for the firmware `/config.json`. The intended
+runtime shape follows AIAvatarStackChan: firmware owns Wi-Fi, display, mic,
+speaker, touch, camera, servo, and local buffering; IroHarness owns character
+identity, audience, Project OS, provider routing, STT, LLM, and TTS credentials.
+The M5Stack must use a LAN or Tailscale address it can reach; `127.0.0.1` only
+points back to the M5Stack itself. `connect stackchan` records a firmware
+reachability check, and `iroharness doctor` fails when the saved StackChan host
+URL is `localhost`, `127.*`, `0.0.0.0`, `::1`, or another local-only URL.
 
 ## View Export
 

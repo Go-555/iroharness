@@ -48,7 +48,7 @@ Slack / Web / VS Code / M5Stack / Even G2 / Live2D / MotionPNGTuber
 | ユーザー管理 | YouTube ID、Discord ID、Slack ID、browser user などを同一人物に紐づけられる |
 | 権限制御 | deep discussion、delegate_work、manage_stream、manage_users などを role と permission override で制御できる |
 | 身体 adapter | MotionPNGTuber、M5Stack、Even G2、Live2D、VRM/3D、AIAvatarKit への状態マッピングがある |
-| StackChan実機 | `/stackchan/face`、`/device/stackchan/invoke`、最小PlatformIO face poller sketch がある |
+| StackChan実機 | `/device/stackchan/invoke`、realtime WebSocket、AIAvatarStackChan吸収方針がある |
 | realtime 音声契約 | STT partial、TTS chunk、barge-in、latency tracking を扱う JS contract がある |
 | StackChan疑似実機 | `npm run example:stackchan-sim` で WebSocket realtime 経路を実機なしに叩ける |
 | Rust fast path | `crates/realtime-core` に native/WASM C ABI 対応の realtime core がある |
@@ -493,11 +493,10 @@ IROHARNESS_SLACK_OWNER_USER_ID=UOWNER \
 npm run example:slack-stackchan
 ```
 
-StackChan側はまず `GET /stackchan/face` をpollするだけで試せます。
+StackChan側はAIAvatarStackChanの構成をIroHarnessのtrusted device runtimeとして吸収する方針です。
 詳細は [docs/slack-stackchan.md](./docs/slack-stackchan.md) を見てください。
 実機ファームウェアの吸収方針は
 [docs/stackchan-firmware.md](./docs/stackchan-firmware.md) にまとめています。
-最小PlatformIO sketchは [examples/stackchan-face-poller](./examples/stackchan-face-poller) です。
 
 ## Brain Routing
 
