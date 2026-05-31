@@ -185,22 +185,25 @@ const createLatencyProbe = ({ budgetMs }) => {
   return Object.freeze({
     mark,
     observe(message) {
-      if (message.type === "ready") {
+      if (message.type === "ready" || message.type === "connected") {
         mark("ready");
       }
-      if (message.type === "stt.event" && message.event?.type === "stt.final") {
+      if (
+        (message.type === "stt.event" && message.event?.type === "stt.final") ||
+        message.type === "accepted"
+      ) {
         mark("stt.final");
       }
-      if (message.type === "response.start") {
+      if (message.type === "response.start" || message.type === "start") {
         mark("response.start");
       }
-      if (message.type === "speech.audio") {
+      if (message.type === "speech.audio" || message.type === "chunk") {
         mark("speech.audio");
       }
-      if (message.type === "response.final") {
+      if (message.type === "response.final" || message.type === "final") {
         mark("response.final");
       }
-      if (message.type === "speech.interrupted") {
+      if (message.type === "speech.interrupted" || message.type === "stop") {
         mark("speech.interrupted");
       }
     },
@@ -235,6 +238,8 @@ const main = async () => {
   const token = args.token || process.env.STACKCHAN_DEVICE_TOKEN || "";
   const deviceId = args["device-id"] || process.env.STACKCHAN_BODY_ID || "stackchan";
   const userId = args["user-id"] || deviceId;
+  const protocol = args.protocol || process.env.IROHARNESS_STACKCHAN_SIM_PROTOCOL || "iroharness";
+  const sessionId = args["session-id"] || "simulator-session";
   const text = args.text || process.env.IROHARNESS_STACKCHAN_SIM_TEXT || "こんにちは";
   const audioBase64 =
     args["audio-base64"] ||
@@ -245,29 +250,66 @@ const main = async () => {
   const dryRun = Boolean(args["dry-run"]);
   const printSummary = Boolean(args.summary || args["json-summary"]);
   const failOverBudget = Boolean(args["fail-over-budget"]);
-  const messages = [
-    {
-      type: "hello",
-      deviceId,
-      userId,
-      latencyBudgetMs: 1000
-    },
-    {
-      type: "invoke",
-      deviceId,
-      userId,
-      text
-    },
-    {
-      type: "audio.chunk",
-      deviceId,
-      userId,
-      encoding: "pcm_s16le",
-      sampleRate: 16000,
-      dataBase64: audioBase64,
-      final: true
-    }
-  ];
+  const messages =
+    protocol === "aiavatarstackchan"
+      ? [
+          {
+            type: "start",
+            session_id: sessionId,
+            user_id: userId,
+            channel: "local"
+          },
+          {
+            type: "invoke",
+            session_id: sessionId,
+            user_id: userId,
+            channel: "local",
+            text,
+            allow_merge: false,
+            wait_in_queue: true
+          },
+          {
+            type: "invoke",
+            session_id: sessionId,
+            user_id: userId,
+            channel: "local",
+            text: "",
+            audio_data: audioBase64,
+            metadata: {
+              audio_format: {
+                codec: "pcm16",
+                sample_rate: 16000,
+                channels: 1,
+                bits_per_sample: 16
+              }
+            },
+            allow_merge: false,
+            wait_in_queue: true
+          }
+        ]
+      : [
+          {
+            type: "hello",
+            deviceId,
+            userId,
+            latencyBudgetMs: 1000
+          },
+          {
+            type: "invoke",
+            deviceId,
+            userId,
+            text
+          },
+          {
+            type: "audio.chunk",
+            deviceId,
+            userId,
+            encoding: "pcm_s16le",
+            sampleRate: 16000,
+            dataBase64: audioBase64,
+            final: true
+          }
+        ];
   const latency = createLatencyProbe({ budgetMs });
   const received = [];
 
@@ -277,6 +319,7 @@ const main = async () => {
         {
           url,
           deviceId,
+          protocol,
           budgetMs,
           messageTypes: messages.map((message) => message.type),
           auth: token ? "device-token" : "none",
@@ -296,17 +339,25 @@ const main = async () => {
     console.log(JSON.stringify(message));
   });
   messages.forEach((message) => {
-    if (message.type === "audio.chunk") {
+    if (message.type === "audio.chunk" || message.audio_data) {
       latency.mark("audio.sent");
     }
     socket.send(message);
   });
   await wait(keepOpenMs);
-  socket.send({
-    type: "interrupt",
-    deviceId,
-    userId
-  });
+  socket.send(
+    protocol === "aiavatarstackchan"
+      ? {
+          type: "stop",
+          session_id: sessionId,
+          user_id: userId
+        }
+      : {
+          type: "interrupt",
+          deviceId,
+          userId
+        }
+  );
   await wait(100);
   socket.close();
   if (printSummary) {

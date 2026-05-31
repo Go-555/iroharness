@@ -685,6 +685,94 @@ test("StackChan realtime session handler accepts firmware audio and returns spee
   assert.equal(events.some((event) => event.type === "stackchan.accepted"), true);
 });
 
+test("StackChan realtime session handler speaks AIAvatarStackChan websocket messages", async () => {
+  const sent = [];
+  const turns = [];
+  const socket = createFakeServerSocket({ sent });
+  const handler = createStackChanRealtimeSessionHandler({
+    deviceToken: "device-token",
+    harness: {
+      async receive(turn) {
+        turns.push(turn);
+        return {
+          kind: "spoken",
+          text: `返事: ${turn.text}`
+        };
+      }
+    },
+    stt: {
+      id: "unused-stt",
+      start() {
+        return {
+          async push() {
+            return [];
+          },
+          async end() {
+            return [];
+          },
+          cancel() {
+            return null;
+          }
+        };
+      }
+    },
+    tts: {
+      id: "fake-tts",
+      async stream({ text, onEvent }) {
+        const events = [
+          {
+            type: "tts.audio",
+            text,
+            audio: "pcm-base64",
+            encoding: "pcm_s16le",
+            sampleRate: 24000,
+            final: false
+          },
+          {
+            type: "tts.completed",
+            text,
+            audio: "",
+            final: true
+          }
+        ];
+        events.forEach(onEvent);
+        return events;
+      }
+    }
+  });
+
+  handler.handleConnection(socket, {
+    deviceId: "stackchan",
+    token: "device-token"
+  });
+  socket.receive({
+    type: "start",
+    session_id: "avatar-session",
+    user_id: "stackchan",
+    channel: "local"
+  });
+  socket.receive({
+    type: "invoke",
+    session_id: "avatar-session",
+    user_id: "stackchan",
+    channel: "local",
+    text: "こんにちは",
+    allow_merge: false,
+    wait_in_queue: true
+  });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  assert.equal(sent[0].type, "ready");
+  assert.equal(sent.some((message) => message.type === "connected"), true);
+  assert.equal(sent.some((message) => message.type === "accepted"), true);
+  assert.equal(sent.some((message) => message.type === "start"), true);
+  assert.equal(sent.some((message) => message.type === "chunk"), true);
+  assert.equal(sent.at(-1).type, "final");
+  assert.equal(sent.at(-1).session_id, "avatar-session");
+  assert.equal(turns[0].modality, "text");
+  assert.equal(turns[0].metadata.aiAvatarSessionId, "avatar-session");
+});
+
 test("StackChan realtime session handler rejects invalid device token", () => {
   const sent = [];
   const socket = createFakeServerSocket({ sent });
