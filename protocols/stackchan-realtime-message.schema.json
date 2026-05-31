@@ -11,13 +11,21 @@
         "hello",
         "config",
         "ready",
+        "connected",
         "audio",
+        "data",
         "audio.chunk",
         "ptt.audio",
         "stt.event",
         "stt.empty",
+        "accepted",
+        "voiced",
         "invoke",
         "vision",
+        "start",
+        "chunk",
+        "final",
+        "tool_call",
         "response.start",
         "response.final",
         "speech.audio",
@@ -31,6 +39,15 @@
       "type": "string"
     },
     "sessionId": {
+      "type": "string"
+    },
+    "session_id": {
+      "type": "string"
+    },
+    "user_id": {
+      "type": "string"
+    },
+    "channel": {
       "type": "string"
     },
     "sequence": {
@@ -67,6 +84,9 @@
     "dataBase64": {
       "type": "string"
     },
+    "audio_data": {
+      "type": "string"
+    },
     "encoding": {
       "type": "string"
     },
@@ -83,6 +103,27 @@
     },
     "imageDataUrl": {
       "type": "string"
+    },
+    "files": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true
+      }
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "avatar_control_request": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "allow_merge": {
+      "type": "boolean"
+    },
+    "wait_in_queue": {
+      "type": "boolean"
     },
     "itemId": {
       "type": "string"

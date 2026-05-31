@@ -184,8 +184,9 @@ The first absorbed runtime should be close to AIAvatarStackChan's basic example:
 
 ### Phase 3: Upstream-Compatible Gateway
 
-Add a compatibility layer in the trusted gateway so unmodified or lightly
-modified AIAvatarStackChan firmware can connect.
+Done at the protocol-handler level: the trusted gateway accepts
+AIAvatarStackChan-style WebSocket messages and translates them into IroHarness
+turns.
 
 This layer translates upstream WebSocket messages into IroHarness turns:
 
@@ -202,6 +203,28 @@ AIAvatarStackChan firmware
 
 This is a trusted body/device path, not a fourth top-level gateway and not a
 micro harness worker.
+
+The implemented compatibility path accepts:
+
+- client `start` with `session_id`, `user_id`, and `channel`
+- client `data` with microphone `audio_data`
+- client `invoke` with text, image `files`, or recorded `audio_data`
+- client `stop`
+
+It returns:
+
+- `connected`
+- `accepted` / `voiced`
+- `start`
+- `chunk` with `audio_data`, `metadata.audio_format`, and face control
+- `final`
+- `stop`
+- `error`
+
+Audio codec alignment remains the main hardware validation item. AivisSpeech
+currently produces WAV in the host adapter; AIAvatarStackChan firmware can play
+raw PCM directly, while encoded formats need a playback converter or host-side
+PCM conversion.
 
 ### Phase 4: Firmware Release And OTA
 
@@ -246,7 +269,7 @@ target once the upstream-compatible gateway is implemented.
 ## Near-Term Work
 
 1. Done: remove the one-off minimal face poller from the public surface.
-2. Add exact AIAvatarStackChan WebSocket compatibility to the trusted gateway.
+2. Done: add AIAvatarStackChan WebSocket compatibility to the trusted gateway.
 3. Generate an AIAvatarStackChan-style `/config.json` from
    `iroharness connect stackchan`.
 4. Import or wrap the AIAvatarStackChan device runtime with MIT notice

@@ -4,6 +4,10 @@
 
 ### StackChan Runtime Absorption
 
+- added AIAvatarStackChan-style WebSocket compatibility to the StackChan realtime
+  session handler, including `start`, `data`, `invoke`, `stop`, `connected`,
+  `accepted`, `chunk`, and `final` message translation
+- added AIAvatarStackChan protocol mode to the StackChan realtime simulator
 - removed the one-off minimal StackChan face poller from the public firmware
   path so the hardware direction can follow AIAvatarStackChan's proven runtime
   shape

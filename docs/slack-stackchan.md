@@ -221,10 +221,23 @@ npm run example:stackchan-sim -- \
   --fail-over-budget
 ```
 
+To exercise the AIAvatarStackChan-style wire shape, add:
+
+```bash
+STACKCHAN_DEVICE_TOKEN=dev-device-token \
+npm run example:stackchan-sim -- \
+  --protocol aiavatarstackchan \
+  --url ws://127.0.0.1:4182/device/stackchan/realtime \
+  --text "こんにちは" \
+  --summary
+```
+
 The simulator sends `hello`, `invoke`, `audio.chunk`, and `interrupt` messages
-over the same WebSocket contract that the physical device will use. With
-`--summary`, it also prints a `simulator.summary` JSON line with host-side marks
-for `sttFinal`, `responseStart`, `firstAudio`, and `responseFinal`.
+in IroHarness-native mode. In AIAvatarStackChan mode it sends `start`,
+`invoke`, an audio `invoke`, and `stop`, then expects `connected`, `accepted`,
+`start`, `chunk`, and `final`. With `--summary`, it also prints a
+`simulator.summary` JSON line with host-side marks for `sttFinal`,
+`responseStart`, `firstAudio`, and `responseFinal`.
 `--fail-over-budget` exits non-zero when `firstAudio` exceeds the configured
 budget. This does not prove real microphone, speaker, Azure, AivisSpeech, or
 Wi-Fi latency, but it does prove the host-side realtime route without StackChan

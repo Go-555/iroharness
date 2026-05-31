@@ -126,7 +126,7 @@ boundaries and first real devices are comfortable for daily use.
 
 - [x] View export writes gateway and work-runner boundary policies
 - [x] Minimal StackChan face poller removed from the public firmware path
-- [ ] AIAvatarStackChan-compatible trusted WebSocket gateway
+- [x] AIAvatarStackChan-compatible trusted WebSocket gateway
 - [ ] AIAvatarStackChan-style generated `/config.json` for firmware flashing
 - [x] Slack + StackChan companion can boot directly from an exported trusted view
 - [x] Slack onboarding produces a copy-paste checklist for Slack App settings

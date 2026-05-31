@@ -2955,10 +2955,44 @@ const parseSocketMessageData = (event) => {
 
 const normalizeStackChanAudioPayload = (payload) =>
   payload.audio || {
-    encoding: payload.encoding || "pcm_s16le",
-    sampleRate: payload.sampleRate || 16000,
-    dataBase64: payload.dataBase64 || payload.audioBase64 || ""
+    encoding:
+      payload.encoding ||
+      payload.metadata?.audio_format?.codec ||
+      payload.metadata?.pcm_format?.codec ||
+      "pcm_s16le",
+    sampleRate:
+      payload.sampleRate ||
+      payload.metadata?.audio_format?.sample_rate ||
+      payload.metadata?.pcm_format?.sample_rate ||
+      16000,
+    channels:
+      payload.channels ||
+      payload.metadata?.audio_format?.channels ||
+      payload.metadata?.pcm_format?.channels ||
+      1,
+    bitsPerSample:
+      payload.bitsPerSample ||
+      payload.metadata?.audio_format?.bits_per_sample ||
+      payload.metadata?.pcm_format?.bits_per_sample ||
+      16,
+    dataBase64: payload.dataBase64 || payload.audioBase64 || payload.audio_data || ""
   };
+
+const isAiAvatarStackChanClientMessage = (payload) =>
+  ["start", "data"].includes(payload?.type) ||
+  Boolean(payload?.session_id) ||
+  Boolean(payload?.audio_data);
+
+const toAiAvatarAudioFormat = (audio = {}) =>
+  Object.freeze({
+    codec:
+      audio.encoding === "pcm_s16le" || audio.encoding === "pcm16"
+        ? "pcm16"
+        : audio.encoding || "pcm16",
+    sample_rate: audio.sampleRate || 24000,
+    channels: audio.channels || 1,
+    bits_per_sample: audio.bitsPerSample || 16
+  });
 
 export const createStackChanRealtimeSessionHandler = ({
   id = "stackchan-realtime-session",
@@ -2993,6 +3027,10 @@ export const createStackChanRealtimeSessionHandler = ({
     handleConnection(socket, { deviceId = "stackchan", userId = deviceId, channel = "local", token = null, onEvent = () => {} } = {}) {
       let sequence = 0;
       let sttSession = null;
+      let protocol = "iroharness";
+      let aiAvatarSessionId = id;
+      let activeUserId = userId;
+      let activeChannel = channel;
       const queue =
         typeof createQueue === "function"
           ? createQueue({ deviceId, userId, channel })
@@ -3011,12 +3049,18 @@ export const createStackChanRealtimeSessionHandler = ({
       };
 
       const send = (payload) => {
+        const wirePayload =
+          protocol === "aiavatarstackchan" ? toAiAvatarStackChanServerMessage(payload) : payload;
         const message = JSON.stringify({
-          ...payload,
-          sessionId: id,
-          deviceId,
-          sequence,
-          timestamp: nowIso()
+          ...wirePayload,
+          ...(protocol === "aiavatarstackchan"
+            ? {}
+            : {
+                sessionId: id,
+                deviceId,
+                sequence,
+                timestamp: nowIso()
+              })
         });
         if (typeof socket.send === "function") {
           socket.send(message);
@@ -3024,10 +3068,84 @@ export const createStackChanRealtimeSessionHandler = ({
         return message;
       };
 
+      const toAiAvatarStackChanServerMessage = (payload) => {
+        if (payload.type === "ready") {
+          return {
+            type: "connected",
+            session_id: aiAvatarSessionId
+          };
+        }
+        if (payload.type === "stt.event") {
+          return payload.event?.final
+            ? {
+                type: "accepted",
+                session_id: aiAvatarSessionId
+              }
+            : {
+                type: "voiced",
+                session_id: aiAvatarSessionId
+              };
+        }
+        if (payload.type === "response.start") {
+          return {
+            type: "start",
+            session_id: aiAvatarSessionId,
+            metadata: {
+              request_text: payload.text || ""
+            }
+          };
+        }
+        if (payload.type === "speech.audio") {
+          const audio = payload.audio || {};
+          return {
+            type: "chunk",
+            session_id: aiAvatarSessionId,
+            audio_data: audio.dataBase64 || "",
+            metadata: {
+              audio_format: toAiAvatarAudioFormat(audio),
+              text: payload.text || ""
+            },
+            avatar_control_request: {
+              face_name: payload.faceName || "neutral",
+              face_duration: payload.faceDurationSec || 2
+            }
+          };
+        }
+        if (payload.type === "response.final") {
+          return {
+            type: "final",
+            session_id: aiAvatarSessionId,
+            text: payload.text || "",
+            metadata: {
+              text: payload.text || "",
+              voice_text: payload.voiceText || payload.text || ""
+            }
+          };
+        }
+        if (payload.type === "speech.interrupted") {
+          return {
+            type: "stop",
+            session_id: aiAvatarSessionId
+          };
+        }
+        if (payload.type === "error") {
+          return {
+            type: "error",
+            session_id: aiAvatarSessionId,
+            code: payload.code,
+            message: payload.message || payload.code || "error"
+          };
+        }
+        return {
+          ...payload,
+          session_id: aiAvatarSessionId
+        };
+      };
+
       const actor = () =>
         Object.freeze({
           platform: "m5stack",
-          platformUserId: userId,
+          platformUserId: activeUserId,
           displayName: deviceId
         });
 
@@ -3039,8 +3157,9 @@ export const createStackChanRealtimeSessionHandler = ({
           actor: actor(),
           metadata: {
             deviceId,
-            channel,
+            channel: activeChannel,
             realtimeSessionId: id,
+            aiAvatarSessionId: protocol === "aiavatarstackchan" ? aiAvatarSessionId : null,
             ...metadata
           }
         });
@@ -3154,10 +3273,25 @@ export const createStackChanRealtimeSessionHandler = ({
       };
 
       const handlePayload = async (payload) => {
+        if (isAiAvatarStackChanClientMessage(payload)) {
+          protocol = "aiavatarstackchan";
+          aiAvatarSessionId = payload.session_id || aiAvatarSessionId;
+          activeUserId = payload.user_id || activeUserId;
+          activeChannel = payload.channel || activeChannel;
+        }
         emit({
           type: "stackchan.message",
           messageType: payload.type || "unknown"
         });
+        if (payload.type === "start") {
+          send({
+            type: "ready",
+            latencyBudgetMs,
+            acceptedAudio: ["pcm16", "pcm_s16le", "wav"],
+            acceptedInput: ["data", "invoke", "stop"]
+          });
+          return null;
+        }
         if (payload.type === "hello" || payload.type === "config") {
           send({
             type: "ready",
@@ -3167,15 +3301,36 @@ export const createStackChanRealtimeSessionHandler = ({
           });
           return null;
         }
+        if (payload.type === "data") {
+          return handleAudio({
+            ...payload,
+            type: "audio.chunk",
+            final: Boolean(payload.final)
+          });
+        }
         if (payload.type === "audio.chunk" || payload.type === "audio" || payload.type === "ptt.audio") {
           return handleAudio(payload);
         }
         if (payload.type === "invoke" || payload.type === "vision") {
+          if (payload.audio_data) {
+            return handleAudio({
+              ...payload,
+              type: "ptt.audio",
+              final: true
+            });
+          }
+          if (protocol === "aiavatarstackchan") {
+            send({
+              type: "accepted"
+            });
+          }
+          const imageDataUrl =
+            payload.imageDataUrl || payload.files?.find?.((file) => file?.url)?.url || null;
           const result = await receiveTurn({
-            modality: payload.type === "vision" ? "vision" : "text",
+            modality: payload.type === "vision" || imageDataUrl ? "vision" : "text",
             text: payload.text || "",
             metadata: {
-              imageDataUrl: payload.imageDataUrl || null,
+              imageDataUrl,
               invokeType: payload.type
             }
           });

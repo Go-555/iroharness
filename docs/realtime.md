@@ -191,15 +191,24 @@ handler.handleConnection(socket, {
 });
 ```
 
-The session handler accepts `hello`, `audio.chunk`, `ptt.audio`, `invoke`,
-`vision`, `interrupt`, and `stop` messages, then returns `ready`, `stt.event`,
-`response.start`, `speech.audio`, `response.final`, or `error` messages.
+The session handler accepts both IroHarness realtime messages and
+AIAvatarStackChan-style WebSocket messages.
+
+IroHarness-native clients can send `hello`, `audio.chunk`, `ptt.audio`,
+`invoke`, `vision`, `interrupt`, and `stop`, then receive `ready`, `stt.event`,
+`response.start`, `speech.audio`, `response.final`, or `error`.
+
+AIAvatarStackChan-style firmware can send `start`, `data`, `invoke`, and
+`stop`, including `session_id`, `user_id`, `channel`, `audio_data`, and
+`metadata.audio_format`. The same handler answers with `connected`, `accepted`,
+`voiced`, `start`, `chunk`, `final`, `stop`, or `error`.
 The message shape is documented in
 `protocols/stackchan-realtime-message.schema.json`.
 
-This is now enough to mount on a real WebSocket server. The remaining work is
-matching the exact upstream AIAvatarStackChan wire protocol and measuring real
-hardware latency before claiming a guaranteed 1-second response.
+This is now enough to mount on a real WebSocket server and exercise the
+AIAvatarStackChan-derived firmware path. The remaining work is real hardware
+latency tuning and audio codec alignment before claiming a guaranteed 1-second
+response.
 
 ## Interruption / Barge-In
 
