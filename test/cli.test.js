@@ -24,6 +24,18 @@ const runCli = (args, { env = {} } = {}) =>
     encoding: "utf8"
   });
 
+const pngHeader = ({ width = 320, height = 240, colorType = 2 } = {}) => {
+  const buffer = Buffer.alloc(33);
+  Buffer.from("89504e470d0a1a0a", "hex").copy(buffer, 0);
+  buffer.writeUInt32BE(13, 8);
+  buffer.write("IHDR", 12, "ascii");
+  buffer.writeUInt32BE(width, 16);
+  buffer.writeUInt32BE(height, 20);
+  buffer.writeUInt8(8, 24);
+  buffer.writeUInt8(colorType, 25);
+  return buffer;
+};
+
 const waitForServerUrl = (child) =>
   new Promise((resolve, reject) => {
     let output = "";
@@ -478,6 +490,68 @@ test("CLI doctor flags StackChan host URLs that firmware cannot reach", () => {
     doctorResult.failedStackChanChecks.some(
       (check) => check.label === "StackChan host URL is firmware-reachable"
     ),
+    true
+  );
+});
+
+test("CLI skill commands list, plan, and evaluate StackChan avatar packs", () => {
+  const dir = mkdtempSync(join(tmpdir(), "iroharness-skill-cli-"));
+  const appDir = join(dir, "companion");
+  const referenceImage = join(dir, "reference.png");
+  const packDir = join(dir, "iroha-pack");
+  const avatarDir = join(packDir, "avatar");
+  const init = runCli(["init", appDir, "--character", "Iroha"]);
+  writeFileSync(referenceImage, pngHeader());
+
+  const list = runCli(["skill", "list", appDir, "--json"]);
+  const plan = runCli([
+    "skill",
+    "plan",
+    "stackchan-avatar-pack",
+    appDir,
+    "--reference-image",
+    referenceImage,
+    "--pack-id",
+    "iroha-test",
+    "--out",
+    packDir,
+    "--json"
+  ]);
+  mkdirSync(avatarDir, { recursive: true });
+  [
+    "neutral.png",
+    "neutral_blink.png",
+    "joy.png",
+    "fun.png",
+    "angry.png",
+    "sorrow.png"
+  ].forEach((file) => writeFileSync(join(avatarDir, file), pngHeader({ colorType: 2 })));
+  ["mouth_half.png", "mouth_open.png"].forEach((file) =>
+    writeFileSync(join(avatarDir, file), pngHeader({ colorType: 6 }))
+  );
+  const evalResult = runCli([
+    "skill",
+    "eval",
+    "stackchan-avatar-pack",
+    appDir,
+    "--pack-dir",
+    packDir,
+    "--json"
+  ]);
+  const listed = JSON.parse(list.stdout);
+  const planned = JSON.parse(plan.stdout);
+  const evaluated = JSON.parse(evalResult.stdout);
+
+  assert.equal(init.status, 0, init.stderr);
+  assert.equal(list.status, 0, list.stderr);
+  assert.equal(plan.status, 0, plan.stderr);
+  assert.equal(evalResult.status, 0, evalResult.stderr);
+  assert.equal(listed.skills.some((skill) => skill.id === "run-stackchan-avatar-pack"), true);
+  assert.equal(planned.plan.packId, "iroha-test");
+  assert.equal(existsSync(planned.planPath), true);
+  assert.equal(evaluated.ok, true);
+  assert.equal(
+    evaluated.checks.some((check) => check.id === "mouth_open.png:alpha" && check.ok),
     true
   );
 });

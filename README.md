@@ -51,6 +51,7 @@ Slack / Web / VS Code / M5Stack / Even G2 / Live2D / MotionPNGTuber
 | StackChan実機 | IroHarness-owned firmware runtime、`/device/stackchan/invoke`、AIAvatarStackChan-style realtime WebSocket がある |
 | realtime 音声契約 | STT partial、TTS chunk、barge-in、latency tracking を扱う JS contract がある |
 | StackChan疑似実機 | `npm run example:stackchan-sim` で WebSocket realtime 経路を実機なしに叩ける |
+| Skills | reference / workflow / evaluator を分けたskill registryと、StackChan avatar packの計画・検証CLIがある |
 | Rust fast path | `crates/realtime-core` に native/WASM C ABI 対応の realtime core がある |
 | 生成アプリ | `npx iroharness init` で相棒AIアプリのひな形を作れる |
 | 運用準備 | doctor、production doctor、OSS readiness、publish preflight、GitHub Actions、npm release workflow がある |
@@ -261,6 +262,8 @@ npx iroharness view export ~/.iroharness/apps/iroha \
 ```
 
 CLIの詳細は [docs/cli.md](./docs/cli.md) を見てください。
+Skills の考え方と StackChan avatar pack workflow は
+[docs/skills.md](./docs/skills.md) を見てください。
 browser screenshot E2E は [docs/ci.md](./docs/ci.md) にあります。
 
 ## Core API

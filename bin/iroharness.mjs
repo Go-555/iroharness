@@ -4,6 +4,11 @@ import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } fr
 import { basename, dirname, join, resolve } from "node:path";
 
 import { createFileUserRegistry, createProjectOsMarkdown } from "../src/index.js";
+import {
+  createFileSkillRegistry,
+  createStackChanAvatarPackPlan,
+  evaluateStackChanAvatarPack
+} from "../src/skills/index.js";
 
 const usage = `IroHarness
 
@@ -19,6 +24,9 @@ Usage:
   iroharness audience list [dir] [--json]
   iroharness connect slack [dir] [--bot-token <xoxb-token>] [--signing-secret <secret>] [--bot-user-id <user-id>] [--owner-slack-user-id <user-id>]
   iroharness connect stackchan [dir] [--host-url <url>] [--wifi-ssid <ssid>] [--wifi-pass <password>] [--device-id <id>] [--device-token <token>] [--firmware-config-out <path>]
+  iroharness skill list [dir] [--json]
+  iroharness skill plan stackchan-avatar-pack [dir] --reference-image <path> [--pack-id <id>] [--out <dir>] [--json]
+  iroharness skill eval stackchan-avatar-pack [dir] --pack-dir <dir> [--json]
   iroharness view export [dir] --zone <public|trusted|owner> --out <view-dir> [--force]
   iroharness work-runner check <view-dir> [--json]
   iroharness doctor [dir] [--production] [--json]
@@ -33,6 +41,9 @@ Examples:
   iroharness audience import ./my-companion --file ./audience-backup.json --force
   iroharness connect slack ./my-companion --owner-slack-user-id UOWNER
   iroharness connect stackchan ./my-companion --host-url http://100.64.0.10:4182
+  iroharness skill list ./my-companion
+  iroharness skill plan stackchan-avatar-pack ./my-companion --reference-image ./iroha.jpg
+  iroharness skill eval stackchan-avatar-pack ./my-companion --pack-dir ./.iroharness/artifacts/avatar-packs/iroha
   iroharness view export ./my-companion --zone trusted --out /Users/iroharness-trusted/iroha-view --force
   iroharness work-runner check /Users/iroharness-trusted/iroha-view
   iroharness doctor ./my-companion
@@ -74,6 +85,10 @@ const parseArgs = (argv) => {
   let deviceId = "stackchan";
   let deviceToken = null;
   let firmwareConfigOut = null;
+  let skillId = null;
+  let referenceImage = null;
+  let packId = null;
+  let packDir = null;
   let zone = null;
   let out = null;
   const identities = {};
@@ -233,6 +248,21 @@ const parseArgs = (argv) => {
       index += 1;
       continue;
     }
+    if (value === "--reference-image") {
+      referenceImage = rest[index + 1];
+      index += 1;
+      continue;
+    }
+    if (value === "--pack-id") {
+      packId = rest[index + 1];
+      index += 1;
+      continue;
+    }
+    if (value === "--pack-dir") {
+      packDir = rest[index + 1];
+      index += 1;
+      continue;
+    }
     if (value === "--zone") {
       zone = rest[index + 1];
       index += 1;
@@ -252,7 +282,15 @@ const parseArgs = (argv) => {
       positional.push(value);
     }
   }
-  if (command === "audience" || command === "connect" || command === "view" || command === "work-runner") {
+  if (command === "skill") {
+    [action = null] = positional;
+    if (action === "list") {
+      dir = positional[1] || ".";
+    } else {
+      skillId = positional[1] || null;
+      dir = positional[2] || ".";
+    }
+  } else if (command === "audience" || command === "connect" || command === "view" || command === "work-runner") {
     [action = null, dir = "."] = positional;
   } else if (positional.length > 0) {
     dir = positional[positional.length - 1];
@@ -292,6 +330,10 @@ const parseArgs = (argv) => {
     deviceId,
     deviceToken,
     firmwareConfigOut,
+    skillId,
+    referenceImage,
+    packId,
+    packDir,
     zone,
     out,
     identities
@@ -2053,6 +2095,86 @@ const connect = (args) => {
   throw new Error(`Unknown connect target: ${args.action || "(missing)"}\n\n${usage}`);
 };
 
+const resolveStackChanAvatarSkill = (skillId) => {
+  if (skillId === "stackchan-avatar-pack" || skillId === "run-stackchan-avatar-pack") {
+    return "run-stackchan-avatar-pack";
+  }
+  if (skillId === "eval-stackchan-avatar-pack") {
+    return "eval-stackchan-avatar-pack";
+  }
+  throw new Error(`Unknown skill: ${skillId || "(missing)"}\n\n${usage}`);
+};
+
+const skills = (args) => {
+  const registry = createFileSkillRegistry({
+    path: join(args.dir, ".iroharness", "skills.json")
+  });
+  if (args.action === "list") {
+    const result = {
+      registryPath: registry.path,
+      skills: registry.list()
+    };
+    if (args.json) {
+      console.log(JSON.stringify(result, null, 2));
+      return;
+    }
+    result.skills.forEach((skill) => {
+      console.log(`${skill.id}\t${skill.kind}\t${skill.role}\t${skill.trigger}`);
+    });
+    return;
+  }
+  if (args.action === "plan") {
+    resolveStackChanAvatarSkill(args.skillId);
+    if (!args.referenceImage) {
+      throw new Error("--reference-image is required for stackchan-avatar-pack planning");
+    }
+    const packId = args.packId || "stackchan-avatar-pack";
+    const outputDir = args.out || join(args.dir, ".iroharness", "artifacts", "avatar-packs", packId);
+    const plan = createStackChanAvatarPackPlan({
+      referenceImage: args.referenceImage,
+      outputDir,
+      packId
+    });
+    mkdirSync(plan.outputDir, { recursive: true });
+    const planPath = join(plan.outputDir, "stackchan-avatar-pack.plan.json");
+    writeFileSync(planPath, `${JSON.stringify(plan, null, 2)}\n`, "utf8");
+    const result = {
+      ok: true,
+      planPath,
+      plan
+    };
+    if (args.json) {
+      console.log(JSON.stringify(result, null, 2));
+      return;
+    }
+    console.log(`created StackChan avatar plan: ${planPath}`);
+    console.log(`next: generate assets into ${plan.avatarDir}`);
+    console.log(`then: iroharness skill eval stackchan-avatar-pack ${args.dir} --pack-dir ${plan.outputDir}`);
+    return;
+  }
+  if (args.action === "eval") {
+    resolveStackChanAvatarSkill(args.skillId);
+    if (!args.packDir) {
+      throw new Error("--pack-dir is required for stackchan-avatar-pack evaluation");
+    }
+    const result = evaluateStackChanAvatarPack({ packDir: args.packDir });
+    if (args.json) {
+      console.log(JSON.stringify(result, null, 2));
+      if (!result.ok) process.exitCode = 1;
+      return;
+    }
+    result.checks.forEach((check) => {
+      console.log(`${check.ok ? "ok" : "failed"} ${check.id} - ${check.detail}`);
+    });
+    if (!result.ok) {
+      throw new Error(`StackChan avatar pack validation failed in ${result.avatarDir}`);
+    }
+    console.log(`StackChan avatar pack looks ready: ${result.avatarDir}`);
+    return;
+  }
+  throw new Error(`Unknown skill action: ${args.action || "(missing)"}\n\n${usage}`);
+};
+
 const main = () => {
   const args = parseArgs(process.argv.slice(2));
   if (args.command === "--help" || args.command === "-h" || args.command === "help") {
@@ -2085,6 +2207,10 @@ const main = () => {
   }
   if (args.command === "connect") {
     connect(args);
+    return;
+  }
+  if (args.command === "skill") {
+    skills(args);
     return;
   }
   if (args.command === "view") {

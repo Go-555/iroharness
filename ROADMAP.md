@@ -69,6 +69,7 @@ micro harnesses.
 - [x] deployment examples for Tailscale, reverse proxy, systemd, and launchd
 - [x] PostgreSQL audience backup/restore recipes
 - [x] end-to-end browser screenshots outside sandboxed CI port restrictions
+- [x] initial skills registry and StackChan avatar-pack evaluator CLI
 
 ## Milestone 2: Harness Interop
 
