@@ -132,6 +132,32 @@ points back to the M5Stack itself. `connect stackchan` records a firmware
 reachability check, and `iroharness doctor` fails when the saved StackChan host
 URL is `localhost`, `127.*`, `0.0.0.0`, `::1`, or another local-only URL.
 
+## Skills
+
+`iroharness skill` lists built-in skills, creates workflow plans, and runs
+deterministic evaluators. Skills describe orchestration; deterministic checks
+stay in CLI code.
+
+User-managed skills are loaded from `~/.iroharness/skills/<skill-id>/SKILL.md`
+by default. App-local skills can also live under
+`./my-companion/.iroharness/skills/<skill-id>/SKILL.md`. IroHarness uses the
+`SKILL.md` YAML frontmatter as the canonical manifest.
+
+```bash
+npx iroharness skill list ./my-companion
+
+npx iroharness skill plan stackchan-avatar-pack ./my-companion \
+  --reference-image ./reference.png \
+  --pack-id iroha-black-ribbon
+
+npx iroharness skill eval stackchan-avatar-pack ./my-companion \
+  --pack-dir ./.iroharness/artifacts/avatar-packs/iroha-black-ribbon
+```
+
+The StackChan avatar-pack workflow expects the 8-file avatar contract documented
+in [skills.md](./skills.md). The evaluator checks required files, `320x240`
+PNG dimensions, and alpha on the two mouth overlays.
+
 ## View Export
 
 `iroharness view export` creates a zone-limited runtime view. This is the first

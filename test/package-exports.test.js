@@ -10,6 +10,7 @@ import {
   createDiscordMessageAdapter,
   createEventStreamDevice
 } from "iroharness/adapters";
+import { builtInSkillManifests } from "iroharness/skills";
 import { assertBrainContract } from "iroharness/testing";
 
 test("package exports resolve public core, adapter, and testing entrypoints", async () => {
@@ -55,4 +56,5 @@ test("package exports resolve public core, adapter, and testing entrypoints", as
   assert.equal(harness.character.id, "iroha");
   assert.equal(turn.actor.platform, "discord");
   assert.equal(contract.adapterId, "contract-brain");
+  assert.equal(builtInSkillManifests().some((skill) => skill.id === "run-stackchan-avatar-pack"), true);
 });

@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+### Skills
+
+- added a first skills registry module in `iroharness/skills` with built-in
+  reference, workflow, and evaluator manifests
+- added `iroharness skill list`, `iroharness skill plan stackchan-avatar-pack`,
+  and `iroharness skill eval stackchan-avatar-pack`
+- made `~/.iroharness/skills/<skill-id>/SKILL.md` the canonical user-managed
+  skill format, with app-local `.iroharness/skills/` support and Claude
+  Code-style YAML frontmatter
+- added skill context helpers for listing context, invocation context, and
+  bundled resource discovery
+- added the StackChan avatar-pack skill docs and deterministic validation for
+  required files, `320x240` PNG dimensions, and mouth overlay alpha
+
 ### StackChan Runtime Absorption
 
 - added AIAvatarStackChan-style WebSocket compatibility to the StackChan realtime
