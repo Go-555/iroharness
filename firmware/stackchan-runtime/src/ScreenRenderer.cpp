@@ -2,6 +2,7 @@
 
 #include <Arduino.h>
 #include <SD.h>
+#include <SPIFFS.h>
 #include <cstdlib>
 
 namespace aiavatar {
@@ -42,6 +43,9 @@ LGFX_Sprite* ScreenRenderer::loadSprite(const char* path, int w, int h, uint16_t
     if (!path || !path[0]) return nullptr;
 
     File file = SD.open(path, FILE_READ);
+    if (!file) {
+        file = SPIFFS.open(path, FILE_READ);
+    }
     if (!file) {
         Serial.printf("[Display] open failed: %s\n", path);
         return nullptr;

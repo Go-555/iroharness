@@ -1,5 +1,6 @@
 #pragma once
 
+#include <FS.h>
 #include <cstddef>
 #include <cstdint>
 
@@ -75,6 +76,7 @@ struct Config {
     bool debugLog;
 
     Config();
+    bool loadFromFS(fs::FS& fs, const char* path = "/config.json");
     bool loadFromSD(const char* path = "/config.json");
 };
 
