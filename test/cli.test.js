@@ -501,6 +501,13 @@ test("CLI skill commands list, plan, and evaluate StackChan avatar packs", () =>
   const packDir = join(dir, "iroha-pack");
   const avatarDir = join(packDir, "avatar");
   const init = runCli(["init", appDir, "--character", "Iroha"]);
+  const localSkillDir = join(appDir, ".iroharness", "skills", "ref-cli-local");
+  mkdirSync(localSkillDir, { recursive: true });
+  writeFileSync(
+    join(localSkillDir, "SKILL.md"),
+    `---\nname: ref-cli-local\ndescription: Use when listing app-local CLI skills.\nkind: reference\npurpose: knowledge\nshape: atomic\nrole: dictionary\nuser-invocable: false\n---\n\n# CLI local skill\n`,
+    "utf8"
+  );
   writeFileSync(referenceImage, pngHeader());
 
   const list = runCli(["skill", "list", appDir, "--json"]);
@@ -547,6 +554,7 @@ test("CLI skill commands list, plan, and evaluate StackChan avatar packs", () =>
   assert.equal(plan.status, 0, plan.stderr);
   assert.equal(evalResult.status, 0, evalResult.stderr);
   assert.equal(listed.skills.some((skill) => skill.id === "run-stackchan-avatar-pack"), true);
+  assert.equal(listed.skills.some((skill) => skill.id === "ref-cli-local"), true);
   assert.equal(planned.plan.packId, "iroha-test");
   assert.equal(existsSync(planned.planPath), true);
   assert.equal(evaluated.ok, true);

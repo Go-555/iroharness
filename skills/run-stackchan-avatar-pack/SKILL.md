@@ -1,6 +1,23 @@
 ---
 name: run-stackchan-avatar-pack
 description: Use when creating a StackChan avatar pack from one reference image.
+kind: workflow
+purpose: produce
+shape: orchestrated
+role: generator
+user-invocable: true
+argument-hint: "<reference image> [--pack-id id]"
+inputs:
+  - referenceImage
+  - packId
+  - characterName
+  - direction
+outputs:
+  - avatar-pack-plan
+  - avatar-pack
+references:
+  - skills/run-stackchan-avatar-pack/references/stackchan-avatar-spec.md
+evaluator: eval-stackchan-avatar-pack
 ---
 
 # StackChan Avatar Pack

@@ -72,12 +72,47 @@ export const stackChanAvatarPackSpec: {
 };
 
 export function builtInSkillManifests(): readonly SkillManifest[];
+export function defaultBuiltInSkillDir(): string;
 export function defaultIroHarnessSkillDir(): string;
 export function createFileSkillRegistry(input: {
-  readonly path: string;
+  readonly path?: string | null;
   readonly skillDirs?: readonly string[];
   readonly builtIns?: readonly SkillManifest[];
 }): SkillRegistry;
+export function parseSkillFrontmatter(markdown: string): {
+  readonly frontmatter: SkillJsonObject;
+  readonly body: string;
+};
+export function createSkillContextListing(input: {
+  readonly skills: readonly SkillManifest[];
+}): readonly {
+  readonly id: string;
+  readonly name: string;
+  readonly description: string;
+  readonly userInvocable: boolean;
+  readonly argumentHint: SkillJsonValue;
+}[];
+export function readSkillInvocationContext(input: {
+  readonly skill: SkillManifest;
+}): {
+  readonly id: string;
+  readonly name: string;
+  readonly frontmatter: SkillJsonObject;
+  readonly body: string;
+  readonly execution: {
+    readonly context: SkillJsonValue;
+    readonly fork: boolean;
+    readonly agent: SkillJsonValue;
+    readonly model: SkillJsonValue;
+    readonly allowedTools: readonly SkillJsonValue[];
+  };
+  readonly skillDir: SkillJsonValue;
+  readonly resources: readonly {
+    readonly name: string;
+    readonly path: string;
+    readonly type: string;
+  }[];
+};
 export function createStackChanAvatarPackPlan(input: {
   readonly referenceImage: string;
   readonly outputDir?: string;

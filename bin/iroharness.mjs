@@ -2108,7 +2108,7 @@ const resolveStackChanAvatarSkill = (skillId) => {
 
 const skills = (args) => {
   const registry = createFileSkillRegistry({
-    path: join(args.dir, ".iroharness", "skills.json"),
+    path: null,
     skillDirs: [defaultIroHarnessSkillDir(), join(args.dir, ".iroharness", "skills")]
   });
   if (args.action === "list") {
