@@ -109,7 +109,7 @@ npx iroharness connect stackchan ~/.iroharness/apps/iroha \
   --host-url http://MAC_MINI_IP:4182 \
   --wifi-ssid YOUR_WIFI_SSID \
   --wifi-pass YOUR_WIFI_PASSWORD \
-  --firmware-config-out ~/.iroharness/source/firmware/stackchan-runtime/examples/basic/data/config.json
+  --firmware-config-out ~/.iroharness/source/firmware/stackchan-runtime/examples/basic/data/config.local.json
 ```
 
 This writes:
@@ -123,8 +123,8 @@ This writes:
 Use a LAN or Tailscale address that the M5Stack can reach. Do not use
 `127.0.0.1` from the device.
 
-The future AIAvatarStackChan-style `/config.json` should be generated from the
-connection file. The important mapping is:
+The future AIAvatarStackChan-style `/config.local.json` or `/config.json` should
+be generated from the connection file. The important mapping is:
 
 ```json
 {

@@ -2047,7 +2047,7 @@ const connect = (args) => {
     if (!result.deviceReachability.ok) {
       console.log(`warning: ${result.deviceReachability.reason}`);
     }
-    console.log("next: copy firmware config values into the StackChan device /config.json");
+    console.log("next: copy firmware config values into the StackChan device /config.local.json or /config.json");
     return;
   }
   throw new Error(`Unknown connect target: ${args.action || "(missing)"}\n\n${usage}`);
