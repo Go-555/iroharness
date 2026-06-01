@@ -17,6 +17,21 @@ should use tools, CLIs, APIs, micro harnesses, and evaluators.
 
 ## CLI
 
+IroHarness looks for user-managed skills in `~/.iroharness/skills/` by
+default. Each skill can live in its own directory:
+
+```text
+~/.iroharness/skills/
+└── run-stackchan-avatar-pack/
+    ├── skill.json
+    ├── SKILL.md
+    └── references/
+```
+
+Generated apps may also carry app-local skills under
+`.iroharness/skills/<skill-id>/skill.json`. Built-in package skills are still
+shipped in the repository-level `skills/` directory.
+
 List available skills:
 
 ```bash

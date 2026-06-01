@@ -1,4 +1,5 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 
 const REQUIRED_STACKCHAN_AVATAR_FILES = Object.freeze([
@@ -105,7 +106,33 @@ export const stackChanAvatarPackSpec = Object.freeze({
 
 export const builtInSkillManifests = () => freezeArray(BUILT_IN_SKILLS);
 
-export const createFileSkillRegistry = ({ path, builtIns = builtInSkillManifests() }) => {
+export const defaultIroHarnessSkillDir = () =>
+  process.env.IROHARNESS_SKILLS_DIR || join(homedir(), ".iroharness", "skills");
+
+const readSkillDirManifests = (skillDir) => {
+  if (!skillDir || !existsSync(skillDir)) return [];
+  return readdirSync(skillDir)
+    .map((entry) => join(skillDir, entry))
+    .filter((entryPath) => statSync(entryPath).isDirectory())
+    .map((entryPath) => join(entryPath, "skill.json"))
+    .filter((manifestPath) => existsSync(manifestPath))
+    .map((manifestPath) => {
+      const parsed = JSON.parse(readFileSync(manifestPath, "utf8"));
+      return normalizeSkillManifest({
+        ...parsed,
+        metadata: {
+          ...(parsed.metadata || {}),
+          skillDir: dirname(manifestPath)
+        }
+      });
+    });
+};
+
+export const createFileSkillRegistry = ({
+  path,
+  skillDirs = [defaultIroHarnessSkillDir()],
+  builtIns = builtInSkillManifests()
+}) => {
   const registryPath = path;
   const readProjectSkills = () => {
     if (!registryPath || !existsSync(registryPath)) return [];
@@ -114,11 +141,14 @@ export const createFileSkillRegistry = ({ path, builtIns = builtInSkillManifests
   };
   const snapshot = () => {
     const projectSkills = readProjectSkills().map(normalizeSkillManifest);
+    const directorySkills = skillDirs.flatMap(readSkillDirManifests);
     const skillsById = new Map();
     builtIns.map(normalizeSkillManifest).forEach((skill) => skillsById.set(skill.id, skill));
+    directorySkills.forEach((skill) => skillsById.set(skill.id, skill));
     projectSkills.forEach((skill) => skillsById.set(skill.id, skill));
     return Object.freeze({
       path: registryPath,
+      skillDirs: freezeArray(skillDirs),
       skills: Object.freeze([...skillsById.values()].sort((left, right) => left.id.localeCompare(right.id)))
     });
   };

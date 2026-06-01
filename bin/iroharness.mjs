@@ -6,6 +6,7 @@ import { basename, dirname, join, resolve } from "node:path";
 import { createFileUserRegistry, createProjectOsMarkdown } from "../src/index.js";
 import {
   createFileSkillRegistry,
+  defaultIroHarnessSkillDir,
   createStackChanAvatarPackPlan,
   evaluateStackChanAvatarPack
 } from "../src/skills/index.js";
@@ -2107,7 +2108,8 @@ const resolveStackChanAvatarSkill = (skillId) => {
 
 const skills = (args) => {
   const registry = createFileSkillRegistry({
-    path: join(args.dir, ".iroharness", "skills.json")
+    path: join(args.dir, ".iroharness", "skills.json"),
+    skillDirs: [defaultIroHarnessSkillDir(), join(args.dir, ".iroharness", "skills")]
   });
   if (args.action === "list") {
     const result = {

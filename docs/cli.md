@@ -138,6 +138,10 @@ URL is `localhost`, `127.*`, `0.0.0.0`, `::1`, or another local-only URL.
 deterministic evaluators. Skills describe orchestration; deterministic checks
 stay in CLI code.
 
+User-managed skills are loaded from `~/.iroharness/skills/<skill-id>/skill.json`
+by default. App-local skills can also live under
+`./my-companion/.iroharness/skills/<skill-id>/skill.json`.
+
 ```bash
 npx iroharness skill list ./my-companion
 

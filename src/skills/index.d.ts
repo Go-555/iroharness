@@ -20,6 +20,7 @@ export interface SkillManifest {
 
 export interface SkillRegistrySnapshot {
   readonly path: string | null;
+  readonly skillDirs: readonly string[];
   readonly skills: readonly SkillManifest[];
 }
 
@@ -71,8 +72,10 @@ export const stackChanAvatarPackSpec: {
 };
 
 export function builtInSkillManifests(): readonly SkillManifest[];
+export function defaultIroHarnessSkillDir(): string;
 export function createFileSkillRegistry(input: {
   readonly path: string;
+  readonly skillDirs?: readonly string[];
   readonly builtIns?: readonly SkillManifest[];
 }): SkillRegistry;
 export function createStackChanAvatarPackPlan(input: {

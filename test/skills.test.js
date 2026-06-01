@@ -38,7 +38,10 @@ test("built-in skills separate reference, generator, and evaluator roles", () =>
 
 test("file skill registry overlays project skills on built-ins", () => {
   const dir = mkdtempSync(join(tmpdir(), "iroharness-skills-"));
-  const registry = createFileSkillRegistry({ path: join(dir, ".iroharness", "skills.json") });
+  const registry = createFileSkillRegistry({
+    path: join(dir, ".iroharness", "skills.json"),
+    skillDirs: []
+  });
 
   registry.register({
     id: "ref-local-test",
@@ -51,6 +54,39 @@ test("file skill registry overlays project skills on built-ins", () => {
 
   assert.equal(registry.get("run-stackchan-avatar-pack").name, "stackchan-avatar-pack");
   assert.equal(registry.get("ref-local-test").role, "dictionary");
+});
+
+test("file skill registry reads OpenClaw-style skill directories", () => {
+  const dir = mkdtempSync(join(tmpdir(), "iroharness-skills-dir-"));
+  const skillDir = join(dir, ".iroharness", "skills");
+  const localSkillDir = join(skillDir, "ref-local-dir-test");
+  mkdirSync(localSkillDir, { recursive: true });
+  writeFileSync(
+    join(localSkillDir, "skill.json"),
+    `${JSON.stringify(
+      {
+        id: "ref-local-dir-test",
+        kind: "reference",
+        purpose: "Local directory reference.",
+        trigger: "Use in local directory tests.",
+        shape: "Read-only.",
+        role: "dictionary"
+      },
+      null,
+      2
+    )}\n`,
+    "utf8"
+  );
+
+  const registry = createFileSkillRegistry({
+    path: join(dir, ".iroharness", "skills.json"),
+    skillDirs: [skillDir]
+  });
+  const skill = registry.get("ref-local-dir-test");
+
+  assert.equal(skill.role, "dictionary");
+  assert.equal(skill.metadata.skillDir, localSkillDir);
+  assert.deepEqual(registry.snapshot().skillDirs, [skillDir]);
 });
 
 test("StackChan avatar pack plan captures generator and evaluator phases", () => {

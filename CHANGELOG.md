@@ -8,6 +8,8 @@
   reference, workflow, and evaluator manifests
 - added `iroharness skill list`, `iroharness skill plan stackchan-avatar-pack`,
   and `iroharness skill eval stackchan-avatar-pack`
+- made `~/.iroharness/skills/<skill-id>/skill.json` the default user-managed
+  skills directory, with app-local `.iroharness/skills/` support
 - added the StackChan avatar-pack skill docs and deterministic validation for
   required files, `320x240` PNG dimensions, and mouth overlay alpha
 
