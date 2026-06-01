@@ -1,0 +1,56 @@
+{
+  "$schema": "https://raw.githubusercontent.com/platformio/platformio-core/develop/platformio/assets/schema/library.json",
+  "name": "IroHarnessStackChanRuntime",
+  "version": "0.1.0",
+  "description": "IroHarness-owned StackChan firmware runtime derived from AIAvatarStackChan.",
+  "keywords": [
+    "iroharness",
+    "ai",
+    "avatar",
+    "m5stack",
+    "cores3",
+    "stackchan",
+    "voice"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Go-555/iroharness.git"
+  },
+  "authors": [
+    {
+      "name": "IroHarness contributors",
+      "maintainer": true
+    },
+    {
+      "name": "uezo",
+      "url": "https://github.com/uezo/AIAvatarStackChan"
+    }
+  ],
+  "license": "MIT",
+  "frameworks": "arduino",
+  "platforms": "espressif32",
+  "headers": "AIAvatarStackChan.h",
+  "dependencies": {
+    "m5stack/M5Unified": "^0.2.15",
+    "bblanchon/ArduinoJson": "^7.0.0",
+    "links2004/WebSockets": "*",
+    "StackChan-BSP": "https://github.com/m5stack/StackChan-BSP.git#1.0.1"
+  },
+  "export": {
+    "exclude": [
+      ".pio",
+      ".vscode",
+      "*.code-workspace"
+    ]
+  },
+  "build": {
+    "srcDir": "src",
+    "includeDir": "src",
+    "flags": [
+      "-std=gnu++17"
+    ],
+    "unflags": [
+      "-std=gnu++11"
+    ]
+  }
+}

@@ -163,17 +163,17 @@ does not prove exact AIAvatarStackChan wire compatibility.
 
 ### Phase 2: Absorb The Device Runtime
 
-Create an IroHarness-owned StackChan runtime package or example that starts from
-the AIAvatarStackChan structure:
+Done: create an IroHarness-owned StackChan runtime package that starts from the
+AIAvatarStackChan structure:
 
 ```text
-iroharness-stackchan-runtime/
+firmware/stackchan-runtime/
 ```
 
 It should keep the upstream hardware/runtime split but replace the server target
 with IroHarness' trusted device gateway.
 
-The first absorbed runtime should be close to AIAvatarStackChan's basic example:
+The first absorbed runtime is close to AIAvatarStackChan's basic example:
 
 - load `/config.json`
 - connect to `ws_host`, `ws_port`, `ws_path`
@@ -181,6 +181,12 @@ The first absorbed runtime should be close to AIAvatarStackChan's basic example:
 - receive `accepted`, `start`, `chunk`, `final`, `tool_call`, `vision`, and face
   control
 - keep local button/touch/PTT/vision hooks
+
+The runnable PlatformIO project is:
+
+```text
+firmware/stackchan-runtime/examples/basic/
+```
 
 ### Phase 3: Upstream-Compatible Gateway
 
@@ -270,9 +276,9 @@ target once the upstream-compatible gateway is implemented.
 
 1. Done: remove the one-off minimal face poller from the public surface.
 2. Done: add AIAvatarStackChan WebSocket compatibility to the trusted gateway.
-3. Generate an AIAvatarStackChan-style `/config.json` from
+3. Done: generate an AIAvatarStackChan-style `/config.json` from
    `iroharness connect stackchan`.
-4. Import or wrap the AIAvatarStackChan device runtime with MIT notice
+4. Done: import or wrap the AIAvatarStackChan device runtime with MIT notice
    preservation.
 5. Measure real CoreS3 microphone-to-first-audio latency against the Mac mini
    host.

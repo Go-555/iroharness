@@ -8,6 +8,11 @@
   session handler, including `start`, `data`, `invoke`, `stop`, `connected`,
   `accepted`, `chunk`, and `final` message translation
 - added AIAvatarStackChan protocol mode to the StackChan realtime simulator
+- added the IroHarness-owned StackChan firmware runtime under
+  `firmware/stackchan-runtime`, derived from AIAvatarStackChan with MIT notice
+  preservation
+- added `--firmware-config-out` to `iroharness connect stackchan` so generated
+  firmware config can be written directly into a PlatformIO data directory
 - removed the one-off minimal StackChan face poller from the public firmware
   path so the hardware direction can follow AIAvatarStackChan's proven runtime
   shape

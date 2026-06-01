@@ -18,7 +18,7 @@ Usage:
   iroharness audience import [dir] --file <path> --force
   iroharness audience list [dir] [--json]
   iroharness connect slack [dir] [--bot-token <xoxb-token>] [--signing-secret <secret>] [--bot-user-id <user-id>] [--owner-slack-user-id <user-id>]
-  iroharness connect stackchan [dir] [--host-url <url>] [--wifi-ssid <ssid>] [--wifi-pass <password>] [--device-id <id>] [--device-token <token>]
+  iroharness connect stackchan [dir] [--host-url <url>] [--wifi-ssid <ssid>] [--wifi-pass <password>] [--device-id <id>] [--device-token <token>] [--firmware-config-out <path>]
   iroharness view export [dir] --zone <public|trusted|owner> --out <view-dir> [--force]
   iroharness work-runner check <view-dir> [--json]
   iroharness doctor [dir] [--production] [--json]
@@ -73,6 +73,7 @@ const parseArgs = (argv) => {
   let wifiPass = null;
   let deviceId = "stackchan";
   let deviceToken = null;
+  let firmwareConfigOut = null;
   let zone = null;
   let out = null;
   const identities = {};
@@ -227,6 +228,11 @@ const parseArgs = (argv) => {
       index += 1;
       continue;
     }
+    if (value === "--firmware-config-out") {
+      firmwareConfigOut = rest[index + 1];
+      index += 1;
+      continue;
+    }
     if (value === "--zone") {
       zone = rest[index + 1];
       index += 1;
@@ -285,6 +291,7 @@ const parseArgs = (argv) => {
     wifiPass,
     deviceId,
     deviceToken,
+    firmwareConfigOut,
     zone,
     out,
     identities
@@ -1982,8 +1989,12 @@ const connectStackChan = (args) => {
   const deviceConfigPath = join(connectionDir, "stackchan.device.json");
   const firmwareConfigPath = join(connectionDir, "stackchan-firmware-config.json");
   const provisioningPath = join(connectionDir, "stackchan-provisioning.md");
+  const firmwareConfigOutPath = args.firmwareConfigOut ? resolve(args.firmwareConfigOut) : null;
   writeJsonFile(deviceConfigPath, deviceConfig);
   writeJsonFile(firmwareConfigPath, firmwareConfig);
+  if (firmwareConfigOutPath) {
+    writeJsonFile(firmwareConfigOutPath, firmwareConfig);
+  }
   writeFileSync(
     provisioningPath,
     createStackChanProvisioningMarkdown({
@@ -1998,6 +2009,7 @@ const connectStackChan = (args) => {
     envPath,
     deviceConfigPath,
     firmwareConfigPath,
+    firmwareConfigOutPath,
     provisioningPath,
     deviceReachability,
     deviceConfig,
@@ -2028,6 +2040,9 @@ const connect = (args) => {
     console.log(`configured StackChan in ${result.targetDir}`);
     console.log(`device config: ${result.deviceConfigPath}`);
     console.log(`firmware config: ${result.firmwareConfigPath}`);
+    if (result.firmwareConfigOutPath) {
+      console.log(`firmware config copy: ${result.firmwareConfigOutPath}`);
+    }
     console.log(`provisioning: ${result.provisioningPath}`);
     if (!result.deviceReachability.ok) {
       console.log(`warning: ${result.deviceReachability.reason}`);

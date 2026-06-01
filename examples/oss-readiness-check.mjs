@@ -26,6 +26,7 @@ const requiredPackageFiles = [
   "bin",
   "src",
   "crates",
+  "firmware",
   "fixtures",
   "protocols",
   "docs",

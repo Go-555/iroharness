@@ -1,0 +1,51 @@
+{
+  "wifi_networks": [
+    {
+      "name": "Home",
+      "ssid": "YOUR_WIFI_SSID",
+      "pass": "YOUR_WIFI_PASSWORD"
+    },
+    {
+      "name": "Mobile",
+      "ssid": "",
+      "pass": ""
+    }
+  ],
+  "ws_host": "example.com",
+  "ws_port": 443,
+  "ws_path": "/ws",
+  "user_id": "stackchan",
+  "channel": "",
+  "timezone": "JST-9",
+  "mic_sample_rate": 16000,
+  "mic_magnification": 16,
+  "mic_buffer_samples": 1024,
+  "vad_threshold_db": -40,
+  "playback_queue_depth": 2048,
+  "start_threshold": 1024,
+  "drain_timeout_ms": 500,
+  "speaker_volume": 80,
+  "volume_levels": [0, 64, 128, 196, 255],
+  "audio_task_stack_size": 8192,
+  "audio_task_core": 0,
+  "ws_task_stack_size": 8192,
+  "ws_task_core": 1,
+  "ws_reconnect_interval_ms": 5000,
+  "mic_tx_slow_backoff_ms": 500,
+  "mic_tx_fail_backoff_ms": 3000,
+  "keepalive_interval_ms": 1000,
+  "display_rotation": 1,
+  "display_brightness": 64,
+  "status_overlay_enabled": true,
+  "vision_preview_duration_ms": 2000,
+  "accepted_led_color": [0, 168, 0],
+  "tool_led_color": [140, 0, 140],
+  "ptt_max_seconds": 30,
+  "ptt_min_seconds": 0.2,
+  "ptt_hold_threshold_ms": 200,
+  "pitch_home": 200,
+  "stackchan_auto_angle_sync": true,
+  "nade_invoke_prompt": "$ご主人さまに頭を優しく撫でられました。ごく短いフレーズでリアクションしてください。短時間で撫ですぎなときはちょっと怒ったり恥ずかしがったりしてください。怒ったり困ったりした時はfaceとしてangryやsorrowの使用も可能",
+  "vision_invoke_prompt": "$応答に必要な視覚情報を提供します。単に見えたものの説明だけではなく、これまでの文脈の中でこの画像が見えたときに相応しい反応をしてください",
+  "debug_log": false
+}

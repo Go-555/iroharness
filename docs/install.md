@@ -108,7 +108,8 @@ Generate the StackChan connection files first:
 npx iroharness connect stackchan ~/.iroharness/apps/iroha \
   --host-url http://MAC_MINI_IP:4182 \
   --wifi-ssid YOUR_WIFI_SSID \
-  --wifi-pass YOUR_WIFI_PASSWORD
+  --wifi-pass YOUR_WIFI_PASSWORD \
+  --firmware-config-out ~/.iroharness/source/firmware/stackchan-runtime/examples/basic/data/config.json
 ```
 
 This writes:
@@ -138,6 +139,21 @@ connection file. The important mapping is:
 }
 ```
 
+The IroHarness-owned firmware runtime is in:
+
+```text
+~/.iroharness/source/firmware/stackchan-runtime/
+```
+
+Build and flash from:
+
+```bash
+cd ~/.iroharness/source/firmware/stackchan-runtime/examples/basic
+pio run
+pio run --target upload
+pio run --target uploadfs
+```
+
 Run doctor after `connect stackchan`:
 
 ```bash
@@ -161,6 +177,5 @@ Connection responsibilities:
 | `/body/stackchan/events` | richer state streaming |
 
 IroHarness no longer treats a separate minimal PlatformIO face poller as the
-main firmware path. The intended device runtime should follow AIAvatarStackChan
-and connect to the IroHarness trusted gateway. Exact upstream WebSocket
-compatibility is still the next implementation step.
+main firmware path. The intended device runtime is the IroHarness-owned
+AIAvatarStackChan-derived runtime under `firmware/stackchan-runtime`.

@@ -55,6 +55,7 @@ Status labels:
 | Slack + StackChan companion | example | `examples/slack-stackchan-companion.mjs`, `docs/slack-stackchan.md` | Slack text interface plus StackChan/M5Stack face JSON, SSE body output, invoke endpoint, and realtime WebSocket route. |
 | StackChan realtime simulator | example | `examples/stackchan-realtime-simulator.mjs` | Hardware-free WebSocket client that sends hello, invoke, fake audio, interrupt messages, and host-side latency summaries to the companion route. |
 | StackChan audio invoke relay | example | `examples/slack-stackchan-companion.mjs`, `fixtures/golden/device-invoke-audio.json` | Device audio/PTT payloads can be relayed through host STT and routed as voice turns. |
+| StackChan firmware runtime | firmware | `firmware/stackchan-runtime/` | IroHarness-owned PlatformIO/CoreS3 runtime derived from AIAvatarStackChan with local `/config.json`, avatar assets, and basic flash project. |
 | YouTube Live Chat | runtime | `createYouTubeLiveChatAdapter`, `createYouTubeLiveChatPollingRuntime` | Polling runtime for live chat turns. |
 | VS Code | adapter | `createVsCodeCompanionAdapter`, `examples/vscode-companion` | Companion panel and developer turns. |
 | Audience CLI | built-in | `iroharness audience user/link/grant/revoke/stream/export/import/list` | Sets up users, platform IDs, permissions, streams, audit logs, and file-backed backups before going live. |

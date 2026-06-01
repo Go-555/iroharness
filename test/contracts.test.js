@@ -241,9 +241,25 @@ test("OSS contribution metadata is present and aligned with harness boundaries",
     join("examples", "stackchan-realtime-simulator.mjs"),
     "utf8"
   );
+  const stackchanRuntimeReadme = readFileSync(
+    join("firmware", "stackchan-runtime", "README.md"),
+    "utf8"
+  );
+  const stackchanRuntimeNotice = readFileSync(
+    join("firmware", "stackchan-runtime", "THIRD_PARTY_NOTICES.md"),
+    "utf8"
+  );
+  const stackchanRuntimeLibrary = readFileSync(
+    join("firmware", "stackchan-runtime", "library.json"),
+    "utf8"
+  );
+  const stackchanRuntimePlatformio = readFileSync(
+    join("firmware", "stackchan-runtime", "examples", "basic", "platformio.ini"),
+    "utf8"
+  );
   const slackCodexExample = readFileSync(join("examples", "slack-codex-companion.mjs"), "utf8");
 
-  ["AGENTS.md", "CONTRIBUTING.md", "CODE_OF_CONDUCT.md", "install.sh"].forEach((file) => {
+  ["AGENTS.md", "CONTRIBUTING.md", "CODE_OF_CONDUCT.md", "install.sh", "firmware"].forEach((file) => {
     assert.equal(pkg.files.includes(file), true);
   });
   assert.match(agents, /The macro harness owns character identity/);
@@ -369,6 +385,7 @@ test("OSS contribution metadata is present and aligned with harness boundaries",
   assert.match(matrix, /Inspiration map/);
   assert.match(matrix, /Absorption architecture/);
   assert.match(matrix, /StackChan device runtime strategy/);
+  assert.match(matrix, /StackChan firmware runtime/);
   assert.match(matrix, /Device config\/invoke protocol/);
   assert.match(matrix, /OpenClaw-style installer/);
   assert.match(matrix, /Zone view export/);
@@ -395,6 +412,10 @@ test("OSS contribution metadata is present and aligned with harness boundaries",
   assert.match(stackchanFirmware, /Brain, STT, And TTS SSOT/);
   assert.match(stackchanFirmware, /AIAvatarStackChan WebSocket compatibility/);
   assert.match(stackchanFirmware, /stackchan-realtime-simulator/);
+  assert.match(stackchanRuntimeReadme, /IroHarness-owned StackChan firmware runtime/);
+  assert.match(stackchanRuntimeNotice, /uezo\/AIAvatarStackChan/);
+  assert.match(stackchanRuntimeLibrary, /IroHarnessStackChanRuntime/);
+  assert.match(stackchanRuntimePlatformio, /file:\/\/\.\.\/\.\./);
   assert.match(slackStackchan, /\/device\/stackchan\/invoke/);
   assert.match(slackStackchan, /example:stackchan-sim/);
   assert.match(slackStackchan, /STACKCHAN_DEVICE_TOKEN/);
@@ -411,6 +432,7 @@ test("OSS contribution metadata is present and aligned with harness boundaries",
   assert.match(slackStackchanExample, /stackchan-mock-tts/);
   assert.match(stackchanSimulator, /encodeClientTextFrame/);
   assert.match(stackchanSimulator, /audio\.chunk/);
+  assert.match(stackchanSimulator, /aiavatarstackchan/);
   assert.match(stackchanSimulator, /interrupt/);
   assert.match(stackchanSimulator, /simulator\.summary/);
   assert.match(stackchanSimulator, /fail-over-budget/);

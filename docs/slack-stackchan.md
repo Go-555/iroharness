@@ -23,14 +23,14 @@ Good now:
 - StackChan Server-Sent Events stream
 - StackChan device invoke for touch, push-to-talk/audio, and vision payloads
 - StackChan realtime WebSocket route and hardware-free simulator
+- IroHarness-owned StackChan firmware runtime under `firmware/stackchan-runtime`
 - shared character state between Slack and StackChan
 - optional Codex OAuth model use through `codex app-server`
 
 Still early:
 
-- exact AIAvatarStackChan WebSocket compatibility is not finished yet
-- no bundled IroHarness-owned StackChan firmware runtime yet
 - no built-in STT/TTS on the M5Stack device; providers stay host-side
+- hardware playback still needs codec validation when using WAV TTS providers
 - no OTA or provisioning flow yet
 
 For the firmware plan and how AIAvatarStackChan will be absorbed into an
@@ -262,7 +262,8 @@ permissions, Project OS, provider routing, STT, LLM, and TTS credentials.
 
 The next implementation step is an upstream-compatible trusted gateway and an
 AIAvatarStackChan-style generated `/config.json`, not another separate firmware
-prototype.
+prototype. The IroHarness-owned runtime now lives at
+`firmware/stackchan-runtime`.
 
 `iroharness connect stackchan` also writes:
 

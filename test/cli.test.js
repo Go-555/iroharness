@@ -340,6 +340,7 @@ test("CLI connect prepares Slack and StackChan onboarding files", () => {
   const dir = mkdtempSync(join(tmpdir(), "iroharness-connect-"));
   const appDir = join(dir, "companion");
   const init = runCli(["init", appDir, "--character", "Iroha"]);
+  const firmwareConfigOut = join(dir, "firmware", "config.json");
   const slack = runCli([
     "connect",
     "slack",
@@ -366,6 +367,8 @@ test("CLI connect prepares Slack and StackChan onboarding files", () => {
     "pass-test",
     "--device-token",
     "device-secret-test",
+    "--firmware-config-out",
+    firmwareConfigOut,
     "--json"
   ]);
   const slackResult = JSON.parse(slack.stdout);
@@ -387,6 +390,7 @@ test("CLI connect prepares Slack and StackChan onboarding files", () => {
       "utf8"
     )
   );
+  const firmwareConfigCopy = JSON.parse(readFileSync(firmwareConfigOut, "utf8"));
   const stackchanProvisioning = readFileSync(
     join(appDir, ".iroharness", "connections", "stackchan-provisioning.md"),
     "utf8"
@@ -424,6 +428,7 @@ test("CLI connect prepares Slack and StackChan onboarding files", () => {
   assert.equal(stackchanDevice.metadata.deviceReachability.ok, true);
   assert.equal(stackchanResult.deviceReachability.ok, true);
   assert.equal(stackchanResult.provisioningPath.endsWith("stackchan-provisioning.md"), true);
+  assert.equal(stackchanResult.firmwareConfigOutPath.endsWith("firmware/config.json"), true);
   assert.equal(firmwareConfig.wifi_networks[0].ssid, "ssid-test");
   assert.equal(firmwareConfig.wifi_networks[0].pass, "pass-test");
   assert.equal(firmwareConfig.ws_host, "100.64.0.10");
@@ -433,6 +438,7 @@ test("CLI connect prepares Slack and StackChan onboarding files", () => {
   assert.equal(firmwareConfig.channel, "local");
   assert.equal(firmwareConfig.realtime_ws_url, "ws://100.64.0.10:4182/device/stackchan/realtime");
   assert.equal(firmwareConfig.device_token, "device-secret-test");
+  assert.deepEqual(firmwareConfigCopy, firmwareConfig);
   assert.equal(firmwareConfig.iroharness.invoke_url, "http://100.64.0.10:4182/device/stackchan/invoke");
   assert.match(stackchanProvisioning, /First Flash/);
   assert.match(stackchanProvisioning, /Realtime WebSocket/);
