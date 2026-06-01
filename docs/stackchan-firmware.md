@@ -40,7 +40,7 @@ settings.
 Bring these ideas into the IroHarness StackChan device runtime:
 
 - PlatformIO project shape for `m5stack-cores3`
-- SD-card `/config.local.json` with `/config.json` fallback
+- SD-card or internal SPIFFS `/config.local.json` with `/config.json` fallback
 - Wi-Fi profile list and Wi-Fi picker
 - WebSocket host/port/path configuration
 - `user_id` and `channel` fields for device-originated turns
@@ -175,7 +175,8 @@ with IroHarness' trusted device gateway.
 
 The first absorbed runtime is close to AIAvatarStackChan's basic example:
 
-- load `/config.local.json`, then fall back to `/config.json`
+- load `/config.local.json`, then fall back to `/config.json`, from SD first and
+  internal SPIFFS second
 - connect to `ws_host`, `ws_port`, `ws_path`
 - send `start`, audio `data`, `invoke`, and `stop`
 - receive `accepted`, `start`, `chunk`, `final`, `tool_call`, `vision`, and face

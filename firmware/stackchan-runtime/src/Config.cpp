@@ -80,13 +80,13 @@ Config::Config()
     }
 }
 
-bool Config::loadFromSD(const char* path) {
-    if (!SD.exists(path)) {
+bool Config::loadFromFS(fs::FS& fs, const char* path) {
+    if (!fs.exists(path)) {
         Serial.printf("[Config] %s not found, using defaults\n", path);
         return false;
     }
 
-    File file = SD.open(path, FILE_READ);
+    File file = fs.open(path, FILE_READ);
     if (!file) {
         Serial.printf("[Config] failed to open %s\n", path);
         return false;
@@ -191,6 +191,10 @@ bool Config::loadFromSD(const char* path) {
     Serial.printf("[Config] mic=%uHz/%u samples speakerVol=%u\n",
                   micSampleRate, micBufferSamples, speakerVolume);
     return true;
+}
+
+bool Config::loadFromSD(const char* path) {
+    return loadFromFS(SD, path);
 }
 
 }  // namespace aiavatar

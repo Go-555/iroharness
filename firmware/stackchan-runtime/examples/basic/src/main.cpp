@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include <M5Unified.h>
 #include <SD.h>
+#include <SPIFFS.h>
 
 #include "AIAvatarStackChan.h"
 
@@ -22,13 +23,23 @@ void setup() {
     Serial.println("[IroHarness StackChan] M5 initialized");
     Serial.printf("[IroHarness StackChan] heap=%u psram=%u\n", ESP.getFreeHeap(), ESP.getFreePsram());
 
+    bool configLoaded = false;
     if (SD.begin(GPIO_NUM_4, SPI, 25000000)) {
         Serial.println("[IroHarness StackChan] SD mounted");
-        if (!config.loadFromSD("/config.local.json")) {
-            config.loadFromSD("/config.json");
-        }
+        configLoaded = config.loadFromSD("/config.local.json") || config.loadFromSD("/config.json");
     } else {
-        Serial.println("[IroHarness StackChan] SD not available; using built-in defaults");
+        Serial.println("[IroHarness StackChan] SD not available");
+    }
+
+    if (!configLoaded) {
+        if (SPIFFS.begin(true)) {
+            Serial.println("[IroHarness StackChan] SPIFFS mounted");
+            configLoaded =
+                config.loadFromFS(SPIFFS, "/config.local.json") ||
+                config.loadFromFS(SPIFFS, "/config.json");
+        } else {
+            Serial.println("[IroHarness StackChan] SPIFFS not available");
+        }
     }
 
     if (config.wsHost[0] == '\0') {
