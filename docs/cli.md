@@ -105,7 +105,8 @@ body type.
 npx iroharness connect stackchan ./my-companion \
   --host-url http://100.64.0.10:4182 \
   --wifi-ssid YOUR_WIFI_SSID \
-  --wifi-pass YOUR_WIFI_PASSWORD
+  --wifi-pass YOUR_WIFI_PASSWORD \
+  --firmware-config-out ./firmware/stackchan-runtime/examples/basic/data/config.json
 ```
 
 This writes:
@@ -122,6 +123,9 @@ provisioning runbook as the source for the firmware `/config.json`. The intended
 runtime shape follows AIAvatarStackChan: firmware owns Wi-Fi, display, mic,
 speaker, touch, camera, servo, and local buffering; IroHarness owns character
 identity, audience, Project OS, provider routing, STT, LLM, and TTS credentials.
+If `--firmware-config-out` is set, the same firmware config is also written
+directly to that path. Use it with the IroHarness firmware runtime at
+`firmware/stackchan-runtime/examples/basic/data/config.json`.
 The M5Stack must use a LAN or Tailscale address it can reach; `127.0.0.1` only
 points back to the M5Stack itself. `connect stackchan` records a firmware
 reachability check, and `iroharness doctor` fails when the saved StackChan host

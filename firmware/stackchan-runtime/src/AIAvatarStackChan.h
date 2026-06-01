@@ -1,0 +1,18 @@
+#pragma once
+
+#include "AudioConverter.h"
+#include "MicrophoneInput.h"
+#include "SpeakerOutput.h"
+#include "HardwareAdapter.h"
+#include "StackChanHardware.h"
+#include "Config.h"
+#include "ScreenRenderer.h"
+#include "FaceController.h"
+#include "LedController.h"
+#include "MotionController.h"
+#include "OpenClawEffects.h"
+#include "StatusOverlay.h"
+#include "SystemUIController.h"
+#include "VisualEffects.h"
+#include "AIAvatar.h"
+#include "WebSocketClient.h"

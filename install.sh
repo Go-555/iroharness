@@ -201,12 +201,19 @@ StackChan first connection:
      npm run example:slack-stackchan
 
   2. Generate connection and firmware config:
-     npx iroharness connect stackchan "$APP_DIR" --host-url http://<MAC_MINI_IP>:4182
+     npx iroharness connect stackchan "$APP_DIR" \
+       --host-url http://<MAC_MINI_IP>:4182 \
+       --firmware-config-out "$GIT_DIR/firmware/stackchan-runtime/examples/basic/data/config.json"
 
      Use the Mac mini LAN/Tailscale IP, not 127.0.0.1.
 
-  3. Copy the generated AIAvatarStackChan-style values into the StackChan
-     device /config.json:
+  3. Build/upload the IroHarness StackChan runtime:
+     cd "$GIT_DIR/firmware/stackchan-runtime/examples/basic"
+     pio run
+     pio run --target upload
+     pio run --target uploadfs
+
+     The generated AIAvatarStackChan-style values are also stored at:
      "$APP_DIR/.iroharness/connections/stackchan-firmware-config.json"
 
      The trusted host keeps device invoke and realtime routes:

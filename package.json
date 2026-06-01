@@ -99,6 +99,7 @@
     "install.sh",
     "src",
     "crates",
+    "firmware",
     "fixtures",
     "protocols",
     "docs",
