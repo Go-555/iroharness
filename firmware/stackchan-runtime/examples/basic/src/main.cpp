@@ -24,13 +24,15 @@ void setup() {
 
     if (SD.begin(GPIO_NUM_4, SPI, 25000000)) {
         Serial.println("[IroHarness StackChan] SD mounted");
-        config.loadFromSD();
+        if (!config.loadFromSD("/config.local.json")) {
+            config.loadFromSD("/config.json");
+        }
     } else {
         Serial.println("[IroHarness StackChan] SD not available; using built-in defaults");
     }
 
     if (config.wsHost[0] == '\0') {
-        Serial.println("[IroHarness StackChan] WS host is empty; check /config.json");
+        Serial.println("[IroHarness StackChan] WS host is empty; check /config.local.json or /config.json");
         while (true) delay(1000);
     }
 

@@ -40,7 +40,7 @@ settings.
 Bring these ideas into the IroHarness StackChan device runtime:
 
 - PlatformIO project shape for `m5stack-cores3`
-- SD-card `/config.json`
+- SD-card `/config.local.json` with `/config.json` fallback
 - Wi-Fi profile list and Wi-Fi picker
 - WebSocket host/port/path configuration
 - `user_id` and `channel` fields for device-originated turns
@@ -175,7 +175,7 @@ with IroHarness' trusted device gateway.
 
 The first absorbed runtime is close to AIAvatarStackChan's basic example:
 
-- load `/config.json`
+- load `/config.local.json`, then fall back to `/config.json`
 - connect to `ws_host`, `ws_port`, `ws_path`
 - send `start`, audio `data`, `invoke`, and `stop`
 - receive `accepted`, `start`, `chunk`, `final`, `tool_call`, `vision`, and face
@@ -276,7 +276,7 @@ target once the upstream-compatible gateway is implemented.
 
 1. Done: remove the one-off minimal face poller from the public surface.
 2. Done: add AIAvatarStackChan WebSocket compatibility to the trusted gateway.
-3. Done: generate an AIAvatarStackChan-style `/config.json` from
+3. Done: generate an AIAvatarStackChan-style `/config.local.json` or `/config.json` from
    `iroharness connect stackchan`.
 4. Done: import or wrap the AIAvatarStackChan device runtime with MIT notice
    preservation.
