@@ -23,6 +23,8 @@
   `accepted`, `chunk`, and `final` message translation
 - added host-side WAV-to-PCM16 normalization for StackChan realtime speech so
   AivisSpeech TTS can feed the firmware's existing PCM speaker path
+- allowed the StackChan HTTP invoke path to deliver speech through the active
+  realtime WebSocket session when a device is connected
 - added AIAvatarStackChan protocol mode to the StackChan realtime simulator
 - added the IroHarness-owned StackChan firmware runtime under
   `firmware/stackchan-runtime`, derived from AIAvatarStackChan with MIT notice

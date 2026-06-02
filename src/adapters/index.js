@@ -3474,6 +3474,7 @@ export const createStackChanRealtimeSessionHandler = ({
       return Object.freeze({
         accepted: true,
         send,
+        speak,
         close() {
           if (typeof socket.close === "function") {
             socket.close();

@@ -767,7 +767,7 @@ test("StackChan realtime session handler speaks AIAvatarStackChan websocket mess
     }
   });
 
-  handler.handleConnection(socket, {
+  const session = handler.handleConnection(socket, {
     deviceId: "stackchan",
     token: "device-token"
   });
@@ -801,6 +801,9 @@ test("StackChan realtime session handler speaks AIAvatarStackChan websocket mess
   assert.equal(sent.at(-1).session_id, "avatar-session");
   assert.equal(turns[0].modality, "text");
   assert.equal(turns[0].metadata.aiAvatarSessionId, "avatar-session");
+
+  await session.speak({ text: "外から話す" });
+  assert.equal(sent.filter((message) => message.type === "chunk").length, 2);
 });
 
 test("StackChan realtime session handler rejects invalid device token", () => {

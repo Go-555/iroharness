@@ -462,6 +462,7 @@ const createSlackStackChanCompanion = () => {
             })
         })
       : null;
+  let activeRealtimeSession = null;
 
   const seenEventIds = new Set();
   const runtime = createSlackEventsRuntime({
@@ -532,18 +533,30 @@ const createSlackStackChanCompanion = () => {
         ...(payload.metadata || {})
       }
     });
+    const outputText = result.text || result.output?.summary || "";
+    const shouldSpeak =
+      stackchanTts &&
+      (payload.type === "audio" || payload.type === "ptt" || payload.speak === true);
+    const realtimeSpeech =
+      shouldSpeak && activeRealtimeSession?.accepted && typeof activeRealtimeSession.speak === "function"
+        ? await activeRealtimeSession.speak({
+            text: outputText
+          })
+        : null;
+    const localSpeech =
+      shouldSpeak && !realtimeSpeech
+        ? await stackchanTts.stream({
+            text: outputText,
+            voice: process.env.IROHARNESS_STACKCHAN_VOICE || "iroha"
+          })
+        : null;
     return {
       ok: true,
       resultKind: result.kind,
-      text: result.text || result.output?.summary || "",
+      text: outputText,
       face: stackchan.snapshot()?.payload || null,
-      speech:
-        stackchanTts && (payload.type === "audio" || payload.type === "ptt")
-          ? await stackchanTts.stream({
-              text: result.text || result.output?.summary || "",
-              voice: process.env.IROHARNESS_STACKCHAN_VOICE || "iroha"
-            })
-          : null
+      deliveredToRealtime: Boolean(realtimeSpeech),
+      speech: realtimeSpeech || localSpeech
     };
   };
 
@@ -672,7 +685,8 @@ const createSlackStackChanCompanion = () => {
       return;
     }
     const websocket = createWebSocketAdapter(socket);
-    realtimeHandler.handleConnection(websocket, {
+    let session = null;
+    session = realtimeHandler.handleConnection(websocket, {
       deviceId: stackchan.id,
       userId: url.searchParams.get("userId") || stackchan.id,
       channel: url.searchParams.get("channel") || "local",
@@ -686,8 +700,14 @@ const createSlackStackChanCompanion = () => {
             sequence: event.sequence
           })
         );
+        if (event.type === "stackchan.closed" && activeRealtimeSession === session) {
+          activeRealtimeSession = null;
+        }
       }
     });
+    if (session.accepted) {
+      activeRealtimeSession = session;
+    }
   });
 
   return Object.freeze({
