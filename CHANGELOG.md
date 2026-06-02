@@ -21,6 +21,8 @@
 - added AIAvatarStackChan-style WebSocket compatibility to the StackChan realtime
   session handler, including `start`, `data`, `invoke`, `stop`, `connected`,
   `accepted`, `chunk`, and `final` message translation
+- added host-side WAV-to-PCM16 normalization for StackChan realtime speech so
+  AivisSpeech TTS can feed the firmware's existing PCM speaker path
 - added AIAvatarStackChan protocol mode to the StackChan realtime simulator
 - added the IroHarness-owned StackChan firmware runtime under
   `firmware/stackchan-runtime`, derived from AIAvatarStackChan with MIT notice

@@ -43,6 +43,27 @@ import {
 } from "../src/adapters/index.js";
 import { createInMemoryUserRegistry, createSpeechPlaybackQueue } from "../src/index.js";
 
+const createPcm16WavBase64 = ({ sampleRate = 24000, channels = 1, samples = [0, 1000, -1000, 0] } = {}) => {
+  const data = Buffer.alloc(samples.length * 2);
+  samples.forEach((sample, index) => data.writeInt16LE(sample, index * 2));
+  const wav = Buffer.alloc(44 + data.length);
+  wav.write("RIFF", 0, "ascii");
+  wav.writeUInt32LE(36 + data.length, 4);
+  wav.write("WAVE", 8, "ascii");
+  wav.write("fmt ", 12, "ascii");
+  wav.writeUInt32LE(16, 16);
+  wav.writeUInt16LE(1, 20);
+  wav.writeUInt16LE(channels, 22);
+  wav.writeUInt32LE(sampleRate, 24);
+  wav.writeUInt32LE(sampleRate * channels * 2, 28);
+  wav.writeUInt16LE(channels * 2, 32);
+  wav.writeUInt16LE(16, 34);
+  wav.write("data", 36, "ascii");
+  wav.writeUInt32LE(data.length, 40);
+  data.copy(wav, 44);
+  return wav.toString("base64");
+};
+
 const createFakeObsWebSocket = ({ sent }) => {
   return class FakeObsWebSocket {
     static instances = [];
@@ -640,7 +661,10 @@ test("StackChan realtime session handler accepts firmware audio and returns spee
           {
             type: "tts.audio",
             text,
-            audio: "wav-base64",
+            audio: createPcm16WavBase64({
+              sampleRate: 24000,
+              samples: [0, 800, -800, 0]
+            }),
             encoding: "wav",
             final: false
           },
@@ -723,9 +747,11 @@ test("StackChan realtime session handler speaks AIAvatarStackChan websocket mess
           {
             type: "tts.audio",
             text,
-            audio: "pcm-base64",
-            encoding: "pcm_s16le",
-            sampleRate: 24000,
+            audio: createPcm16WavBase64({
+              sampleRate: 24000,
+              samples: [0, 1200, -1200, 0]
+            }),
+            encoding: "wav",
             final: false
           },
           {
@@ -767,6 +793,10 @@ test("StackChan realtime session handler speaks AIAvatarStackChan websocket mess
   assert.equal(sent.some((message) => message.type === "accepted"), true);
   assert.equal(sent.some((message) => message.type === "start"), true);
   assert.equal(sent.some((message) => message.type === "chunk"), true);
+  const chunk = sent.find((message) => message.type === "chunk");
+  assert.equal(chunk.metadata.audio_format.codec, "pcm16");
+  assert.equal(chunk.metadata.audio_format.sample_rate, 24000);
+  assert.equal(Buffer.from(chunk.audio_data, "base64").length, 8);
   assert.equal(sent.at(-1).type, "final");
   assert.equal(sent.at(-1).session_id, "avatar-session");
   assert.equal(turns[0].modality, "text");

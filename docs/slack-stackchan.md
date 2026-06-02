@@ -179,6 +179,11 @@ AIVIS_SPEECH_SPEAKER=888753760 \
 npm run example:slack-stackchan
 ```
 
+The realtime StackChan handler normalizes AivisSpeech WAV output to raw PCM16
+before sending AIAvatarStackChan-style `chunk` messages. The firmware can then
+play speech through its existing PCM speaker path without a device-side WAV
+decoder.
+
 This HTTP invoke path is useful for first hardware checks. For the 1-second
 conversation target, use the WebSocket realtime relay in
 [realtime.md](./realtime.md) so mic audio, STT events, TTS chunks, and playback

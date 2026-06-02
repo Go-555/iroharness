@@ -128,6 +128,73 @@ const bufferFromAudioChunk = (chunk) => {
 
 const arrayBufferToBase64 = (value) => Buffer.from(value).toString("base64");
 
+const parsePcm16Wav = (audio) => {
+  const buffer = Buffer.isBuffer(audio) ? audio : Buffer.from(audio || []);
+  if (buffer.length < 44 || buffer.toString("ascii", 0, 4) !== "RIFF" || buffer.toString("ascii", 8, 12) !== "WAVE") {
+    throw new Error("expected RIFF/WAVE audio");
+  }
+
+  let fmt = null;
+  let data = null;
+  let offset = 12;
+  while (offset + 8 <= buffer.length) {
+    const chunkId = buffer.toString("ascii", offset, offset + 4);
+    const chunkSize = buffer.readUInt32LE(offset + 4);
+    const chunkStart = offset + 8;
+    const chunkEnd = chunkStart + chunkSize;
+    if (chunkEnd > buffer.length) {
+      break;
+    }
+    if (chunkId === "fmt ") {
+      fmt = {
+        audioFormat: buffer.readUInt16LE(chunkStart),
+        channels: buffer.readUInt16LE(chunkStart + 2),
+        sampleRate: buffer.readUInt32LE(chunkStart + 4),
+        bitsPerSample: buffer.readUInt16LE(chunkStart + 14)
+      };
+    }
+    if (chunkId === "data") {
+      data = buffer.subarray(chunkStart, chunkEnd);
+    }
+    offset = chunkEnd + (chunkSize % 2);
+  }
+
+  if (!fmt || !data) {
+    throw new Error("WAV audio is missing fmt or data chunk");
+  }
+  if (fmt.audioFormat !== 1 || fmt.bitsPerSample !== 16) {
+    throw new Error(`unsupported WAV format=${fmt.audioFormat} bits=${fmt.bitsPerSample}`);
+  }
+  return Object.freeze({
+    encoding: "pcm16",
+    dataBase64: data.toString("base64"),
+    sampleRate: fmt.sampleRate,
+    channels: fmt.channels,
+    bitsPerSample: 16
+  });
+};
+
+const normalizeStackChanSpeechAudio = (event) => {
+  const encoding = String(event?.encoding || "wav").toLowerCase();
+  if (encoding === "wav") {
+    const parsed = parsePcm16Wav(Buffer.from(event.audio || "", "base64"));
+    return Object.freeze({
+      encoding: "pcm16",
+      dataBase64: parsed.dataBase64,
+      sampleRate: parsed.sampleRate,
+      channels: parsed.channels,
+      bitsPerSample: parsed.bitsPerSample
+    });
+  }
+  return Object.freeze({
+    encoding: encoding === "pcm_s16le" ? "pcm16" : encoding,
+    dataBase64: event?.audio || event?.dataBase64 || "",
+    sampleRate: event?.sampleRate || event?.sample_rate || 24000,
+    channels: event?.channels || 1,
+    bitsPerSample: event?.bitsPerSample || event?.bits_per_sample || 16
+  });
+};
+
 const sendJson = (response, status, value) => {
   response.writeHead(status, {
     "content-type": "application/json; charset=utf-8",
@@ -3177,12 +3244,16 @@ export const createStackChanRealtimeSessionHandler = ({
             if (event.type !== "tts.audio") {
               return;
             }
+            const audio = normalizeStackChanSpeechAudio(event);
             const item = queue?.enqueue
               ? queue.enqueue({
                   text: event.text || responseText,
                   audio: {
-                    encoding: event.encoding || "wav",
-                    dataBase64: event.audio
+                    encoding: audio.encoding,
+                    dataBase64: audio.dataBase64,
+                    sampleRate: audio.sampleRate,
+                    channels: audio.channels,
+                    bitsPerSample: audio.bitsPerSample
                   },
                   voice,
                   source: id
@@ -3196,8 +3267,11 @@ export const createStackChanRealtimeSessionHandler = ({
               itemId: item.id,
               text: event.text || responseText,
               audio: {
-                encoding: event.encoding || "wav",
-                dataBase64: event.audio
+                encoding: audio.encoding,
+                dataBase64: audio.dataBase64,
+                sampleRate: audio.sampleRate,
+                channels: audio.channels,
+                bitsPerSample: audio.bitsPerSample
               },
               voice
             });
