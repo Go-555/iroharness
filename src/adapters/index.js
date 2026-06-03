@@ -3393,10 +3393,15 @@ export const createStackChanRealtimeSessionHandler = ({
 
       const speak = async ({ text }) => {
         const responseText = String(text || "");
+        emit({
+          type: "stackchan.speech.started",
+          textLength: responseText.length
+        });
         send({
           type: "response.start",
           text: responseText
         });
+        let speechChunkCount = 0;
         const speechEvents = await tts.stream({
           text: responseText,
           voice,
@@ -3442,6 +3447,13 @@ export const createStackChanRealtimeSessionHandler = ({
                 voice
               });
             });
+            speechChunkCount += audioChunks.length;
+            emit({
+              type: "stackchan.speech.audio_sent",
+              chunks: audioChunks.length,
+              totalChunks: speechChunkCount,
+              bytes: audio.dataBase64.length
+            });
           }
         });
         const completed = queue?.snapshot?.().current;
@@ -3451,6 +3463,10 @@ export const createStackChanRealtimeSessionHandler = ({
         send({
           type: "response.final",
           text: responseText
+        });
+        emit({
+          type: "stackchan.speech.completed",
+          chunks: speechChunkCount
         });
         return Object.freeze(speechEvents);
       };
