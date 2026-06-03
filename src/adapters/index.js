@@ -3160,6 +3160,7 @@ export const createStackChanRealtimeSessionHandler = ({
       let aiAvatarSessionId = id;
       let activeUserId = userId;
       let activeChannel = channel;
+      let messageChain = Promise.resolve();
       const queue =
         typeof createQueue === "function"
           ? createQueue({ deviceId, userId, channel })
@@ -3537,7 +3538,7 @@ export const createStackChanRealtimeSessionHandler = ({
       }
 
       attachSocketListener(socket, "message", (event) => {
-        Promise.resolve()
+        messageChain = messageChain
           .then(() => handlePayload(parseSocketMessageData(event)))
           .catch((error) => {
             emit({

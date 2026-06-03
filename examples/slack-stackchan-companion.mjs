@@ -699,7 +699,9 @@ const createSlackStackChanCompanion = () => {
             realtime: event.type,
             deviceId: event.deviceId,
             channel: event.channel,
-            sequence: event.sequence
+            sequence: event.sequence,
+            message: event.message || null,
+            hasText: typeof event.text === "string" && event.text.length > 0 ? true : undefined
           })
         );
         if (event.type === "stackchan.closed" && activeRealtimeSession === session) {
