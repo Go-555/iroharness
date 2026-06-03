@@ -3211,6 +3211,7 @@ export const createStackChanRealtimeSessionHandler = ({
       let activeUserId = userId;
       let activeChannel = channel;
       let messageChain = Promise.resolve();
+      let audioLevelDebugCounter = 0;
       const queue =
         typeof createQueue === "function"
           ? createQueue({ deviceId, userId, channel })
@@ -3458,6 +3459,18 @@ export const createStackChanRealtimeSessionHandler = ({
         const audio = normalizeStackChanAudioPayload(payload);
         const now = Date.now();
         const vad = analyzePcm16Audio(audio, { vadThresholdDb });
+        const audioLevelDebugEvery = Number(process.env.IROHARNESS_STACKCHAN_AUDIO_LEVEL_DEBUG_EVERY || "0");
+        if (audioLevelDebugEvery > 0 && audioLevelDebugCounter % audioLevelDebugEvery === 0) {
+          emit({
+            type: "stackchan.audio_level",
+            messageType: payload.type || "audio",
+            bytes: vad.bytes,
+            rmsDb: vad.rmsDb,
+            isSpeech: vad.isSpeech,
+            thresholdDb: vadThresholdDb
+          });
+        }
+        audioLevelDebugCounter += 1;
         const deviceFinal = Boolean(payload.final);
         const shouldStart = deviceFinal || vad.isSpeech;
         if (!sttSession && !shouldStart) {

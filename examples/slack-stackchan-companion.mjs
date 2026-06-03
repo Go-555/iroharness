@@ -713,6 +713,11 @@ const createSlackStackChanCompanion = () => {
             channel: event.channel,
             sequence: event.sequence,
             message: event.message || null,
+            messageType: event.messageType || undefined,
+            rmsDb: typeof event.rmsDb === "number" ? event.rmsDb : undefined,
+            bytes: event.bytes || undefined,
+            isSpeech: typeof event.isSpeech === "boolean" ? event.isSpeech : undefined,
+            thresholdDb: typeof event.thresholdDb === "number" ? event.thresholdDb : undefined,
             hasText: typeof event.text === "string" && event.text.length > 0 ? true : undefined
           })
         );
