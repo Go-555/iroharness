@@ -2009,6 +2009,7 @@ const connectStackChan = (args) => {
     device_token: deviceToken,
     device_id: deviceId,
     mic_sample_rate: 16000,
+    mic_magnification: 32,
     mic_buffer_samples: 1024,
     vad_threshold_db: -45,
     playback_queue_depth: 24,

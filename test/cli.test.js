@@ -450,6 +450,7 @@ test("CLI connect prepares Slack and StackChan onboarding files", () => {
   assert.equal(firmwareConfig.channel, "local");
   assert.equal(firmwareConfig.realtime_ws_url, "ws://100.64.0.10:4182/device/stackchan/realtime");
   assert.equal(firmwareConfig.device_token, "device-secret-test");
+  assert.equal(firmwareConfig.mic_magnification, 32);
   assert.deepEqual(firmwareConfigCopy, firmwareConfig);
   assert.equal(firmwareConfig.iroharness.invoke_url, "http://100.64.0.10:4182/device/stackchan/invoke");
   assert.match(stackchanProvisioning, /First Flash/);
