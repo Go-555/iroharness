@@ -749,7 +749,7 @@ test("StackChan realtime session handler speaks AIAvatarStackChan websocket mess
             text,
             audio: createPcm16WavBase64({
               sampleRate: 24000,
-              samples: [0, 1200, -1200, 0]
+              samples: Array.from({ length: 5000 }, (_, index) => (index % 2 === 0 ? 1200 : -1200))
             }),
             encoding: "wav",
             final: false
@@ -796,14 +796,15 @@ test("StackChan realtime session handler speaks AIAvatarStackChan websocket mess
   const chunk = sent.find((message) => message.type === "chunk");
   assert.equal(chunk.metadata.audio_format.codec, "pcm16");
   assert.equal(chunk.metadata.audio_format.sample_rate, 24000);
-  assert.equal(Buffer.from(chunk.audio_data, "base64").length, 8);
+  assert.equal(Buffer.from(chunk.audio_data, "base64").length, 8192);
+  assert.equal(sent.filter((message) => message.type === "chunk").length, 2);
   assert.equal(sent.at(-1).type, "final");
   assert.equal(sent.at(-1).session_id, "avatar-session");
   assert.equal(turns[0].modality, "text");
   assert.equal(turns[0].metadata.aiAvatarSessionId, "avatar-session");
 
   await session.speak({ text: "外から話す" });
-  assert.equal(sent.filter((message) => message.type === "chunk").length, 2);
+  assert.equal(sent.filter((message) => message.type === "chunk").length, 4);
 });
 
 test("StackChan realtime session handler rejects invalid device token", () => {

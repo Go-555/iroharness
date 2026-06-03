@@ -195,6 +195,31 @@ const normalizeStackChanSpeechAudio = (event) => {
   });
 };
 
+const splitStackChanSpeechAudio = (audio, { maxBytes = 8192 } = {}) => {
+  const data = Buffer.from(audio?.dataBase64 || "", "base64");
+  if (data.length === 0 || data.length <= maxBytes || audio?.encoding !== "pcm16") {
+    return Object.freeze([audio]);
+  }
+  const bytesPerSampleFrame = Math.max(
+    1,
+    Number(audio.channels || 1) * Math.max(1, Number(audio.bitsPerSample || 16) / 8)
+  );
+  const chunkBytes = Math.max(
+    bytesPerSampleFrame,
+    Math.floor(maxBytes / bytesPerSampleFrame) * bytesPerSampleFrame
+  );
+  const chunks = [];
+  for (let offset = 0; offset < data.length; offset += chunkBytes) {
+    chunks.push(
+      Object.freeze({
+        ...audio,
+        dataBase64: data.subarray(offset, offset + chunkBytes).toString("base64")
+      })
+    );
+  }
+  return Object.freeze(chunks);
+};
+
 const sendJson = (response, status, value) => {
   response.writeHead(status, {
     "content-type": "application/json; charset=utf-8",
@@ -3245,6 +3270,9 @@ export const createStackChanRealtimeSessionHandler = ({
               return;
             }
             const audio = normalizeStackChanSpeechAudio(event);
+            const audioChunks = splitStackChanSpeechAudio(audio, {
+              maxBytes: Number(process.env.IROHARNESS_STACKCHAN_SPEECH_CHUNK_BYTES || "8192")
+            });
             const item = queue?.enqueue
               ? queue.enqueue({
                   text: event.text || responseText,
@@ -3262,18 +3290,22 @@ export const createStackChanRealtimeSessionHandler = ({
                   id: `${id}:speech:${sequence}`,
                   text: event.text || responseText
                 };
-            send({
-              type: "speech.audio",
-              itemId: item.id,
-              text: event.text || responseText,
-              audio: {
-                encoding: audio.encoding,
-                dataBase64: audio.dataBase64,
-                sampleRate: audio.sampleRate,
-                channels: audio.channels,
-                bitsPerSample: audio.bitsPerSample
-              },
-              voice
+            audioChunks.forEach((audioChunk, index) => {
+              send({
+                type: "speech.audio",
+                itemId: item.id,
+                chunkIndex: index,
+                chunkCount: audioChunks.length,
+                text: event.text || responseText,
+                audio: {
+                  encoding: audioChunk.encoding,
+                  dataBase64: audioChunk.dataBase64,
+                  sampleRate: audioChunk.sampleRate,
+                  channels: audioChunk.channels,
+                  bitsPerSample: audioChunk.bitsPerSample
+                },
+                voice
+              });
             });
           }
         });
