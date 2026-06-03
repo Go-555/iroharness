@@ -443,8 +443,7 @@ const createSlackStackChanCompanion = () => {
     router: createHeuristicRouter(),
     brains: {
       voice: createBrainForSlot({ slot: "voice", codexWorkspace }),
-      text: createBrainForSlot({ slot: "text", codexWorkspace }),
-      deep: createBrainForSlot({ slot: "deep", codexWorkspace })
+      text: createBrainForSlot({ slot: "text", codexWorkspace })
     },
     devices: [stackchan],
     microHarnesses

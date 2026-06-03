@@ -323,7 +323,7 @@ test("OSS contribution metadata is present and aligned with harness boundaries",
     assert.match(changelog, new RegExp(entry));
   });
   [
-    "configurable voice/text/deep HTTP brain slots",
+    "configurable voice/text HTTP brain slots",
     "file-backed audience backup and restore CLI",
     "file-backed audit log for privileged audience changes",
     "PostgreSQL persisted audit log for privileged audience changes",
@@ -420,7 +420,7 @@ test("OSS contribution metadata is present and aligned with harness boundaries",
   assert.match(slackStackchan, /example:stackchan-sim/);
   assert.match(slackStackchan, /STACKCHAN_DEVICE_TOKEN/);
   assert.match(slackStackchan, /IROHARNESS_VIEW_DIR/);
-  assert.match(slackStackchanExample, /requireEnv\("SLACK_SIGNING_SECRET"\)/);
+  assert.match(slackStackchanExample, /slackEnabled/);
   assert.match(slackStackchanExample, /requireEnv\("STACKCHAN_DEVICE_TOKEN"\)/);
   assert.match(slackStackchanExample, /createFileCharacterProfile/);
   assert.match(slackStackchanExample, /IROHARNESS_VIEW_DIR/);
@@ -545,12 +545,10 @@ test("brain gateway example documents the generated app HTTP brain contract", ()
   assert.match(brains, /OpenAI-compatible/);
   assert.match(gateway, /POST \/voice/);
   assert.match(gateway, /POST \/text/);
-  assert.match(gateway, /POST \/deep/);
   assert.match(gateway, /payload\.audience/);
   assert.match(gateway, /export const responseFor/);
   assert.match(providerGateway, /POST \/voice/);
   assert.match(providerGateway, /POST \/text/);
-  assert.match(providerGateway, /POST \/deep/);
   assert.match(providerGateway, /OPENAI_API_KEY/);
   assert.match(providerGateway, /ANTHROPIC_API_KEY/);
   assert.match(providerGateway, /chat\/completions/);
@@ -561,25 +559,25 @@ test("brain gateway example documents the generated app HTTP brain contract", ()
 test("brain gateway example returns slot-specific replies from macro context", async () => {
   const { responseFor } = await import("../examples/brain-gateway.mjs");
   const response = responseFor({
-    slot: "deep",
+    slot: "text",
     payload: {
-      model: "deep-demo",
+      model: "text-demo",
       character: { name: "Iroha" },
       actor: { displayName: "Developer" },
       audience: {
-        responseDepth: "deep",
+        responseDepth: "standard",
         permissions: ["chat_public", "deep_discussion"]
       },
       input: { text: "設計を詰めたい" },
-      route: { kind: "deep" },
+      route: { kind: "text" },
       projectOs: { tickets: [{ id: "ticket_1" }] }
     }
   });
 
-  assert.match(response.text, /Iroha\/deep\/deep-demo/);
-  assert.match(response.text, /Developer向けのdeep応答/);
-  assert.equal(response.emotion, "focused");
-  assert.equal(response.debug.route, "deep");
+  assert.match(response.text, /Iroha\/text\/text-demo/);
+  assert.match(response.text, /Developer向けのstandard応答/);
+  assert.equal(response.emotion, "attentive");
+  assert.equal(response.debug.route, "text");
   assert.deepEqual(response.debug.permissions, ["chat_public", "deep_discussion"]);
   assert.equal(response.debug.ticketCount, 1);
 });
@@ -598,29 +596,29 @@ test("provider brain gateway maps macro context to OpenAI, Claude, and local pro
     actor: { displayName: "Developer" },
     audience: {
       relationship: "developer",
-      responseDepth: "deep",
+      responseDepth: "standard",
       permissions: ["chat_public", "deep_discussion"]
     },
     input: { text: "設計を整理して" },
-    route: { kind: "deep" },
+    route: { kind: "text" },
     projectOs: { tickets: [{ id: "ticket_1" }] }
   };
 
-  const prompt = createBrainPrompt({ slot: "deep", payload });
+  const prompt = createBrainPrompt({ slot: "text", payload });
   assert.match(prompt.system, /Stable macro-harness identity/);
-  assert.match(prompt.user, /responseDepth: deep/);
+  assert.match(prompt.user, /responseDepth: standard/);
 
   const openaiConfig = createProviderConfig({
-    slot: "deep",
+    slot: "text",
     env: {
-      IROHARNESS_DEEP_BRAIN_PROVIDER: "openai",
-      IROHARNESS_DEEP_BRAIN_MODEL: "openai-deep",
+      IROHARNESS_TEXT_BRAIN_PROVIDER: "openai",
+      IROHARNESS_TEXT_BRAIN_MODEL: "openai-text",
       OPENAI_API_KEY: "test-openai-key"
     }
   });
   const openaiCalls = [];
   const openai = await callProvider({
-    slot: "deep",
+    slot: "text",
     payload,
     config: openaiConfig,
     fetchImpl: async (url, options) => {
@@ -635,7 +633,7 @@ test("provider brain gateway maps macro context to OpenAI, Claude, and local pro
   });
   assert.equal(openai.text, "openai response");
   assert.match(openaiCalls[0].url, /\/responses$/);
-  assert.equal(openaiCalls[0].body.model, "openai-deep");
+  assert.equal(openaiCalls[0].body.model, "openai-text");
   assert.match(openaiCalls[0].body.instructions, /Iroha/);
 
   const anthropicConfig = createProviderConfig({
@@ -744,7 +742,7 @@ test("browser demo includes audience admin UI for stream and fan operations", ()
   assert.match(server, /IROHARNESS_ADMIN_TOKEN/);
   assert.match(server, /createHttpBrain/);
   assert.match(server, /IROHARNESS_VOICE_BRAIN_ENDPOINT/);
-  assert.match(server, /IROHARNESS_DEEP_BRAIN_ENDPOINT/);
+  assert.match(server, /IROHARNESS_TEXT_BRAIN_ENDPOINT/);
   assert.match(server, /\?view=admin/);
   assert.match(screenshotCheck, /playwright/);
   assert.match(screenshotCheck, /name: "chat"/);
@@ -754,7 +752,7 @@ test("browser demo includes audience admin UI for stream and fan operations", ()
   assert.match(screenshotCheck, /Overlay view should hide the control panel/);
   assert.match(envExample, /IROHARNESS_VOICE_BRAIN_ENDPOINT=/);
   assert.match(envExample, /IROHARNESS_TEXT_BRAIN_MODEL=/);
-  assert.match(envExample, /IROHARNESS_DEEP_BRAIN_ENDPOINT=/);
+  assert.doesNotMatch(envExample, /IROHARNESS_DEEP_BRAIN_ENDPOINT=/);
 });
 
 test("OpenAPI document covers dev server and audience management routes", () => {

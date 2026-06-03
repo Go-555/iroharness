@@ -1587,7 +1587,7 @@ test("dev server exposes public health metadata without audience records", async
       brains() {
         return [
           { slot: "voice", id: "voice-fast" },
-          { slot: "text", id: "text-deep" }
+          { slot: "text", id: "text-standard" }
         ];
       },
       projectOs() {
@@ -1626,7 +1626,7 @@ test("dev server exposes public health metadata without audience records", async
   assert.equal(response.json.adminProtected, true);
   assert.deepEqual(response.json.brains, [
     { slot: "voice", id: "voice-fast" },
-    { slot: "text", id: "text-deep" }
+    { slot: "text", id: "text-standard" }
   ]);
   assert.equal(response.json.bodies[0].id, "motionpngtuber");
   assert.equal(response.json.platforms.includes("youtube"), true);

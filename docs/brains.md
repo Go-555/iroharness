@@ -6,8 +6,7 @@ brains.
 ```text
 same character
   + voice brain -> low latency, short responses
-  + text brain  -> ordinary chat
-  + deep brain  -> architecture, strategy, deep discussion
+  + text brain  -> ordinary chat, architecture, strategy, deep discussion
   + work brain  -> delegated micro harness such as Codex
 ```
 
@@ -18,7 +17,7 @@ interfaces or device firmware.
 
 IroHarness owns the SSOT for:
 
-- voice/text/deep/work brain slot selection
+- voice/text/work route selection
 - LLM provider endpoints and model names
 - STT provider endpoints and credentials
 - TTS provider endpoints, voices, and credentials
@@ -38,12 +37,12 @@ The default heuristic router uses this priority:
 ```text
 work signal -> micro harness
 voice input -> voice brain
-deep text   -> deep brain
 other text  -> text brain
 ```
 
 This means a spoken phrase like "設計について話そう" still uses the low-latency
-voice brain, while a typed architecture discussion can use a deeper model.
+voice brain, while a typed architecture discussion uses the text brain selected
+for high-quality conversation.
 
 ## HTTP Brain
 
@@ -53,10 +52,10 @@ IroHarness context:
 ```js
 import { createHttpBrain } from "iroharness";
 
-const deep = createHttpBrain({
-  id: "text-deep",
+const text = createHttpBrain({
+  id: "text-main",
   endpoint: "http://127.0.0.1:8788/respond",
-  model: "deep-model"
+  model: "text-model"
 });
 ```
 
@@ -64,7 +63,7 @@ The endpoint receives:
 
 ```json
 {
-  "model": "deep-model",
+  "model": "text-model",
   "character": {},
   "actor": {},
   "audience": {},
@@ -90,7 +89,7 @@ It should return:
 
 ## Codex OAuth Brain
 
-Use `createCodexAppServerBrain` when you want a main text/deep brain to use the
+Use `createCodexAppServerBrain` when you want the main text brain to use the
 host machine's Codex OAuth session instead of an API key. The host must already
 be logged in with `codex login`.
 
@@ -98,15 +97,8 @@ be logged in with `codex login`.
 import { createCodexAppServerBrain } from "iroharness/adapters";
 
 const text = createCodexAppServerBrain({
-  id: "text-codex-gpt-5.4",
+  id: "text-codex-gpt-5.5",
   slot: "text",
-  cwd: "/path/to/project",
-  model: "gpt-5.4"
-});
-
-const deep = createCodexAppServerBrain({
-  id: "deep-codex-gpt-5.5",
-  slot: "deep",
   cwd: "/path/to/project",
   model: "gpt-5.5"
 });
@@ -138,9 +130,9 @@ npm run example:brain-gateway
 npm run example:provider-brain-gateway
 ```
 
-`example:brains` shows voice/text/deep routing without changing character
+`example:brains` shows voice/text routing without changing character
 identity. `example:brain-gateway` starts a local HTTP brain gateway on
-`127.0.0.1:8788` with `/voice`, `/text`, and `/deep` routes.
+`127.0.0.1:8788` with `/voice` and `/text` routes.
 `example:provider-brain-gateway` starts the same contract on `127.0.0.1:8789`,
 but routes each slot to OpenAI Responses, Anthropic Messages, or a local
 OpenAI-compatible chat completions server.
@@ -155,21 +147,16 @@ IROHARNESS_BRAIN_AUTH_TOKEN=
 IROHARNESS_VOICE_BRAIN_ENDPOINT=http://127.0.0.1:8788/voice
 IROHARNESS_VOICE_BRAIN_MODEL=fast-voice-model
 IROHARNESS_TEXT_BRAIN_ENDPOINT=http://127.0.0.1:8788/text
-IROHARNESS_TEXT_BRAIN_MODEL=balanced-text-model
-IROHARNESS_DEEP_BRAIN_ENDPOINT=http://127.0.0.1:8788/deep
-IROHARNESS_DEEP_BRAIN_MODEL=deep-reasoning-model
+IROHARNESS_TEXT_BRAIN_MODEL=high-quality-text-model
 ```
 
-The Slack + Codex companion can use Codex OAuth directly for text/deep brain
-slots:
+The Slack + Codex companion can use Codex OAuth directly for the text brain:
 
 ```bash
 codex login
 
 IROHARNESS_TEXT_BRAIN_PROVIDER=codex
-IROHARNESS_TEXT_BRAIN_MODEL=gpt-5.4
-IROHARNESS_DEEP_BRAIN_PROVIDER=codex
-IROHARNESS_DEEP_BRAIN_MODEL=gpt-5.5
+IROHARNESS_TEXT_BRAIN_MODEL=gpt-5.5
 npm run example:slack-codex
 ```
 
@@ -178,8 +165,8 @@ character profile, actor, audience permissions, route, current state, and PJOS.
 Only the engine changes.
 
 The gateway endpoint is intentionally thin. In production, keep this protocol
-shape and replace the demo response logic with calls to your preferred voice,
-text, or deep reasoning model.
+shape and replace the demo response logic with calls to your preferred voice or
+text model.
 
 ## Provider Gateway Recipe
 
@@ -192,8 +179,6 @@ IROHARNESS_VOICE_BRAIN_PROVIDER=openai-compatible \
 IROHARNESS_VOICE_BRAIN_MODEL=gpt-oss:20b \
 IROHARNESS_TEXT_BRAIN_PROVIDER=openai \
 IROHARNESS_TEXT_BRAIN_MODEL="$OPENAI_TEXT_MODEL" \
-IROHARNESS_DEEP_BRAIN_PROVIDER=anthropic \
-IROHARNESS_DEEP_BRAIN_MODEL="$ANTHROPIC_DEEP_MODEL" \
 OPENAI_API_KEY="$OPENAI_API_KEY" \
 ANTHROPIC_API_KEY="$ANTHROPIC_API_KEY" \
 npm run example:provider-brain-gateway
@@ -212,14 +197,11 @@ Slot-specific variables override shared defaults:
 ```bash
 IROHARNESS_VOICE_BRAIN_PROVIDER=openai-compatible
 IROHARNESS_TEXT_BRAIN_PROVIDER=openai
-IROHARNESS_DEEP_BRAIN_PROVIDER=anthropic
 
 IROHARNESS_VOICE_BRAIN_MODEL=gpt-oss:20b
 IROHARNESS_TEXT_BRAIN_MODEL="$OPENAI_TEXT_MODEL"
-IROHARNESS_DEEP_BRAIN_MODEL="$ANTHROPIC_DEEP_MODEL"
-IROHARNESS_DEEP_BRAIN_MAX_TOKENS=1200
 ```
 
-Use this pattern to keep voice fast and cheap, text balanced, and deep
-discussion on a stronger model while preserving the same character identity,
-audience permissions, and PJOS context.
+Use this pattern to keep voice fast and cheap while text can use the strongest
+conversation model, preserving the same character identity, audience
+permissions, and PJOS context.

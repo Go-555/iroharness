@@ -49,11 +49,6 @@ const brainSlotEnv = Object.freeze({
     endpoint: "IROHARNESS_TEXT_BRAIN_ENDPOINT",
     model: "IROHARNESS_TEXT_BRAIN_MODEL",
     id: "IROHARNESS_TEXT_BRAIN_ID"
-  },
-  deep: {
-    endpoint: "IROHARNESS_DEEP_BRAIN_ENDPOINT",
-    model: "IROHARNESS_DEEP_BRAIN_MODEL",
-    id: "IROHARNESS_DEEP_BRAIN_ID"
   }
 });
 
@@ -77,18 +72,11 @@ const voiceBrain = createConfiguredBrain({
 });
 const textBrain = createConfiguredBrain({
   slot: "text",
-  fallbackId: "text-deep"
+  fallbackId: "text-standard"
 });
-const deepBrain = process.env.IROHARNESS_DEEP_BRAIN_ENDPOINT
-  ? createConfiguredBrain({
-      slot: "deep",
-      fallbackId: "deep-reasoning"
-    })
-  : null;
 const brains = Object.freeze({
   voice: voiceBrain,
-  text: textBrain,
-  ...(deepBrain ? { deep: deepBrain } : {})
+  text: textBrain
 });
 
 userRegistry.registerUser({
@@ -135,4 +123,4 @@ const { url } = await app.listen({
 
 console.log(`IroHarness browser avatar: ${url}`);
 console.log(`IroHarness audience admin: ${url}/?view=admin`);
-console.log(`IroHarness brains: voice=${voiceBrain.id} text=${textBrain.id} deep=${deepBrain?.id || "text fallback"}`);
+console.log(`IroHarness brains: voice=${voiceBrain.id} text=${textBrain.id}`);

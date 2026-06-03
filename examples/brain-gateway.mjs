@@ -34,9 +34,6 @@ const slotFromPath = (pathname) => {
   if (pathname === "/text") {
     return "text";
   }
-  if (pathname === "/deep") {
-    return "deep";
-  }
   return null;
 };
 
@@ -49,13 +46,11 @@ export const responseFor = ({ slot, payload }) => {
   const prefix =
     slot === "voice"
       ? "短く返すね"
-      : slot === "deep"
-        ? "深く整理するね"
-        : "受け取ったよ";
+      : "受け取ったよ";
 
   return {
     text: `${characterName}/${slot}/${model}: ${prefix}。${actorName}向けの${responseDepth}応答: ${sourceText}`,
-    emotion: slot === "deep" ? "focused" : "attentive",
+    emotion: "attentive",
     debug: {
       slot,
       route: payload.route?.kind || null,
@@ -71,7 +66,7 @@ export const createBrainGatewayHandler = () => async (request, response) => {
     writeJson(response, 200, {
       ok: true,
       service: "iroharness-brain-gateway",
-      slots: ["voice", "text", "deep"]
+      slots: ["voice", "text"]
     });
     return;
   }
@@ -80,7 +75,7 @@ export const createBrainGatewayHandler = () => async (request, response) => {
   if (request.method !== "POST" || !slot) {
     writeJson(response, 404, {
       error: "not_found",
-      routes: ["POST /voice", "POST /text", "POST /deep", "GET /health"]
+      routes: ["POST /voice", "POST /text", "GET /health"]
     });
     return;
   }
@@ -107,7 +102,6 @@ if (runningDirectly) {
     console.log(`IroHarness demo brain gateway: http://127.0.0.1:${port}`);
     console.log(`voice=http://127.0.0.1:${port}/voice`);
     console.log(`text=http://127.0.0.1:${port}/text`);
-    console.log(`deep=http://127.0.0.1:${port}/deep`);
   });
 
   process.once("SIGINT", () => {

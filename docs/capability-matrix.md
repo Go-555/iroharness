@@ -20,9 +20,9 @@ Status labels:
 | Project OS | built-in | `createInMemoryProjectOs`, `createFileProjectOs`, `createProjectOsMarkdown` | Tracks tickets, runs, artifacts, and durable state. |
 | Audience registry | built-in | `createInMemoryUserRegistry`, `createFileUserRegistry`, `createPostgresUserRegistry` | Links platform IDs to one user. |
 | Permissions | built-in | `createPermissionPolicy`, `createAudienceContextPolicy` | Gates deep discussion, work delegation, stream control, and user management. |
-| Brain routing | built-in | `createHeuristicRouter`, `createEchoBrain`, `createHttpBrain`, generated `.env` brain slots | Supports voice/text/deep/work routing while keeping identity stable. |
-| Codex OAuth brain | adapter | `createCodexAppServerBrain`, `docs/brains.md` | Uses the host machine's Codex OAuth session as a selectable text/deep brain model. |
-| Provider brain gateway | example | `examples/provider-brain-gateway.mjs` | Routes voice/text/deep slots to OpenAI, Claude, or local OpenAI-compatible providers. |
+| Brain routing | built-in | `createHeuristicRouter`, `createEchoBrain`, `createHttpBrain`, generated `.env` brain slots | Supports voice/text/work routing while keeping identity stable. |
+| Codex OAuth brain | adapter | `createCodexAppServerBrain`, `docs/brains.md` | Uses the host machine's Codex OAuth session as a selectable text brain model. |
+| Provider brain gateway | example | `examples/provider-brain-gateway.mjs` | Routes voice/text slots to OpenAI, Claude, or local OpenAI-compatible providers. |
 | Realtime voice contract | contract | `createRealtimeVoiceSession`, STT/TTS interfaces, schemas | JavaScript contract exists; production STT/TTS providers are replaceable. |
 | HTTP STT/TTS adapters | adapter | `createHttpStreamingStt`, `createHttpStreamingTts` | Bridge production STT/TTS providers through provider-owned HTTP endpoints. |
 | Azure Speech STT adapter | adapter | `createAzureSpeechStt` | Uses Azure Speech short-audio REST recognition for PTT and recorded device audio. |

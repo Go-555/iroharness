@@ -503,11 +503,6 @@ const brainSlotEnv = Object.freeze({
     endpoint: "IROHARNESS_TEXT_BRAIN_ENDPOINT",
     model: "IROHARNESS_TEXT_BRAIN_MODEL",
     id: "IROHARNESS_TEXT_BRAIN_ID"
-  },
-  deep: {
-    endpoint: "IROHARNESS_DEEP_BRAIN_ENDPOINT",
-    model: "IROHARNESS_DEEP_BRAIN_MODEL",
-    id: "IROHARNESS_DEEP_BRAIN_ID"
   }
 });
 
@@ -531,18 +526,11 @@ const voiceBrain = createConfiguredBrain({
 });
 const textBrain = createConfiguredBrain({
   slot: "text",
-  fallbackId: "text-deep"
+  fallbackId: "text-standard"
 });
-const deepBrain = process.env.IROHARNESS_DEEP_BRAIN_ENDPOINT
-  ? createConfiguredBrain({
-      slot: "deep",
-      fallbackId: "deep-reasoning"
-    })
-  : null;
 const brains = Object.freeze({
   voice: voiceBrain,
-  text: textBrain,
-  ...(deepBrain ? { deep: deepBrain } : {})
+  text: textBrain
 });
 
 userRegistry.registerUser({
@@ -708,8 +696,7 @@ a tunnel, reverse proxy, Discord, YouTube, or OBS tooling.
 The same ${character} identity can use different models by mode:
 
 - \`IROHARNESS_VOICE_BRAIN_ENDPOINT\`: low-latency voice replies
-- \`IROHARNESS_TEXT_BRAIN_ENDPOINT\`: normal chat replies
-- \`IROHARNESS_DEEP_BRAIN_ENDPOINT\`: developer-level deep discussion
+- \`IROHARNESS_TEXT_BRAIN_ENDPOINT\`: normal chat and deeper discussion replies
 
 Each endpoint receives the same character, actor, audience, route, state, and
 PJOS context. Use \`IROHARNESS_BRAIN_AUTH_TOKEN\` when your model gateway needs
@@ -858,7 +845,7 @@ roles, scoped permissions, and stream sessions.
 Short, natural, responsive, and consistent across text and speech.
 
 Voice replies should prefer low latency. If deeper reasoning is needed, say so
-briefly and route the work to the text/deep brain or a micro harness while
+briefly and route the work to the text brain or a micro harness while
 keeping ${character}'s identity stable.
 `
   });
@@ -873,8 +860,6 @@ keeping ${character}'s identity stable.
       "IROHARNESS_VOICE_BRAIN_MODEL=",
       "IROHARNESS_TEXT_BRAIN_ENDPOINT=",
       "IROHARNESS_TEXT_BRAIN_MODEL=",
-      "IROHARNESS_DEEP_BRAIN_ENDPOINT=",
-      "IROHARNESS_DEEP_BRAIN_MODEL=",
       "YOUTUBE_API_KEY=",
       "YOUTUBE_LIVE_CHAT_ID=",
       "DISCORD_BOT_TOKEN=",

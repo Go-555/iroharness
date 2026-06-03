@@ -12,7 +12,7 @@ const createDemoBrain = (id, label) =>
     async respond({ character, input }) {
       return {
         text: `${character.name}/${label}: ${input.text}`,
-        emotion: label === "deep" ? "focused" : "attentive"
+        emotion: "attentive"
       };
     }
   });
@@ -39,8 +39,7 @@ const harness = createIroHarness({
   router: createHeuristicRouter(),
   brains: {
     voice: createDemoBrain("voice-fast", "voice"),
-    text: createEchoBrain("text-standard"),
-    deep: createDemoBrain("text-deep", "deep")
+    text: createEchoBrain("text-standard")
   }
 });
 

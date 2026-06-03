@@ -1341,9 +1341,6 @@ export const createAudienceContextPolicy = ({
     if (route.kind === "voice") {
       return "brief";
     }
-    if (route.kind === "deep" && hasPermission(permissions, "deep_discussion")) {
-      return "deep";
-    }
     if (hasPermission(permissions, "deep_discussion")) {
       return "standard";
     }
@@ -1447,9 +1444,11 @@ export const createHeuristicRouter = () => {
     }
     if (!isWork) {
       return freezeCopy({
-        kind: input.modality === "voice" ? "voice" : isDeep ? "deep" : "text",
+        kind: input.modality === "voice" ? "voice" : "text",
         harnessId: null,
-        reason: isDeep ? "Deep discussion signal detected" : "No work signal detected"
+        reason: isDeep
+          ? "Deep discussion signal detected; using text brain"
+          : "No work signal detected"
       });
     }
 
@@ -1461,9 +1460,9 @@ export const createHeuristicRouter = () => {
     if (!selectedHarness && input.modality !== "voice") {
       if (isDeep) {
         return freezeCopy({
-          kind: "deep",
+          kind: "text",
           harnessId: null,
-          reason: "Deep discussion signal detected"
+          reason: "Deep discussion signal detected; using text brain"
         });
       }
     }
@@ -2698,8 +2697,7 @@ export const createIroHarness = ({
     Object.freeze(
       [
         ["voice", brains.voice],
-        ["text", brains.text],
-        ["deep", brains.deep]
+        ["text", brains.text]
       ]
         .filter(([, brain]) => Boolean(brain))
         .map(([slot, brain]) =>
@@ -2789,9 +2787,7 @@ export const createIroHarness = ({
     const brain =
       route.kind === "voice"
         ? brains.voice
-        : route.kind === "deep"
-          ? brains.deep || brains.text
-          : brains.text;
+        : brains.text;
     const response = await brain.respond({
       character,
       input,

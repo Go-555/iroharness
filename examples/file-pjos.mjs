@@ -36,7 +36,7 @@ const iroha = createIroHarness({
   router: createHeuristicRouter(),
   brains: {
     voice: createEchoBrain("voice-fast"),
-    text: createEchoBrain("text-deep")
+    text: createEchoBrain("text-standard")
   },
   microHarnesses: [
     createStubMicroHarness("codex", ["code", "files", "review"])

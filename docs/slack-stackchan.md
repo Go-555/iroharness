@@ -9,7 +9,7 @@ It is the first trusted device route:
 - IroHarness owns identity, memory, permissions, routing, and Project OS.
 - StackChan is a trusted body/device runtime that renders state and sends local
   mic, touch, button, and vision events.
-- Codex can be added later as a text/deep brain or delegated micro harness.
+- Codex can be added later as a text brain or delegated micro harness.
 
 ## Current Maturity
 
@@ -283,15 +283,13 @@ macro harness core.
 
 ## Optional Codex OAuth
 
-For normal text/deep replies through Codex OAuth:
+For normal text replies through Codex OAuth:
 
 ```bash
 codex login
 
 IROHARNESS_TEXT_BRAIN_PROVIDER=codex \
-IROHARNESS_TEXT_BRAIN_MODEL=gpt-5.4 \
-IROHARNESS_DEEP_BRAIN_PROVIDER=codex \
-IROHARNESS_DEEP_BRAIN_MODEL=gpt-5.5 \
+IROHARNESS_TEXT_BRAIN_MODEL=gpt-5.5 \
 npm run example:slack-stackchan
 ```
 
@@ -306,7 +304,7 @@ CODEX_MODEL=gpt-5.4 \
 npm run example:slack-stackchan
 ```
 
-The two paths are separate. The text/deep brain is read-only conversation. The
+The two paths are separate. The text brain is read-only conversation. The
 Codex micro harness is where file edits, reviews, and implementation work
 belong.
 

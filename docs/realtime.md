@@ -6,7 +6,7 @@ audio components stay replaceable.
 ```text
 audio in
   -> streaming STT
-  -> voice brain / text brain / deep brain / micro harness
+  -> voice brain / text brain / micro harness
   -> streaming TTS
   -> body + device output
 ```

@@ -22,7 +22,7 @@ Slack / VS Code  -----+--> user registry
 M5Stack / Even G2 ----+--> permission policy
 Browser / OBS    -----+--> IroHarness macro character
                            |
-                           +--> voice/text/deep brain
+                           +--> voice/text brain
                            +--> Codex / Claude Code / OpenClaw / Hermes
                            +--> PJOS
                            +--> body renderers and OBS overlay
