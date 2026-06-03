@@ -128,9 +128,35 @@ const bufferFromAudioChunk = (chunk) => {
 
 const arrayBufferToBase64 = (value) => Buffer.from(value).toString("base64");
 
+const isRiffWave = (buffer) =>
+  Buffer.isBuffer(buffer) &&
+  buffer.length >= 12 &&
+  buffer.toString("ascii", 0, 4) === "RIFF" &&
+  buffer.toString("ascii", 8, 12) === "WAVE";
+
+const createPcm16WavBuffer = ({ pcm, sampleRate = 16000, channels = 1 } = {}) => {
+  const data = Buffer.isBuffer(pcm) ? pcm : Buffer.from(pcm || []);
+  const wav = Buffer.alloc(44 + data.length);
+  wav.write("RIFF", 0, "ascii");
+  wav.writeUInt32LE(36 + data.length, 4);
+  wav.write("WAVE", 8, "ascii");
+  wav.write("fmt ", 12, "ascii");
+  wav.writeUInt32LE(16, 16);
+  wav.writeUInt16LE(1, 20);
+  wav.writeUInt16LE(channels, 22);
+  wav.writeUInt32LE(sampleRate, 24);
+  wav.writeUInt32LE(sampleRate * channels * 2, 28);
+  wav.writeUInt16LE(channels * 2, 32);
+  wav.writeUInt16LE(16, 34);
+  wav.write("data", 36, "ascii");
+  wav.writeUInt32LE(data.length, 40);
+  data.copy(wav, 44);
+  return wav;
+};
+
 const parsePcm16Wav = (audio) => {
   const buffer = Buffer.isBuffer(audio) ? audio : Buffer.from(audio || []);
-  if (buffer.length < 44 || buffer.toString("ascii", 0, 4) !== "RIFF" || buffer.toString("ascii", 8, 12) !== "WAVE") {
+  if (!isRiffWave(buffer)) {
     throw new Error("expected RIFF/WAVE audio");
   }
 
@@ -2683,7 +2709,14 @@ export const createAzureSpeechStt = ({
             return Object.freeze([]);
           }
           closed = true;
-          const audio = Buffer.concat(buffers);
+          const audioBytes = Buffer.concat(buffers);
+          const audio = isRiffWave(audioBytes)
+            ? audioBytes
+            : createPcm16WavBuffer({
+                pcm: audioBytes,
+                sampleRate,
+                channels: 1
+              });
           const response = await fetchImpl(url, {
             method: "POST",
             headers: {
@@ -3094,6 +3127,8 @@ export const createStackChanRealtimeSessionHandler = ({
   createQueue = null,
   deviceToken = null,
   latencyBudgetMs = 1000,
+  sttAutoFinalMs = 0,
+  sttAutoFinalMinBytes = 32000,
   voice = "iroha"
 } = {}) => {
   if (!harness || typeof harness.receive !== "function") {
@@ -3119,6 +3154,8 @@ export const createStackChanRealtimeSessionHandler = ({
     handleConnection(socket, { deviceId = "stackchan", userId = deviceId, channel = "local", token = null, onEvent = () => {} } = {}) {
       let sequence = 0;
       let sttSession = null;
+      let sttSessionStartedAt = 0;
+      let sttSessionBytes = 0;
       let protocol = "iroharness";
       let aiAvatarSessionId = id;
       let activeUserId = userId;
@@ -3332,7 +3369,40 @@ export const createStackChanRealtimeSessionHandler = ({
         return speak({ text });
       };
 
+      const finalizeAudioTurn = async ({ pushedEvents = [], payload, reason = "final" }) => {
+        if (!sttSession) {
+          return Object.freeze([]);
+        }
+        const finalEvents = await sttSession.end();
+        sttSession = null;
+        sttSessionStartedAt = 0;
+        sttSessionBytes = 0;
+        const transcriptEvent = [
+          ...(Array.isArray(pushedEvents) ? pushedEvents : [pushedEvents].filter(Boolean)),
+          ...(Array.isArray(finalEvents) ? finalEvents : [finalEvents].filter(Boolean))
+        ]
+          .reverse()
+          .find((candidate) => candidate.type === "stt.final" && candidate.text);
+        if (!transcriptEvent) {
+          send({
+            type: "stt.empty",
+            reason
+          });
+          return Object.freeze([]);
+        }
+        const result = await receiveTurn({
+          modality: "voice",
+          text: transcriptEvent.text,
+          metadata: {
+            audio: normalizeStackChanAudioPayload(payload),
+            sttFinalizeReason: reason
+          }
+        });
+        return handleTurnResult(result);
+      };
+
       const handleAudio = async (payload) => {
+        const audio = normalizeStackChanAudioPayload(payload);
         sttSession =
           sttSession ||
           stt.start({
@@ -3347,35 +3417,29 @@ export const createStackChanRealtimeSessionHandler = ({
               });
             }
           });
+        if (!sttSessionStartedAt) {
+          sttSessionStartedAt = Date.now();
+          sttSessionBytes = 0;
+        }
+        const dataBytes = audio.dataBase64 ? Buffer.from(audio.dataBase64, "base64").length : 0;
+        sttSessionBytes += dataBytes;
         const pushedEvents = await sttSession.push({
-          audio: normalizeStackChanAudioPayload(payload),
+          audio,
           final: Boolean(payload.final)
         });
-        if (!payload.final) {
+        const shouldAutoFinal =
+          !payload.final &&
+          sttAutoFinalMs > 0 &&
+          sttSessionBytes >= sttAutoFinalMinBytes &&
+          Date.now() - sttSessionStartedAt >= sttAutoFinalMs;
+        if (!payload.final && !shouldAutoFinal) {
           return Object.freeze(pushedEvents);
         }
-        const finalEvents = await sttSession.end();
-        sttSession = null;
-        const transcriptEvent = [
-          ...(Array.isArray(pushedEvents) ? pushedEvents : [pushedEvents].filter(Boolean)),
-          ...(Array.isArray(finalEvents) ? finalEvents : [finalEvents].filter(Boolean))
-        ]
-          .reverse()
-          .find((candidate) => candidate.type === "stt.final" && candidate.text);
-        if (!transcriptEvent) {
-          send({
-            type: "stt.empty"
-          });
-          return Object.freeze([]);
-        }
-        const result = await receiveTurn({
-          modality: "voice",
-          text: transcriptEvent.text,
-          metadata: {
-            audio: normalizeStackChanAudioPayload(payload)
-          }
+        return finalizeAudioTurn({
+          pushedEvents,
+          payload,
+          reason: payload.final ? "device-final" : "auto-final"
         });
-        return handleTurnResult(result);
       };
 
       const handlePayload = async (payload) => {
@@ -3488,6 +3552,9 @@ export const createStackChanRealtimeSessionHandler = ({
       });
       attachSocketListener(socket, "close", () => {
         sttSession?.cancel?.("socket-closed");
+        sttSession = null;
+        sttSessionStartedAt = 0;
+        sttSessionBytes = 0;
         queue?.clear?.("socket-closed");
         emit({
           type: "stackchan.closed"

@@ -456,6 +456,8 @@ const createSlackStackChanCompanion = () => {
           deviceToken: stackchanDeviceToken,
           voice: process.env.IROHARNESS_STACKCHAN_VOICE || "iroha",
           latencyBudgetMs: Number(process.env.IROHARNESS_STACKCHAN_LATENCY_BUDGET_MS || "1000"),
+          sttAutoFinalMs: Number(process.env.IROHARNESS_STACKCHAN_STT_AUTO_FINAL_MS || "1800"),
+          sttAutoFinalMinBytes: Number(process.env.IROHARNESS_STACKCHAN_STT_AUTO_FINAL_MIN_BYTES || "32000"),
           createQueue: () =>
             createSpeechPlaybackQueue({
               id: "stackchan-speech-queue"

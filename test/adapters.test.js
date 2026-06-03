@@ -492,7 +492,7 @@ test("Azure Speech STT adapter posts buffered audio and emits final transcript",
   assert.equal(stt.kind, "stt");
   assert.match(calls[0].endpoint, /japaneast\.stt\.speech\.microsoft\.com/);
   assert.equal(calls[0].headers["Ocp-Apim-Subscription-Key"], "key-test");
-  assert.equal(calls[0].byteLength, 3);
+  assert.equal(calls[0].byteLength, 47);
   assert.equal(finalEvents[0].type, "stt.final");
   assert.equal(finalEvents[0].text, "こんにちは。");
   assert.equal(events.at(-1).adapterId, "azure-test");
@@ -707,6 +707,102 @@ test("StackChan realtime session handler accepts firmware audio and returns spee
   assert.equal(turns[0].modality, "voice");
   assert.equal(turns[0].text, "こんにちは");
   assert.equal(events.some((event) => event.type === "stackchan.accepted"), true);
+});
+
+test("StackChan realtime session handler auto-finalizes continuous mic audio", async () => {
+  const sent = [];
+  const turns = [];
+  const socket = createFakeServerSocket({ sent });
+  const handler = createStackChanRealtimeSessionHandler({
+    deviceToken: "device-token",
+    sttAutoFinalMs: 1,
+    sttAutoFinalMinBytes: 8,
+    harness: {
+      async receive(turn) {
+        turns.push(turn);
+        return {
+          kind: "spoken",
+          text: `返事: ${turn.text}`
+        };
+      }
+    },
+    stt: {
+      id: "fake-stt",
+      start({ onEvent }) {
+        return {
+          async push() {
+            const event = {
+              type: "stt.audio_buffered",
+              byteLength: 4,
+              final: false
+            };
+            onEvent(event);
+            return [event];
+          },
+          async end() {
+            const event = {
+              type: "stt.final",
+              text: "おはよう",
+              final: true
+            };
+            onEvent(event);
+            return [event];
+          },
+          cancel() {
+            return null;
+          }
+        };
+      }
+    },
+    tts: {
+      id: "fake-tts",
+      async stream({ text, onEvent }) {
+        const events = [
+          {
+            type: "tts.audio",
+            text,
+            audio: createPcm16WavBase64(),
+            encoding: "wav",
+            final: false
+          },
+          {
+            type: "tts.completed",
+            text,
+            audio: "",
+            final: true
+          }
+        ];
+        events.forEach(onEvent);
+        return events;
+      }
+    }
+  });
+
+  handler.handleConnection(socket, {
+    deviceId: "stackchan",
+    token: "device-token"
+  });
+  socket.receive({
+    type: "start",
+    session_id: "avatar-session"
+  });
+  await new Promise((resolve) => setTimeout(resolve, 2));
+  socket.receive({
+    type: "data",
+    session_id: "avatar-session",
+    audio_data: Buffer.alloc(4).toString("base64")
+  });
+  await new Promise((resolve) => setTimeout(resolve, 2));
+  socket.receive({
+    type: "data",
+    session_id: "avatar-session",
+    audio_data: Buffer.alloc(4).toString("base64")
+  });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  assert.equal(turns[0].text, "おはよう");
+  assert.equal(turns[0].metadata.sttFinalizeReason, "auto-final");
+  assert.equal(sent.some((message) => message.type === "chunk"), true);
 });
 
 test("StackChan realtime session handler speaks AIAvatarStackChan websocket messages", async () => {
