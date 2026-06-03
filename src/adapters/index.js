@@ -1020,7 +1020,7 @@ export const createCodexAppServerBrain = ({
         );
         return Object.freeze({
           text: extractCodexText(events) || "受け取ったよ。",
-          emotion: context.route?.kind === "deep" ? "focused" : "attentive",
+          emotion: context.audience?.responseDepth === "standard" ? "focused" : "attentive",
           raw: Object.freeze({
             provider: "codex",
             model,

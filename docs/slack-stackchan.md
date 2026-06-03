@@ -138,6 +138,13 @@ Example:
 }
 ```
 
+By default the gateway registers the local StackChan identity
+`m5stack:stackchan` as a `member`, so the physical device is treated as a
+trusted local body instead of an anonymous public entry point. Override
+`IROHARNESS_STACKCHAN_USER_ID`, `IROHARNESS_STACKCHAN_USER_NAME`,
+`IROHARNESS_STACKCHAN_USER_ROLE`, or `IROHARNESS_STACKCHAN_USER_PLATFORM_ID`
+when a device should map to a different audience identity.
+
 Audio / push-to-talk input can use the same endpoint:
 
 ```json

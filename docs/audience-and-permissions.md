@@ -76,7 +76,7 @@ Example:
 {
   "tier": "trusted",
   "relationship": "core-developer",
-  "responseDepth": "deep",
+  "responseDepth": "standard",
   "canDeepDiscuss": true,
   "canDelegateWork": true,
   "canManageStream": false,

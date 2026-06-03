@@ -418,6 +418,14 @@ const createSlackStackChanCompanion = () => {
       }
     });
   }
+  userRegistry.registerUser({
+    id: process.env.IROHARNESS_STACKCHAN_USER_ID || "stackchan-device",
+    displayName: process.env.IROHARNESS_STACKCHAN_USER_NAME || "StackChan",
+    role: process.env.IROHARNESS_STACKCHAN_USER_ROLE || "member",
+    identities: {
+      m5stack: process.env.IROHARNESS_STACKCHAN_USER_PLATFORM_ID || stackchan.id
+    }
+  });
 
   const microHarnesses =
     process.env.IROHARNESS_RUN_CODEX === "1"
