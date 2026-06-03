@@ -386,8 +386,9 @@ const transcribeStackChanAudio = async ({ stt, audio, fallbackText }) => {
 };
 
 const createSlackStackChanCompanion = () => {
-  const botToken = requireEnv("SLACK_BOT_TOKEN");
-  const signingSecret = requireEnv("SLACK_SIGNING_SECRET");
+  const botToken = process.env.SLACK_BOT_TOKEN || null;
+  const signingSecret = process.env.SLACK_SIGNING_SECRET || null;
+  const slackEnabled = Boolean(botToken && signingSecret);
   const stackchanDeviceToken = requireEnv("STACKCHAN_DEVICE_TOKEN");
   const port = Number(process.env.PORT || "4182");
   const host = process.env.HOST || "127.0.0.1";
@@ -472,36 +473,38 @@ const createSlackStackChanCompanion = () => {
   let activeRealtimeSession = null;
 
   const seenEventIds = new Set();
-  const runtime = createSlackEventsRuntime({
-    botToken,
-    harness,
-    adapter: createSlackMessageAdapter({
-      mentionOnly: process.env.SLACK_MENTION_ONLY !== "0",
-      botUserId: process.env.SLACK_BOT_USER_ID || null
-    }),
-    responseFormatter({ result }) {
-      if (result.kind === "permission_denied") {
-        return result.text;
-      }
-      return result.text || result.output?.summary || null;
-    },
-    onResult({ turn, result, reply }) {
-      console.log(
-        JSON.stringify({
-          from: turn.actor.displayName,
-          userId: turn.actor.platformUserId,
-          text: turn.text,
-          resultKind: result.kind,
-          route: result.route?.kind || null,
-          stackchan: stackchan.snapshot()?.payload || null,
-          replied: Boolean(reply)
-        })
-      );
-    },
-    onError(error) {
-      console.error(error.stack || error.message);
-    }
-  });
+  const runtime = slackEnabled
+    ? createSlackEventsRuntime({
+        botToken,
+        harness,
+        adapter: createSlackMessageAdapter({
+          mentionOnly: process.env.SLACK_MENTION_ONLY !== "0",
+          botUserId: process.env.SLACK_BOT_USER_ID || null
+        }),
+        responseFormatter({ result }) {
+          if (result.kind === "permission_denied") {
+            return result.text;
+          }
+          return result.text || result.output?.summary || null;
+        },
+        onResult({ turn, result, reply }) {
+          console.log(
+            JSON.stringify({
+              from: turn.actor.displayName,
+              userId: turn.actor.platformUserId,
+              text: turn.text,
+              resultKind: result.kind,
+              route: result.route?.kind || null,
+              stackchan: stackchan.snapshot()?.payload || null,
+              replied: Boolean(reply)
+            })
+          );
+        },
+        onError(error) {
+          console.error(error.stack || error.message);
+        }
+      })
+    : null;
 
   const handleDeviceInvoke = async (payload) => {
     const fallbackText =
@@ -646,6 +649,10 @@ const createSlackStackChanCompanion = () => {
     }
     if (request.method !== "POST" || request.url !== "/slack/events") {
       sendJson(response, 404, { ok: false, error: "not_found" });
+      return;
+    }
+    if (!slackEnabled || !runtime) {
+      sendJson(response, 503, { ok: false, error: "slack_disabled" });
       return;
     }
 
