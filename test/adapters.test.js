@@ -508,6 +508,43 @@ test("Azure Speech STT adapter posts buffered audio and emits final transcript",
   assert.equal(events.at(-1).adapterId, "azure-test");
 });
 
+test("Azure Speech STT adapter can use fast transcription", async () => {
+  const calls = [];
+  const stt = createAzureSpeechStt({
+    id: "azure-fast-test",
+    region: "japaneast",
+    subscriptionKey: "key-test",
+    mode: "fast",
+    language: "ja-JP",
+    fetchImpl: async (endpoint, options) => {
+      calls.push({
+        endpoint,
+        headers: options.headers,
+        body: options.body
+      });
+      return {
+        ok: true,
+        status: 200,
+        async text() {
+          return JSON.stringify({
+            combinedPhrases: [{ text: "こんにちは、いろは。" }]
+          });
+        }
+      };
+    }
+  });
+  const session = stt.start();
+
+  session.push({ audio: { dataBase64: Buffer.from("pcm").toString("base64") } });
+  const finalEvents = await session.end();
+
+  assert.match(calls[0].endpoint, /japaneast\.api\.cognitive\.microsoft\.com/);
+  assert.equal(calls[0].headers["Ocp-Apim-Subscription-Key"], "key-test");
+  assert.equal(calls[0].headers["content-type"], undefined);
+  assert.equal(calls[0].body instanceof FormData, true);
+  assert.equal(finalEvents[0].text, "こんにちは、いろは。");
+});
+
 test("AivisSpeech TTS adapter calls audio_query then synthesis", async () => {
   const calls = [];
   const tts = createAivisSpeechTts({

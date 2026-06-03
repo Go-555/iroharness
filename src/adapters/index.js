@@ -2656,7 +2656,9 @@ export const createAzureSpeechStt = ({
   subscriptionKey = null,
   authorizationToken = null,
   language = "ja-JP",
+  alternativeLanguages = [],
   format = "detailed",
+  mode = "classic",
   sampleRate = 16000,
   contentType = `audio/wav; codecs=audio/pcm; samplerate=${sampleRate}`,
   debugAudioDir = null,
@@ -2674,7 +2676,9 @@ export const createAzureSpeechStt = ({
   }
   const url =
     endpoint ||
-    `https://${region}.stt.speech.microsoft.com/speech/recognition/conversation/cognitiveservices/v1?language=${encodeURIComponent(language)}&format=${encodeURIComponent(format)}`;
+    (mode === "fast"
+      ? `https://${region}.api.cognitive.microsoft.com/speechtotext/transcriptions:transcribe?api-version=2024-11-15`
+      : `https://${region}.stt.speech.microsoft.com/speech/recognition/conversation/cognitiveservices/v1?language=${encodeURIComponent(language)}&format=${encodeURIComponent(format)}`);
 
   return Object.freeze({
     id,
@@ -2731,20 +2735,50 @@ export const createAzureSpeechStt = ({
               byteLength: audio.length
             });
           }
-          const response = await fetchImpl(url, {
-            method: "POST",
-            headers: {
-              accept: "application/json;text/xml",
-              "content-type": contentType,
-              ...(subscriptionKey ? { "Ocp-Apim-Subscription-Key": subscriptionKey } : {}),
-              ...(authorizationToken ? { authorization: `Bearer ${authorizationToken}` } : {}),
-              ...headers
-            },
-            body: audio
-          });
+          const authHeaders = {
+            ...(subscriptionKey ? { "Ocp-Apim-Subscription-Key": subscriptionKey } : {}),
+            ...(authorizationToken ? { authorization: `Bearer ${authorizationToken}` } : {}),
+            ...headers
+          };
+          const response =
+            mode === "fast"
+              ? await fetchImpl(url, {
+                  method: "POST",
+                  headers: {
+                    accept: "application/json",
+                    ...authHeaders
+                  },
+                  body: (() => {
+                    const formData = new FormData();
+                    formData.append("audio", new Blob([audio], { type: "audio/wav" }), "audio.wav");
+                    formData.append(
+                      "definition",
+                      new Blob(
+                        [
+                          JSON.stringify({
+                            locales: [language, ...alternativeLanguages],
+                            channels: [0]
+                          })
+                        ],
+                        { type: "application/json" }
+                      )
+                    );
+                    return formData;
+                  })()
+                })
+              : await fetchImpl(url, {
+                  method: "POST",
+                  headers: {
+                    accept: "application/json;text/xml",
+                    "content-type": contentType,
+                    ...authHeaders
+                  },
+                  body: audio
+                });
           const body = await parseJsonResponse({ response, label: `Azure Speech STT ${id}` });
           const text =
             body.DisplayText ||
+            body.combinedPhrases?.[0]?.text ||
             body.NBest?.[0]?.Display ||
             body.NBest?.[0]?.Lexical ||
             body.Text ||
