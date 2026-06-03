@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { createServer } from "node:http";
-import { readFileSync, statSync } from "node:fs";
+import { mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { extname, join, normalize, relative, resolve } from "node:path";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
@@ -2659,6 +2659,7 @@ export const createAzureSpeechStt = ({
   format = "detailed",
   sampleRate = 16000,
   contentType = `audio/wav; codecs=audio/pcm; samplerate=${sampleRate}`,
+  debugAudioDir = null,
   headers = {},
   fetchImpl = globalThis.fetch
 } = {}) => {
@@ -2717,6 +2718,19 @@ export const createAzureSpeechStt = ({
                 sampleRate,
                 channels: 1
               });
+          if (debugAudioDir) {
+            mkdirSync(debugAudioDir, { recursive: true });
+            const debugAudioPath = join(
+              debugAudioDir,
+              `${new Date().toISOString().replaceAll(":", "-")}-${id}-${sequence}.wav`
+            );
+            writeFileSync(debugAudioPath, audio);
+            emit({
+              type: "stt.debug_audio_saved",
+              path: debugAudioPath,
+              byteLength: audio.length
+            });
+          }
           const response = await fetchImpl(url, {
             method: "POST",
             headers: {

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { chmodSync, mkdtempSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -463,10 +463,12 @@ test("AIAvatarKit bridge device posts speech and state events", async () => {
 
 test("Azure Speech STT adapter posts buffered audio and emits final transcript", async () => {
   const calls = [];
+  const debugAudioDir = mkdtempSync(join(tmpdir(), "iroharness-stt-debug-"));
   const stt = createAzureSpeechStt({
     id: "azure-test",
     region: "japaneast",
     subscriptionKey: "key-test",
+    debugAudioDir,
     fetchImpl: async (endpoint, options) => {
       calls.push({
         endpoint,
@@ -499,6 +501,8 @@ test("Azure Speech STT adapter posts buffered audio and emits final transcript",
   assert.match(calls[0].endpoint, /japaneast\.stt\.speech\.microsoft\.com/);
   assert.equal(calls[0].headers["Ocp-Apim-Subscription-Key"], "key-test");
   assert.equal(calls[0].byteLength, 47);
+  const debugEvent = events.find((event) => event.type === "stt.debug_audio_saved");
+  assert.equal(readFileSync(debugEvent.path).toString("ascii", 0, 4), "RIFF");
   assert.equal(finalEvents[0].type, "stt.final");
   assert.equal(finalEvents[0].text, "こんにちは。");
   assert.equal(events.at(-1).adapterId, "azure-test");

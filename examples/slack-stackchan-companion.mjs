@@ -309,7 +309,8 @@ const createStackChanStt = () => {
       subscriptionKey: process.env.AZURE_SPEECH_KEY || null,
       authorizationToken: process.env.AZURE_SPEECH_AUTHORIZATION_TOKEN || null,
       language: process.env.AZURE_SPEECH_LANGUAGE || "ja-JP",
-      sampleRate: Number(process.env.IROHARNESS_STACKCHAN_AUDIO_SAMPLE_RATE || "16000")
+      sampleRate: Number(process.env.IROHARNESS_STACKCHAN_AUDIO_SAMPLE_RATE || "16000"),
+      debugAudioDir: process.env.IROHARNESS_STACKCHAN_STT_DEBUG_AUDIO_DIR || null
     });
   }
   const endpoint = process.env.IROHARNESS_STACKCHAN_STT_ENDPOINT;
