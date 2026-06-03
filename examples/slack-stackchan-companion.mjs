@@ -458,6 +458,10 @@ const createSlackStackChanCompanion = () => {
           latencyBudgetMs: Number(process.env.IROHARNESS_STACKCHAN_LATENCY_BUDGET_MS || "1000"),
           sttAutoFinalMs: Number(process.env.IROHARNESS_STACKCHAN_STT_AUTO_FINAL_MS || "1800"),
           sttAutoFinalMinBytes: Number(process.env.IROHARNESS_STACKCHAN_STT_AUTO_FINAL_MIN_BYTES || "32000"),
+          vadThresholdDb: Number(process.env.IROHARNESS_STACKCHAN_VAD_THRESHOLD_DB || "-38"),
+          vadSilenceMs: Number(process.env.IROHARNESS_STACKCHAN_VAD_SILENCE_MS || "700"),
+          vadMinSpeechMs: Number(process.env.IROHARNESS_STACKCHAN_VAD_MIN_SPEECH_MS || "250"),
+          vadMaxSpeechMs: Number(process.env.IROHARNESS_STACKCHAN_VAD_MAX_SPEECH_MS || "8000"),
           createQueue: () =>
             createSpeechPlaybackQueue({
               id: "stackchan-speech-queue"

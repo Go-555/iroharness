@@ -64,6 +64,12 @@ const createPcm16WavBase64 = ({ sampleRate = 24000, channels = 1, samples = [0, 
   return wav.toString("base64");
 };
 
+const createPcm16Base64 = ({ samples = [0, 1000, -1000, 0] } = {}) => {
+  const data = Buffer.alloc(samples.length * 2);
+  samples.forEach((sample, index) => data.writeInt16LE(sample, index * 2));
+  return data.toString("base64");
+};
+
 const createFakeObsWebSocket = ({ sent }) => {
   return class FakeObsWebSocket {
     static instances = [];
@@ -709,14 +715,16 @@ test("StackChan realtime session handler accepts firmware audio and returns spee
   assert.equal(events.some((event) => event.type === "stackchan.accepted"), true);
 });
 
-test("StackChan realtime session handler auto-finalizes continuous mic audio", async () => {
+test("StackChan realtime session handler finalizes mic audio on VAD silence", async () => {
   const sent = [];
   const turns = [];
   const socket = createFakeServerSocket({ sent });
   const handler = createStackChanRealtimeSessionHandler({
     deviceToken: "device-token",
-    sttAutoFinalMs: 1,
-    sttAutoFinalMinBytes: 8,
+    sttAutoFinalMs: 0,
+    vadThresholdDb: -40,
+    vadSilenceMs: 1,
+    vadMinSpeechMs: 0,
     harness: {
       async receive(turn) {
         turns.push(turn);
@@ -786,22 +794,29 @@ test("StackChan realtime session handler auto-finalizes continuous mic audio", a
     type: "start",
     session_id: "avatar-session"
   });
-  await new Promise((resolve) => setTimeout(resolve, 2));
   socket.receive({
     type: "data",
     session_id: "avatar-session",
-    audio_data: Buffer.alloc(4).toString("base64")
+    audio_data: createPcm16Base64({ samples: [0, 0, 0, 0] })
+  });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(turns.length, 0);
+
+  socket.receive({
+    type: "data",
+    session_id: "avatar-session",
+    audio_data: createPcm16Base64({ samples: [4000, -4000, 4000, -4000] })
   });
   await new Promise((resolve) => setTimeout(resolve, 2));
   socket.receive({
     type: "data",
     session_id: "avatar-session",
-    audio_data: Buffer.alloc(4).toString("base64")
+    audio_data: createPcm16Base64({ samples: [0, 0, 0, 0] })
   });
   await new Promise((resolve) => setTimeout(resolve, 0));
 
   assert.equal(turns[0].text, "おはよう");
-  assert.equal(turns[0].metadata.sttFinalizeReason, "auto-final");
+  assert.equal(turns[0].metadata.sttFinalizeReason, "vad-silence");
   assert.equal(sent.some((message) => message.type === "chunk"), true);
 });
 

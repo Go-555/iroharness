@@ -3103,6 +3103,36 @@ const normalizeStackChanAudioPayload = (payload) =>
     dataBase64: payload.dataBase64 || payload.audioBase64 || payload.audio_data || ""
   };
 
+const analyzePcm16Audio = (audio = {}, { vadThresholdDb = -38 } = {}) => {
+  const encoding = String(audio.encoding || "pcm16").toLowerCase();
+  const pcm =
+    encoding === "wav"
+      ? Buffer.from(parsePcm16Wav(Buffer.from(audio.dataBase64 || "", "base64")).dataBase64, "base64")
+      : Buffer.from(audio.dataBase64 || "", "base64");
+  const sampleCount = Math.floor(pcm.length / 2);
+  if (sampleCount === 0) {
+    return Object.freeze({
+      bytes: pcm.length,
+      sampleCount,
+      rmsDb: -Infinity,
+      isSpeech: false
+    });
+  }
+  let sumSquares = 0;
+  for (let offset = 0; offset + 1 < pcm.length; offset += 2) {
+    const sample = pcm.readInt16LE(offset);
+    sumSquares += sample * sample;
+  }
+  const rms = Math.sqrt(sumSquares / sampleCount);
+  const rmsDb = rms <= 0 ? -Infinity : 20 * Math.log10(rms / 32768);
+  return Object.freeze({
+    bytes: pcm.length,
+    sampleCount,
+    rmsDb,
+    isSpeech: rmsDb >= vadThresholdDb
+  });
+};
+
 const isAiAvatarStackChanClientMessage = (payload) =>
   ["start", "data"].includes(payload?.type) ||
   Boolean(payload?.session_id) ||
@@ -3129,6 +3159,10 @@ export const createStackChanRealtimeSessionHandler = ({
   latencyBudgetMs = 1000,
   sttAutoFinalMs = 0,
   sttAutoFinalMinBytes = 32000,
+  vadThresholdDb = -38,
+  vadSilenceMs = 700,
+  vadMinSpeechMs = 250,
+  vadMaxSpeechMs = 8000,
   voice = "iroha"
 } = {}) => {
   if (!harness || typeof harness.receive !== "function") {
@@ -3156,6 +3190,8 @@ export const createStackChanRealtimeSessionHandler = ({
       let sttSession = null;
       let sttSessionStartedAt = 0;
       let sttSessionBytes = 0;
+      let vadSpeechStartedAt = 0;
+      let vadLastSpeechAt = 0;
       let protocol = "iroharness";
       let aiAvatarSessionId = id;
       let activeUserId = userId;
@@ -3378,6 +3414,8 @@ export const createStackChanRealtimeSessionHandler = ({
         sttSession = null;
         sttSessionStartedAt = 0;
         sttSessionBytes = 0;
+        vadSpeechStartedAt = 0;
+        vadLastSpeechAt = 0;
         const transcriptEvent = [
           ...(Array.isArray(pushedEvents) ? pushedEvents : [pushedEvents].filter(Boolean)),
           ...(Array.isArray(finalEvents) ? finalEvents : [finalEvents].filter(Boolean))
@@ -3404,6 +3442,13 @@ export const createStackChanRealtimeSessionHandler = ({
 
       const handleAudio = async (payload) => {
         const audio = normalizeStackChanAudioPayload(payload);
+        const now = Date.now();
+        const vad = analyzePcm16Audio(audio, { vadThresholdDb });
+        const deviceFinal = Boolean(payload.final);
+        const shouldStart = deviceFinal || vad.isSpeech;
+        if (!sttSession && !shouldStart) {
+          return Object.freeze([]);
+        }
         sttSession =
           sttSession ||
           stt.start({
@@ -3419,27 +3464,57 @@ export const createStackChanRealtimeSessionHandler = ({
             }
           });
         if (!sttSessionStartedAt) {
-          sttSessionStartedAt = Date.now();
+          sttSessionStartedAt = now;
           sttSessionBytes = 0;
         }
-        const dataBytes = audio.dataBase64 ? Buffer.from(audio.dataBase64, "base64").length : 0;
+        if (vad.isSpeech) {
+          if (!vadSpeechStartedAt) {
+            vadSpeechStartedAt = now;
+            emit({
+              type: "stackchan.stt.speech_started",
+              rmsDb: vad.rmsDb
+            });
+          }
+          vadLastSpeechAt = now;
+        }
+        const dataBytes = vad.bytes;
         sttSessionBytes += dataBytes;
         const pushedEvents = await sttSession.push({
           audio,
-          final: Boolean(payload.final)
+          final: deviceFinal
         });
+        const elapsedSpeechMs = vadSpeechStartedAt ? now - vadSpeechStartedAt : 0;
+        const silenceMs = vadLastSpeechAt ? now - vadLastSpeechAt : 0;
+        const shouldVadFinal =
+          !deviceFinal &&
+          vadSpeechStartedAt > 0 &&
+          !vad.isSpeech &&
+          silenceMs >= vadSilenceMs &&
+          elapsedSpeechMs >= vadMinSpeechMs;
+        const shouldMaxFinal =
+          !deviceFinal &&
+          vadSpeechStartedAt > 0 &&
+          vadMaxSpeechMs > 0 &&
+          elapsedSpeechMs >= vadMaxSpeechMs;
         const shouldAutoFinal =
-          !payload.final &&
+          !deviceFinal &&
+          vadSpeechStartedAt > 0 &&
           sttAutoFinalMs > 0 &&
           sttSessionBytes >= sttAutoFinalMinBytes &&
-          Date.now() - sttSessionStartedAt >= sttAutoFinalMs;
-        if (!payload.final && !shouldAutoFinal) {
+          elapsedSpeechMs >= sttAutoFinalMs;
+        if (!deviceFinal && !shouldVadFinal && !shouldMaxFinal && !shouldAutoFinal) {
           return Object.freeze(pushedEvents);
         }
         return finalizeAudioTurn({
           pushedEvents,
           payload,
-          reason: payload.final ? "device-final" : "auto-final"
+          reason: deviceFinal
+            ? "device-final"
+            : shouldVadFinal
+              ? "vad-silence"
+              : shouldMaxFinal
+                ? "vad-max-duration"
+                : "auto-final"
         });
       };
 
@@ -3556,6 +3631,8 @@ export const createStackChanRealtimeSessionHandler = ({
         sttSession = null;
         sttSessionStartedAt = 0;
         sttSessionBytes = 0;
+        vadSpeechStartedAt = 0;
+        vadLastSpeechAt = 0;
         queue?.clear?.("socket-closed");
         emit({
           type: "stackchan.closed"
