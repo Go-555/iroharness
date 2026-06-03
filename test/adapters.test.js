@@ -824,6 +824,73 @@ test("StackChan realtime session handler finalizes mic audio on VAD silence", as
   assert.equal(sent.some((message) => message.type === "chunk"), true);
 });
 
+test("StackChan realtime session handler clears firmware processing on empty STT", async () => {
+  const sent = [];
+  const turns = [];
+  const socket = createFakeServerSocket({ sent });
+  const handler = createStackChanRealtimeSessionHandler({
+    deviceToken: "device-token",
+    harness: {
+      async receive(turn) {
+        turns.push(turn);
+        return {
+          kind: "spoken",
+          text: `返事: ${turn.text}`
+        };
+      }
+    },
+    stt: {
+      id: "empty-stt",
+      start({ onEvent }) {
+        return {
+          async push() {
+            return [];
+          },
+          async end() {
+            const event = {
+              type: "stt.final",
+              text: "",
+              final: true
+            };
+            onEvent(event);
+            return [event];
+          },
+          cancel() {
+            return null;
+          }
+        };
+      }
+    },
+    tts: {
+      id: "fake-tts",
+      async stream() {
+        return [];
+      }
+    }
+  });
+
+  handler.handleConnection(socket, {
+    deviceId: "stackchan",
+    token: "device-token"
+  });
+  socket.receive({
+    type: "start",
+    session_id: "avatar-session"
+  });
+  socket.receive({
+    type: "data",
+    session_id: "avatar-session",
+    audio_data: createPcm16Base64({ samples: [4000, -4000, 4000, -4000] }),
+    final: true
+  });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  assert.equal(turns.length, 0);
+  assert.equal(sent.some((message) => message.type === "accepted"), true);
+  assert.equal(sent.at(-1).type, "final");
+  assert.equal(sent.at(-1).text, "");
+});
+
 test("StackChan realtime session handler speaks AIAvatarStackChan websocket messages", async () => {
   const sent = [];
   const turns = [];

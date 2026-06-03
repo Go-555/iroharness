@@ -3267,6 +3267,18 @@ export const createStackChanRealtimeSessionHandler = ({
                 session_id: aiAvatarSessionId
               };
         }
+        if (payload.type === "stt.empty") {
+          return {
+            type: "final",
+            session_id: aiAvatarSessionId,
+            text: "",
+            metadata: {
+              text: "",
+              voice_text: "",
+              reason: payload.reason || "empty"
+            }
+          };
+        }
         if (payload.type === "response.start") {
           return {
             type: "start",
