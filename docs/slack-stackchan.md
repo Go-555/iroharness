@@ -26,6 +26,7 @@ Good now:
 - IroHarness-owned StackChan firmware runtime under `firmware/stackchan-runtime`
 - shared character state between Slack and StackChan
 - optional Codex OAuth model use through `codex app-server`
+- optional OpenAI Responses API voice brain for AIAvatarStackChan-style low-latency conversation
 
 Still early:
 
@@ -176,6 +177,20 @@ AZURE_SPEECH_KEY=... \
 AZURE_SPEECH_LANGUAGE=ja-JP \
 npm run example:slack-stackchan
 ```
+
+For the StackChan voice brain, prefer direct OpenAI API calls over Codex
+app-server when latency matters:
+
+```bash
+IROHARNESS_VOICE_BRAIN_PROVIDER=openai \
+IROHARNESS_VOICE_BRAIN_MODEL=gpt-5.5 \
+IROHARNESS_VOICE_BRAIN_MAX_TOKENS=96 \
+OPENAI_API_KEY=... \
+npm run example:slack-stackchan
+```
+
+Keep Codex app-server for text discussion or delegated work. It is useful for
+agent workflows, but it is heavier than a direct voice conversation brain.
 
 For AivisSpeech TTS on device audio/PTT responses:
 

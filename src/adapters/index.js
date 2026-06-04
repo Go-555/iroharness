@@ -1055,6 +1055,99 @@ export const createCodexAppServerBrain = ({
   });
 };
 
+const extractOpenAiResponsesText = (payload = {}) => {
+  if (typeof payload.output_text === "string") {
+    return payload.output_text;
+  }
+  const output = Array.isArray(payload.output) ? payload.output : [];
+  return output
+    .flatMap((item) => (Array.isArray(item.content) ? item.content : []))
+    .map((content) => content.text || "")
+    .join("")
+    .trim();
+};
+
+const formatOpenAiBrainPrompt = ({ slot, context }) => {
+  const character = context.character || {};
+  const audience = context.audience || {};
+  const actor = context.actor || {};
+  const input = context.input || {};
+
+  const system = [
+    `あなたは${character.name || character.id || "IroHarness character"}です。`,
+    "IroHarnessの同じ人格として、自然な日本語で返答してください。",
+    slot === "voice"
+      ? "音声会話用です。最初に短い相づちを置いてもよいです。返答は1〜2文、30文字前後を目安にしてください。"
+      : "テキスト会話用です。必要な範囲で自然に返答してください。",
+    "音声合成される可能性があるため、Markdown、箇条書き、コード、URL、絵文字、XMLタグ、モデル名、backend名は使わないでください。",
+    "ユーザーの入力は音声認識結果の可能性があります。文脈上おかしい場合は、元の発話を推測してください。",
+    character.soul ? `SOUL:\n${character.soul}` : null,
+    character.identity ? `IDENTITY:\n${character.identity}` : null,
+    character.memory ? `MEMORY:\n${character.memory}` : null,
+    character.voiceStyle ? `VOICE:\n${character.voiceStyle}` : null
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+
+  const user = [
+    `actor: ${actor.displayName || actor.user?.displayName || "user"}`,
+    `relationship: ${audience.relationship || "public"}`,
+    `modality: ${input.modality || "text"}`,
+    "",
+    input.text || ""
+  ].join("\n");
+
+  return Object.freeze({ system, user });
+};
+
+export const createOpenAiResponsesBrain = ({
+  id = "openai-responses-brain",
+  slot = "voice",
+  apiKey = process.env.OPENAI_API_KEY || "",
+  baseUrl = process.env.OPENAI_BASE_URL || "https://api.openai.com/v1",
+  model = "gpt-5.5",
+  maxOutputTokens = slot === "voice" ? 96 : 700,
+  fetchImpl = globalThis.fetch
+} = {}) => {
+  if (!apiKey) {
+    throw new Error("createOpenAiResponsesBrain requires OPENAI_API_KEY");
+  }
+  if (typeof fetchImpl !== "function") {
+    throw new Error("createOpenAiResponsesBrain requires fetchImpl");
+  }
+  const endpoint = `${String(baseUrl).replace(/\/+$/, "")}/responses`;
+  return Object.freeze({
+    id,
+    async respond(context) {
+      const prompt = formatOpenAiBrainPrompt({ slot, context });
+      const response = await fetchImpl(endpoint, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${apiKey}`,
+          "content-type": "application/json"
+        },
+        body: JSON.stringify({
+          model,
+          instructions: prompt.system,
+          input: prompt.user,
+          max_output_tokens: maxOutputTokens
+        })
+      });
+      const payload = await parseJsonResponse({ response, label: `OpenAI brain ${id}` });
+      const text = normalizeSpeechText(extractOpenAiResponsesText(payload));
+      return Object.freeze({
+        text: text || "うん、聞いてるよ。",
+        emotion: "attentive",
+        raw: Object.freeze({
+          provider: "openai",
+          model,
+          payload
+        })
+      });
+    }
+  });
+};
+
 export const createDiscordMessageAdapter = ({
   ignoreBots = true,
   mentionOnly = false,

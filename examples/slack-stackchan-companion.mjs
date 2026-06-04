@@ -19,6 +19,7 @@ import {
   createCodexAppServerBrain,
   createCodexAppServerMicroHarness,
   createM5StackBodyBridge,
+  createOpenAiResponsesBrain,
   createStackChanRealtimeSessionHandler,
   createSlackEventsRuntime,
   createSlackMessageAdapter
@@ -250,9 +251,19 @@ const createCharacterFromRuntime = ({ profileDir }) => {
 const createBrainForSlot = ({ slot, codexWorkspace }) => {
   const prefix = `IROHARNESS_${slot.toUpperCase()}_BRAIN`;
   const provider = process.env[`${prefix}_PROVIDER`] || "echo";
+  const model =
+    process.env[`${prefix}_MODEL`] || process.env.CODEX_BRAIN_MODEL || process.env.CODEX_MODEL || "gpt-5.4";
+  if (provider === "openai") {
+    return createOpenAiResponsesBrain({
+      id: `${slot}-openai-${model}`,
+      slot,
+      apiKey: process.env.OPENAI_API_KEY,
+      baseUrl: process.env.OPENAI_BASE_URL || "https://api.openai.com/v1",
+      model,
+      maxOutputTokens: Number(process.env[`${prefix}_MAX_TOKENS`] || (slot === "voice" ? "96" : "700"))
+    });
+  }
   if (provider === "codex") {
-    const model =
-      process.env[`${prefix}_MODEL`] || process.env.CODEX_BRAIN_MODEL || process.env.CODEX_MODEL || "gpt-5.4";
     return createCodexAppServerBrain({
       id: `${slot}-codex-${model}`,
       slot,

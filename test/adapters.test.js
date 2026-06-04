@@ -25,6 +25,7 @@ import {
   createMotionPngTuberRendererBridge,
   createObsStreamController,
   createObsWebSocketAdapter,
+  createOpenAiResponsesBrain,
   createOpenClawMicroHarness,
   createPlatformAdapterRegistry,
   createScopedWorkRunnerMicroHarness,
@@ -1227,6 +1228,66 @@ test("Codex app-server brain uses selected model and returns assistant deltas", 
   assert.match(transport.requests[2].params.input[0].text, /Brain slot: text/);
   assert.match(transport.requests[2].params.input[0].text, /Iroha/);
   assert.match(transport.requests[2].params.input[0].text, /こんにちは/);
+});
+
+test("OpenAI Responses brain posts voice prompt and normalizes spoken text", async () => {
+  const calls = [];
+  const brain = createOpenAiResponsesBrain({
+    id: "voice-openai",
+    slot: "voice",
+    apiKey: "test-key",
+    baseUrl: "https://api.test/v1",
+    model: "gpt-voice-test",
+    maxOutputTokens: 64,
+    fetchImpl: async (endpoint, options) => {
+      calls.push({ endpoint, body: JSON.parse(options.body), headers: options.headers });
+      return {
+        ok: true,
+        async text() {
+          return JSON.stringify({
+            output_text: "**OK**、聞こえてるよ。"
+          });
+        }
+      };
+    }
+  });
+
+  const output = await brain.respond({
+    character: {
+      id: "iroha",
+      name: "Iroha",
+      soul: "Stable macro identity.",
+      voiceStyle: "自然な日本語で短く"
+    },
+    actor: {
+      user: {
+        displayName: "Owner"
+      }
+    },
+    audience: {
+      relationship: "owner"
+    },
+    input: {
+      modality: "voice",
+      text: "こんにちは"
+    },
+    route: {
+      kind: "voice"
+    },
+    state: {},
+    projectOs: {
+      tickets: []
+    }
+  });
+
+  assert.equal(output.text, "うん、聞こえてるよ。");
+  assert.equal(output.raw.provider, "openai");
+  assert.equal(calls[0].endpoint, "https://api.test/v1/responses");
+  assert.equal(calls[0].headers.authorization, "Bearer test-key");
+  assert.equal(calls[0].body.model, "gpt-voice-test");
+  assert.equal(calls[0].body.max_output_tokens, 64);
+  assert.match(calls[0].body.instructions, /音声会話用/);
+  assert.match(calls[0].body.input, /こんにちは/);
 });
 
 test("JSONL process micro harness sends one task and parses final JSON line", async () => {
