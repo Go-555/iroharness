@@ -213,6 +213,18 @@ AIVIS_SPEECH_SPEAKER=888753760 \
 npm run example:slack-stackchan
 ```
 
+For AIAvatarStackChan-style perceived latency, enable a short immediate ack and
+small response chunks. The ack is spoken as soon as STT finalizes, while the
+voice brain continues generating the full answer:
+
+```bash
+IROHARNESS_STACKCHAN_IMMEDIATE_ACK_TEXT=うん。 \
+IROHARNESS_STACKCHAN_SPEECH_CHUNK_BYTES=512 \
+IROHARNESS_STACKCHAN_VAD_SILENCE_MS=650 \
+IROHARNESS_STACKCHAN_VAD_MIN_SPEECH_MS=250 \
+npm run example:slack-stackchan
+```
+
 The realtime StackChan handler normalizes AivisSpeech WAV output to raw PCM16
 before sending AIAvatarStackChan-style `chunk` messages. The firmware can then
 play speech through its existing PCM speaker path without a device-side WAV

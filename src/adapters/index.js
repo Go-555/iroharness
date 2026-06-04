@@ -3321,6 +3321,8 @@ export const createStackChanRealtimeSessionHandler = ({
   vadMinSpeechMs = 250,
   vadMaxSpeechMs = 8000,
   minAudioBytes = 0,
+  speechChunkBytes = 512,
+  immediateAckText = "",
   voice = "iroha"
 } = {}) => {
   if (!harness || typeof harness.receive !== "function") {
@@ -3503,16 +3505,21 @@ export const createStackChanRealtimeSessionHandler = ({
           }
         });
 
-      const speak = async ({ text }) => {
+      const speak = async ({ text, role = "answer", sendFinal = true }) => {
         const responseText = normalizeSpeechText(text);
+        if (!responseText) {
+          return Object.freeze([]);
+        }
         const ttsStartedAt = Date.now();
         let ttsFirstAudioAt = 0;
         emit({
           type: "stackchan.speech.started",
+          role,
           textLength: responseText.length
         });
         send({
           type: "response.start",
+          role,
           text: responseText
         });
         let speechChunkCount = 0;
@@ -3535,7 +3542,7 @@ export const createStackChanRealtimeSessionHandler = ({
                 });
               }
               const audioChunks = splitStackChanSpeechAudio(audio, {
-                maxBytes: Number(process.env.IROHARNESS_STACKCHAN_SPEECH_CHUNK_BYTES || "8192")
+                maxBytes: speechChunkBytes
               });
               const item = queue?.enqueue
                 ? queue.enqueue({
@@ -3560,6 +3567,7 @@ export const createStackChanRealtimeSessionHandler = ({
                   itemId: item.id,
                   chunkIndex: index,
                   chunkCount: audioChunks.length,
+                  role,
                   text: event.text || responseText,
                   audio: {
                     encoding: audioChunk.encoding,
@@ -3574,6 +3582,7 @@ export const createStackChanRealtimeSessionHandler = ({
               speechChunkCount += audioChunks.length;
               emit({
                 type: "stackchan.speech.audio_sent",
+                role,
                 chunks: audioChunks.length,
                 totalChunks: speechChunkCount,
                 bytes: audio.dataBase64.length
@@ -3584,12 +3593,16 @@ export const createStackChanRealtimeSessionHandler = ({
           if (completed?.id && queue?.complete) {
             queue.complete(completed.id);
           }
-          send({
-            type: "response.final",
-            text: responseText
-          });
+          if (sendFinal) {
+            send({
+              type: "response.final",
+              role,
+              text: responseText
+            });
+          }
           emit({
             type: "stackchan.speech.completed",
+            role,
             chunks: speechChunkCount,
             ttsDurationMs: Date.now() - ttsStartedAt,
             timeToFirstAudioMs: ttsFirstAudioAt ? ttsFirstAudioAt - ttsStartedAt : null
@@ -3657,6 +3670,28 @@ export const createStackChanRealtimeSessionHandler = ({
           type: "stackchan.latency.brain_started",
           transcriptLength: transcriptEvent.text.length
         });
+        const ackText =
+          typeof immediateAckText === "function"
+            ? immediateAckText({
+                text: transcriptEvent.text,
+                reason,
+                deviceId,
+                channel: activeChannel
+              })
+            : immediateAckText;
+        const ackPromise = normalizeSpeechText(ackText)
+          ? speak({
+              text: ackText,
+              role: "ack",
+              sendFinal: false
+            }).catch((error) => {
+              emit({
+                type: "stackchan.ack.error",
+                message: error.message
+              });
+              return Object.freeze([]);
+            })
+          : null;
         const result = await receiveTurn({
           modality: "voice",
           text: transcriptEvent.text,
@@ -3671,6 +3706,9 @@ export const createStackChanRealtimeSessionHandler = ({
           resultKind: result?.kind || null,
           textLength: String(result?.text || result?.output?.summary || "").length
         });
+        if (ackPromise) {
+          await ackPromise;
+        }
         return handleTurnResult(result);
       };
 

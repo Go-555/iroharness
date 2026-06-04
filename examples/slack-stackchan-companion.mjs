@@ -484,6 +484,8 @@ const createSlackStackChanCompanion = () => {
           vadMinSpeechMs: Number(process.env.IROHARNESS_STACKCHAN_VAD_MIN_SPEECH_MS || "250"),
           vadMaxSpeechMs: Number(process.env.IROHARNESS_STACKCHAN_VAD_MAX_SPEECH_MS || "8000"),
           minAudioBytes: Number(process.env.IROHARNESS_STACKCHAN_MIN_AUDIO_BYTES || "320"),
+          speechChunkBytes: Number(process.env.IROHARNESS_STACKCHAN_SPEECH_CHUNK_BYTES || "512"),
+          immediateAckText: process.env.IROHARNESS_STACKCHAN_IMMEDIATE_ACK_TEXT || "",
           createQueue: () =>
             createSpeechPlaybackQueue({
               id: "stackchan-speech-queue"

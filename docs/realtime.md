@@ -368,3 +368,11 @@ model think faster, but it can reduce overhead around VAD, interruption,
 WebSocket fanout, device sync, and audio chunk scheduling. These contracts keep
 the macro harness stable while the underlying realtime engine can move from
 Node.js prototypes to a Rust audio/device/event core later.
+
+For StackChan, the host can mimic AIAvatarStackChan's `ack` / `answer` pattern:
+set `IROHARNESS_STACKCHAN_IMMEDIATE_ACK_TEXT` to a short utterance such as
+`うん。`. The realtime handler speaks that ack immediately after STT finalizes
+and runs the voice brain in parallel. Keep
+`IROHARNESS_STACKCHAN_SPEECH_CHUNK_BYTES=512` when the device connection can
+handle smaller chunks, matching AIAvatarStackChan's small response audio chunk
+strategy.
