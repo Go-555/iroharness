@@ -3264,6 +3264,7 @@ export const createStackChanRealtimeSessionHandler = ({
       let messageChain = Promise.resolve();
       let audioLevelDebugCounter = 0;
       let speechInFlight = false;
+      let latencyTurnStartedAt = 0;
       const queue =
         typeof createQueue === "function"
           ? createQueue({ deviceId, userId, channel })
@@ -3411,6 +3412,8 @@ export const createStackChanRealtimeSessionHandler = ({
 
       const speak = async ({ text }) => {
         const responseText = normalizeSpeechText(text);
+        const ttsStartedAt = Date.now();
+        let ttsFirstAudioAt = 0;
         emit({
           type: "stackchan.speech.started",
           textLength: responseText.length
@@ -3430,6 +3433,14 @@ export const createStackChanRealtimeSessionHandler = ({
                 return;
               }
               const audio = normalizeStackChanSpeechAudio(event);
+              if (!ttsFirstAudioAt) {
+                ttsFirstAudioAt = Date.now();
+                emit({
+                  type: "stackchan.tts.first_audio",
+                  durationMs: ttsFirstAudioAt - ttsStartedAt,
+                  textLength: responseText.length
+                });
+              }
               const audioChunks = splitStackChanSpeechAudio(audio, {
                 maxBytes: Number(process.env.IROHARNESS_STACKCHAN_SPEECH_CHUNK_BYTES || "8192")
               });
@@ -3486,7 +3497,9 @@ export const createStackChanRealtimeSessionHandler = ({
           });
           emit({
             type: "stackchan.speech.completed",
-            chunks: speechChunkCount
+            chunks: speechChunkCount,
+            ttsDurationMs: Date.now() - ttsStartedAt,
+            timeToFirstAudioMs: ttsFirstAudioAt ? ttsFirstAudioAt - ttsStartedAt : null
           });
           return Object.freeze(speechEvents);
         } finally {
@@ -3510,7 +3523,9 @@ export const createStackChanRealtimeSessionHandler = ({
         if (!sttSession) {
           return Object.freeze([]);
         }
+        const sttFinalizeStartedAt = Date.now();
         const finalEvents = await sttSession.end();
+        const sttFinalizeCompletedAt = Date.now();
         sttSession = null;
         sttSessionStartedAt = 0;
         sttSessionBytes = 0;
@@ -3523,12 +3538,32 @@ export const createStackChanRealtimeSessionHandler = ({
           .reverse()
           .find((candidate) => candidate.type === "stt.final" && candidate.text);
         if (!transcriptEvent) {
+          emit({
+            type: "stackchan.latency.stt_finalized",
+            reason,
+            hasText: false,
+            sttDurationMs: sttFinalizeCompletedAt - sttFinalizeStartedAt,
+            sinceSpeechStartMs: latencyTurnStartedAt ? sttFinalizeCompletedAt - latencyTurnStartedAt : null
+          });
           send({
             type: "stt.empty",
             reason
           });
           return Object.freeze([]);
         }
+        emit({
+          type: "stackchan.latency.stt_finalized",
+          reason,
+          hasText: true,
+          sttDurationMs: sttFinalizeCompletedAt - sttFinalizeStartedAt,
+          sinceSpeechStartMs: latencyTurnStartedAt ? sttFinalizeCompletedAt - latencyTurnStartedAt : null,
+          transcriptLength: transcriptEvent.text.length
+        });
+        const brainStartedAt = Date.now();
+        emit({
+          type: "stackchan.latency.brain_started",
+          transcriptLength: transcriptEvent.text.length
+        });
         const result = await receiveTurn({
           modality: "voice",
           text: transcriptEvent.text,
@@ -3536,6 +3571,12 @@ export const createStackChanRealtimeSessionHandler = ({
             audio: normalizeStackChanAudioPayload(payload),
             sttFinalizeReason: reason
           }
+        });
+        emit({
+          type: "stackchan.latency.brain_completed",
+          durationMs: Date.now() - brainStartedAt,
+          resultKind: result?.kind || null,
+          textLength: String(result?.text || result?.output?.summary || "").length
         });
         return handleTurnResult(result);
       };
@@ -3588,6 +3629,7 @@ export const createStackChanRealtimeSessionHandler = ({
         if (vad.isSpeech) {
           if (!vadSpeechStartedAt) {
             vadSpeechStartedAt = now;
+            latencyTurnStartedAt = now;
             emit({
               type: "stackchan.stt.speech_started",
               rmsDb: vad.rmsDb

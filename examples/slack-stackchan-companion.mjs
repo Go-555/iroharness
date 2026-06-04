@@ -727,7 +727,24 @@ const createSlackStackChanCompanion = () => {
             bytes: event.bytes || undefined,
             isSpeech: typeof event.isSpeech === "boolean" ? event.isSpeech : undefined,
             thresholdDb: typeof event.thresholdDb === "number" ? event.thresholdDb : undefined,
-            hasText: typeof event.text === "string" && event.text.length > 0 ? true : undefined
+            hasText:
+              typeof event.hasText === "boolean"
+                ? event.hasText
+                : typeof event.text === "string" && event.text.length > 0
+                  ? true
+                  : undefined,
+            reason: event.reason || undefined,
+            durationMs: typeof event.durationMs === "number" ? event.durationMs : undefined,
+            sttDurationMs: typeof event.sttDurationMs === "number" ? event.sttDurationMs : undefined,
+            sinceSpeechStartMs:
+              typeof event.sinceSpeechStartMs === "number" ? event.sinceSpeechStartMs : undefined,
+            ttsDurationMs: typeof event.ttsDurationMs === "number" ? event.ttsDurationMs : undefined,
+            timeToFirstAudioMs:
+              typeof event.timeToFirstAudioMs === "number" ? event.timeToFirstAudioMs : undefined,
+            textLength: typeof event.textLength === "number" ? event.textLength : undefined,
+            transcriptLength:
+              typeof event.transcriptLength === "number" ? event.transcriptLength : undefined,
+            resultKind: event.resultKind || undefined
           })
         );
         if (event.type === "stackchan.closed" && activeRealtimeSession === session) {
