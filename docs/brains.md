@@ -89,16 +89,16 @@ It should return:
 
 ## Codex OAuth Brain
 
-Use `createCodexAppServerBrain` when you want the main text brain to use the
+Use `createCodexAppServerBrain` when you want a voice or text brain to use the
 host machine's Codex OAuth session instead of an API key. The host must already
 be logged in with `codex login`.
 
 ```js
 import { createCodexAppServerBrain } from "iroharness/adapters";
 
-const text = createCodexAppServerBrain({
-  id: "text-codex-gpt-5.5",
-  slot: "text",
+const voice = createCodexAppServerBrain({
+  id: "voice-codex-gpt-5.5",
+  slot: "voice",
   cwd: "/path/to/project",
   model: "gpt-5.5"
 });
@@ -111,7 +111,8 @@ separate selection. In IroHarness, Codex OAuth belongs to the local
 That host-level OAuth session must not be exposed through public gateways or
 copied into exported views.
 
-For a main character brain, default to read-only sandboxing and no approvals:
+For a main character brain, including the StackChan voice route, default to
+read-only sandboxing and no approvals:
 
 ```text
 approvalPolicy: "never"

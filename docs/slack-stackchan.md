@@ -178,8 +178,19 @@ AZURE_SPEECH_LANGUAGE=ja-JP \
 npm run example:slack-stackchan
 ```
 
-For the StackChan voice brain, prefer direct OpenAI API calls over Codex
-app-server when latency matters:
+For the StackChan voice brain, choose the provider per deployment. The Codex
+path uses the host machine's `codex app-server` session, matching the
+OpenClaw-style Codex OAuth boundary. This is useful when you want to avoid a
+separate OpenAI API key and can accept app-server turn latency:
+
+```bash
+IROHARNESS_VOICE_BRAIN_PROVIDER=codex \
+IROHARNESS_VOICE_BRAIN_MODEL=gpt-5.5 \
+npm run example:slack-stackchan
+```
+
+The direct OpenAI path uses the Platform API directly. Use it when voice
+latency matters more than staying inside the Codex OAuth runtime:
 
 ```bash
 IROHARNESS_VOICE_BRAIN_PROVIDER=openai \
@@ -189,8 +200,9 @@ OPENAI_API_KEY=... \
 npm run example:slack-stackchan
 ```
 
-Keep Codex app-server for text discussion or delegated work. It is useful for
-agent workflows, but it is heavier than a direct voice conversation brain.
+Keep `IROHARNESS_TEXT_BRAIN_PROVIDER=codex` for text discussion or delegated
+work. Voice can also use `codex`, but direct `openai` remains the lower-latency
+option once an API key is available.
 
 For AivisSpeech TTS on device audio/PTT responses:
 
