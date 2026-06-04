@@ -276,6 +276,18 @@ const createBrainForSlot = ({ slot, codexWorkspace }) => {
 
 const createStackChanStt = () => {
   const provider = process.env.IROHARNESS_STACKCHAN_STT_PROVIDER || "http";
+  if (provider === "aiavatar" || provider === "aiavatar-silero-openai") {
+    const endpoint =
+      process.env.IROHARNESS_STACKCHAN_AIAVATAR_STT_ENDPOINT ||
+      process.env.IROHARNESS_STACKCHAN_STT_ENDPOINT ||
+      "http://127.0.0.1:4183/stt";
+    const authorization = process.env.IROHARNESS_STACKCHAN_STT_AUTHORIZATION;
+    return createHttpStreamingStt({
+      id: "stackchan-aiavatar-silero-stt",
+      endpoint,
+      headers: authorization ? { authorization } : {}
+    });
+  }
   if (provider === "mock") {
     const transcript = process.env.IROHARNESS_STACKCHAN_MOCK_TRANSCRIPT || "こんにちは";
     return Object.freeze({
@@ -483,6 +495,12 @@ const createSlackStackChanCompanion = () => {
           vadSilenceMs: Number(process.env.IROHARNESS_STACKCHAN_VAD_SILENCE_MS || "700"),
           vadMinSpeechMs: Number(process.env.IROHARNESS_STACKCHAN_VAD_MIN_SPEECH_MS || "250"),
           vadMaxSpeechMs: Number(process.env.IROHARNESS_STACKCHAN_VAD_MAX_SPEECH_MS || "8000"),
+          vadMode:
+            process.env.IROHARNESS_STACKCHAN_VAD_MODE ||
+            (process.env.IROHARNESS_STACKCHAN_STT_PROVIDER === "aiavatar" ||
+            process.env.IROHARNESS_STACKCHAN_STT_PROVIDER === "aiavatar-silero-openai"
+              ? "provider"
+              : "node"),
           minAudioBytes: Number(process.env.IROHARNESS_STACKCHAN_MIN_AUDIO_BYTES || "320"),
           speechChunkBytes: Number(process.env.IROHARNESS_STACKCHAN_SPEECH_CHUNK_BYTES || "512"),
           immediateAckText: process.env.IROHARNESS_STACKCHAN_IMMEDIATE_ACK_TEXT || "",

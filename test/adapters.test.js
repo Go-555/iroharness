@@ -952,6 +952,93 @@ test("StackChan realtime session handler finalizes mic audio on VAD silence", as
   assert.equal(sent.some((message) => message.type === "chunk"), true);
 });
 
+test("StackChan realtime session handler can let the STT provider own VAD finalization", async () => {
+  const sent = [];
+  const turns = [];
+  const pushedAudio = [];
+  const socket = createFakeServerSocket({ sent });
+  const handler = createStackChanRealtimeSessionHandler({
+    deviceToken: "device-token",
+    vadMode: "provider",
+    sttAutoFinalMs: 0,
+    vadThresholdDb: -1,
+    harness: {
+      async receive(turn) {
+        turns.push(turn);
+        return {
+          kind: "spoken",
+          text: `返事: ${turn.text}`
+        };
+      }
+    },
+    stt: {
+      id: "provider-vad-stt",
+      start({ onEvent }) {
+        return {
+          async push(chunk) {
+            pushedAudio.push(chunk.audio);
+            const event = {
+              type: "stt.final",
+              text: "シレロで聞こえた",
+              final: true
+            };
+            onEvent(event);
+            return [event];
+          },
+          async end() {
+            throw new Error("provider VAD final should not require Node-side end");
+          },
+          cancel() {
+            return null;
+          }
+        };
+      }
+    },
+    tts: {
+      id: "fake-tts",
+      async stream({ text, onEvent }) {
+        const events = [
+          {
+            type: "tts.audio",
+            text,
+            audio: createPcm16WavBase64(),
+            encoding: "wav",
+            final: false
+          },
+          {
+            type: "tts.completed",
+            text,
+            audio: "",
+            final: true
+          }
+        ];
+        events.forEach(onEvent);
+        return events;
+      }
+    }
+  });
+
+  handler.handleConnection(socket, {
+    deviceId: "stackchan",
+    token: "device-token"
+  });
+  socket.receive({
+    type: "start",
+    session_id: "avatar-session"
+  });
+  socket.receive({
+    type: "data",
+    session_id: "avatar-session",
+    audio_data: createPcm16Base64({ samples: [0, 0, 0, 0] })
+  });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  assert.equal(pushedAudio.length, 1);
+  assert.equal(turns[0].text, "シレロで聞こえた");
+  assert.equal(turns[0].metadata.sttFinalizeReason, "provider-vad");
+  assert.equal(sent.some((message) => message.type === "chunk"), true);
+});
+
 test("StackChan realtime session handler clears firmware processing on empty STT", async () => {
   const sent = [];
   const turns = [];

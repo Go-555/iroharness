@@ -2111,6 +2111,7 @@ export const createHttpStreamingStt = ({
     start({ onEvent = () => {} } = {}) {
       let sequence = 0;
       let closed = false;
+      const sessionId = createId(`${id}_session`);
       const emit = (event) => {
         const nextEvent = createRealtimeAdapterEvent({ id, sequence, event });
         sequence += 1;
@@ -2146,6 +2147,8 @@ export const createHttpStreamingStt = ({
           }
           return post({
             type: "audio",
+            sessionId,
+            session_id: sessionId,
             audio: chunk?.audio || chunk?.data || null,
             text: typeof chunk === "string" ? chunk : chunk?.text || null,
             final: Boolean(chunk?.final)
@@ -2156,7 +2159,7 @@ export const createHttpStreamingStt = ({
             return Object.freeze([]);
           }
           closed = true;
-          return post({ type: "end", final: true });
+          return post({ type: "end", sessionId, session_id: sessionId, final: true });
         },
         cancel(reason = "cancelled") {
           if (closed) {

@@ -3320,6 +3320,7 @@ export const createStackChanRealtimeSessionHandler = ({
   vadSilenceMs = 700,
   vadMinSpeechMs = 250,
   vadMaxSpeechMs = 8000,
+  vadMode = "node",
   minAudioBytes = 0,
   speechChunkBytes = 512,
   immediateAckText = "",
@@ -3364,6 +3365,9 @@ export const createStackChanRealtimeSessionHandler = ({
         typeof createQueue === "function"
           ? createQueue({ deviceId, userId, channel })
           : null;
+      const providerOwnsVad = ["provider", "stt", "aiavatar", "aiavatar-silero-openai"].includes(
+        String(vadMode || "node").toLowerCase()
+      );
 
       const emit = (event) => {
         const nextEvent = createAdapterEvent({
@@ -3625,44 +3629,54 @@ export const createStackChanRealtimeSessionHandler = ({
         return speak({ text });
       };
 
-      const finalizeAudioTurn = async ({ pushedEvents = [], payload, reason = "final" }) => {
-        if (!sttSession) {
-          return Object.freeze([]);
-        }
-        const sttFinalizeStartedAt = Date.now();
-        const finalEvents = await sttSession.end();
-        const sttFinalizeCompletedAt = Date.now();
+      const resetAudioTurnState = () => {
         sttSession = null;
         sttSessionStartedAt = 0;
         sttSessionBytes = 0;
         vadSpeechStartedAt = 0;
         vadLastSpeechAt = 0;
-        const transcriptEvent = [
-          ...(Array.isArray(pushedEvents) ? pushedEvents : [pushedEvents].filter(Boolean)),
-          ...(Array.isArray(finalEvents) ? finalEvents : [finalEvents].filter(Boolean))
-        ]
+      };
+
+      const normalizeSttEvents = (events) =>
+        Object.freeze(Array.isArray(events) ? events : [events].filter(Boolean));
+
+      const findFinalTranscriptEvent = (events, { requireText = true } = {}) =>
+        [...normalizeSttEvents(events)]
           .reverse()
-          .find((candidate) => candidate.type === "stt.final" && candidate.text);
-        if (!transcriptEvent) {
-          emit({
-            type: "stackchan.latency.stt_finalized",
-            reason,
-            hasText: false,
-            sttDurationMs: sttFinalizeCompletedAt - sttFinalizeStartedAt,
-            sinceSpeechStartMs: latencyTurnStartedAt ? sttFinalizeCompletedAt - latencyTurnStartedAt : null
-          });
-          send({
-            type: "stt.empty",
-            reason
-          });
-          return Object.freeze([]);
-        }
+          .find(
+            (candidate) =>
+              candidate.type === "stt.final" &&
+              (!requireText || String(candidate.text || "").trim())
+          );
+
+      const handleEmptyTranscript = ({ reason, sttDurationMs = 0, sinceSpeechStartMs = null } = {}) => {
+        emit({
+          type: "stackchan.latency.stt_finalized",
+          reason,
+          hasText: false,
+          sttDurationMs,
+          sinceSpeechStartMs
+        });
+        send({
+          type: "stt.empty",
+          reason
+        });
+        return Object.freeze([]);
+      };
+
+      const handleTranscriptTurn = async ({
+        transcriptEvent,
+        payload,
+        reason = "final",
+        sttDurationMs = 0,
+        completedAt = Date.now()
+      }) => {
         emit({
           type: "stackchan.latency.stt_finalized",
           reason,
           hasText: true,
-          sttDurationMs: sttFinalizeCompletedAt - sttFinalizeStartedAt,
-          sinceSpeechStartMs: latencyTurnStartedAt ? sttFinalizeCompletedAt - latencyTurnStartedAt : null,
+          sttDurationMs,
+          sinceSpeechStartMs: latencyTurnStartedAt ? completedAt - latencyTurnStartedAt : null,
           transcriptLength: transcriptEvent.text.length
         });
         const brainStartedAt = Date.now();
@@ -3712,6 +3726,34 @@ export const createStackChanRealtimeSessionHandler = ({
         return handleTurnResult(result);
       };
 
+      const finalizeAudioTurn = async ({ pushedEvents = [], payload, reason = "final" }) => {
+        if (!sttSession) {
+          return Object.freeze([]);
+        }
+        const sttFinalizeStartedAt = Date.now();
+        const finalEvents = await sttSession.end();
+        const sttFinalizeCompletedAt = Date.now();
+        resetAudioTurnState();
+        const transcriptEvent = findFinalTranscriptEvent([
+          ...normalizeSttEvents(pushedEvents),
+          ...normalizeSttEvents(finalEvents)
+        ]);
+        if (!transcriptEvent) {
+          return handleEmptyTranscript({
+            reason,
+            sttDurationMs: sttFinalizeCompletedAt - sttFinalizeStartedAt,
+            sinceSpeechStartMs: latencyTurnStartedAt ? sttFinalizeCompletedAt - latencyTurnStartedAt : null
+          });
+        }
+        return handleTranscriptTurn({
+          transcriptEvent,
+          payload,
+          reason,
+          sttDurationMs: sttFinalizeCompletedAt - sttFinalizeStartedAt,
+          completedAt: sttFinalizeCompletedAt
+        });
+      };
+
       const handleAudio = async (payload) => {
         const audio = normalizeStackChanAudioPayload(payload);
         const now = Date.now();
@@ -3731,11 +3773,11 @@ export const createStackChanRealtimeSessionHandler = ({
         if (speechInFlight && !payload.final) {
           return Object.freeze([]);
         }
-        if (vad.bytes < minAudioBytes && !payload.final && !sttSession) {
+        if (!providerOwnsVad && vad.bytes < minAudioBytes && !payload.final && !sttSession) {
           return Object.freeze([]);
         }
         const deviceFinal = Boolean(payload.final);
-        const shouldStart = deviceFinal || vad.isSpeech;
+        const shouldStart = providerOwnsVad ? deviceFinal || vad.bytes > 0 : deviceFinal || vad.isSpeech;
         if (!sttSession && !shouldStart) {
           return Object.freeze([]);
         }
@@ -3756,6 +3798,9 @@ export const createStackChanRealtimeSessionHandler = ({
         if (!sttSessionStartedAt) {
           sttSessionStartedAt = now;
           sttSessionBytes = 0;
+          if (providerOwnsVad && !latencyTurnStartedAt) {
+            latencyTurnStartedAt = now;
+          }
         }
         if (vad.isSpeech) {
           if (!vadSpeechStartedAt) {
@@ -3774,6 +3819,31 @@ export const createStackChanRealtimeSessionHandler = ({
           audio,
           final: deviceFinal
         });
+        if (providerOwnsVad) {
+          const transcriptEvent = findFinalTranscriptEvent(pushedEvents, { requireText: false });
+          if (transcriptEvent) {
+            const completedAt = Date.now();
+            const hasText = String(transcriptEvent.text || "").trim();
+            resetAudioTurnState();
+            if (!hasText) {
+              return handleEmptyTranscript({
+                reason: "provider-vad",
+                sttDurationMs: completedAt - now,
+                sinceSpeechStartMs: latencyTurnStartedAt ? completedAt - latencyTurnStartedAt : null
+              });
+            }
+            return handleTranscriptTurn({
+              transcriptEvent,
+              payload,
+              reason: "provider-vad",
+              sttDurationMs: completedAt - now,
+              completedAt
+            });
+          }
+          if (!deviceFinal) {
+            return Object.freeze(pushedEvents);
+          }
+        }
         const elapsedSpeechMs = vadSpeechStartedAt ? now - vadSpeechStartedAt : 0;
         const silenceMs = vadLastSpeechAt ? now - vadLastSpeechAt : 0;
         const shouldVadFinal =

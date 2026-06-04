@@ -178,6 +178,34 @@ AZURE_SPEECH_LANGUAGE=ja-JP \
 npm run example:slack-stackchan
 ```
 
+For the AIAvatarStackChan-derived low-latency voice path, run the IroHarness
+owned Silero/OpenAI STT worker and let the STT provider own VAD finalization.
+This mirrors AIAvatarKit's `SileroStreamSpeechDetector` shape: StackChan sends
+PCM chunks continuously, Silero detects the speech boundary, OpenAI STT returns
+the transcript, and IroHarness turns that final transcript into the voice turn.
+
+```bash
+python3 -m venv ~/.iroharness/venvs/aiavatar-stackchan
+~/.iroharness/venvs/aiavatar-stackchan/bin/pip install -U pip
+~/.iroharness/venvs/aiavatar-stackchan/bin/pip install 'aiavatar>=0.8.17'
+
+OPENAI_API_KEY=... \
+~/.iroharness/venvs/aiavatar-stackchan/bin/python \
+  ~/.iroharness/source/examples/aiavatar-silero-stt-worker.py \
+  --host 127.0.0.1 \
+  --port 4183
+```
+
+Then start the companion with:
+
+```bash
+IROHARNESS_STACKCHAN_STT_PROVIDER=aiavatar-silero-openai \
+IROHARNESS_STACKCHAN_STT_ENDPOINT=http://127.0.0.1:4183/stt \
+IROHARNESS_STACKCHAN_VAD_MODE=provider \
+IROHARNESS_STACKCHAN_SPEECH_CHUNK_BYTES=512 \
+npm run example:slack-stackchan
+```
+
 For the StackChan voice brain, choose the provider per deployment. The Codex
 path uses the host machine's `codex app-server` session, matching the
 OpenClaw-style Codex OAuth boundary. This is useful when you want to avoid a
