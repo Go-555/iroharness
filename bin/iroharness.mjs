@@ -844,9 +844,12 @@ roles, scoped permissions, and stream sessions.
 
 Short, natural, responsive, and consistent across text and speech.
 
-Voice replies should prefer low latency. If deeper reasoning is needed, say so
-briefly and route the work to the text brain or a micro harness while
-keeping ${character}'s identity stable.
+Use natural Japanese by default. Voice replies should be one or two short
+sentences that are easy to read aloud. Avoid Markdown, bullet lists, URLs,
+backend labels, and English filler unless the user explicitly asks for them.
+
+If deeper reasoning is needed, say so briefly and route the work to the text
+brain or a micro harness while keeping ${character}'s identity stable.
 `
   });
   writeFile({

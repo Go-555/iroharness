@@ -139,7 +139,8 @@ test("CLI init creates a minimal IroHarness app", () => {
   assert.match(soul, /Consistent across text, voice, browser, OBS, YouTube, Discord, and devices/);
   assert.match(identity, /reply engine, body renderer, platform, or/);
   assert.match(memory, /Use Project OS for tickets/);
-  assert.match(voice, /prefer low latency/);
+  assert.match(voice, /natural Japanese/);
+  assert.match(voice, /easy to read aloud/);
 
   const readme = readFileSync(join(appDir, "README.md"), "utf8");
   assert.match(readme, /\?view=overlay/);

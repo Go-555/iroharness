@@ -44,6 +44,18 @@ const truncateForPrompt = (value, maxLength = 8000) => {
   return `${text.slice(0, maxLength)}\n[truncated]`;
 };
 
+const normalizeSpeechText = (text) =>
+  String(text || "")
+    .replace(/```[\s\S]*?```/g, "")
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+    .replace(/[*_#>|~-]+/g, "")
+    .replace(/\b(?:OK|okay)\b/g, "うん")
+    .replace(/\b(?:Yes|No)\b/g, (match) => (match === "Yes" ? "はい" : "いいえ"))
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+
 const buildDefaultMicroHarnessPrompt = ({ task, context = {}, label }) =>
   [
     `${label} task from IroHarness.`,
@@ -922,6 +934,10 @@ const formatCodexBrainContext = ({ slot, model, context }) =>
     "Answer as the character. Do not claim to be Codex unless the user asks about the backend.",
     "Keep character identity, audience permissions, and Project OS context stable.",
     "Do not modify files or run development work from this brain path; delegate work belongs to micro harnesses.",
+    "Always answer in natural Japanese unless the user explicitly asks for another language.",
+    "For voice or StackChan input, produce one or two short spoken Japanese sentences.",
+    "Avoid Markdown, bullet lists, code blocks, URLs, emoji, and English filler in voice replies.",
+    "Do not include backend labels such as TEXT, VOICE, Codex, model names, or route names unless the user asks.",
     "",
     `Brain slot: ${slot}`,
     `Model: ${model || "default"}`,
@@ -3211,6 +3227,7 @@ export const createStackChanRealtimeSessionHandler = ({
   vadSilenceMs = 700,
   vadMinSpeechMs = 250,
   vadMaxSpeechMs = 8000,
+  minAudioBytes = 0,
   voice = "iroha"
 } = {}) => {
   if (!harness || typeof harness.receive !== "function") {
@@ -3246,6 +3263,7 @@ export const createStackChanRealtimeSessionHandler = ({
       let activeChannel = channel;
       let messageChain = Promise.resolve();
       let audioLevelDebugCounter = 0;
+      let speechInFlight = false;
       const queue =
         typeof createQueue === "function"
           ? createQueue({ deviceId, userId, channel })
@@ -3392,7 +3410,7 @@ export const createStackChanRealtimeSessionHandler = ({
         });
 
       const speak = async ({ text }) => {
-        const responseText = String(text || "");
+        const responseText = normalizeSpeechText(text);
         emit({
           type: "stackchan.speech.started",
           textLength: responseText.length
@@ -3402,73 +3420,78 @@ export const createStackChanRealtimeSessionHandler = ({
           text: responseText
         });
         let speechChunkCount = 0;
-        const speechEvents = await tts.stream({
-          text: responseText,
-          voice,
-          onEvent(event) {
-            if (event.type !== "tts.audio") {
-              return;
-            }
-            const audio = normalizeStackChanSpeechAudio(event);
-            const audioChunks = splitStackChanSpeechAudio(audio, {
-              maxBytes: Number(process.env.IROHARNESS_STACKCHAN_SPEECH_CHUNK_BYTES || "8192")
-            });
-            const item = queue?.enqueue
-              ? queue.enqueue({
+        speechInFlight = true;
+        try {
+          const speechEvents = await tts.stream({
+            text: responseText,
+            voice,
+            onEvent(event) {
+              if (event.type !== "tts.audio") {
+                return;
+              }
+              const audio = normalizeStackChanSpeechAudio(event);
+              const audioChunks = splitStackChanSpeechAudio(audio, {
+                maxBytes: Number(process.env.IROHARNESS_STACKCHAN_SPEECH_CHUNK_BYTES || "8192")
+              });
+              const item = queue?.enqueue
+                ? queue.enqueue({
+                    text: event.text || responseText,
+                    audio: {
+                      encoding: audio.encoding,
+                      dataBase64: audio.dataBase64,
+                      sampleRate: audio.sampleRate,
+                      channels: audio.channels,
+                      bitsPerSample: audio.bitsPerSample
+                    },
+                    voice,
+                    source: id
+                  })
+                : {
+                    id: `${id}:speech:${sequence}`,
+                    text: event.text || responseText
+                  };
+              audioChunks.forEach((audioChunk, index) => {
+                send({
+                  type: "speech.audio",
+                  itemId: item.id,
+                  chunkIndex: index,
+                  chunkCount: audioChunks.length,
                   text: event.text || responseText,
                   audio: {
-                    encoding: audio.encoding,
-                    dataBase64: audio.dataBase64,
-                    sampleRate: audio.sampleRate,
-                    channels: audio.channels,
-                    bitsPerSample: audio.bitsPerSample
+                    encoding: audioChunk.encoding,
+                    dataBase64: audioChunk.dataBase64,
+                    sampleRate: audioChunk.sampleRate,
+                    channels: audioChunk.channels,
+                    bitsPerSample: audioChunk.bitsPerSample
                   },
-                  voice,
-                  source: id
-                })
-              : {
-                  id: `${id}:speech:${sequence}`,
-                  text: event.text || responseText
-                };
-            audioChunks.forEach((audioChunk, index) => {
-              send({
-                type: "speech.audio",
-                itemId: item.id,
-                chunkIndex: index,
-                chunkCount: audioChunks.length,
-                text: event.text || responseText,
-                audio: {
-                  encoding: audioChunk.encoding,
-                  dataBase64: audioChunk.dataBase64,
-                  sampleRate: audioChunk.sampleRate,
-                  channels: audioChunk.channels,
-                  bitsPerSample: audioChunk.bitsPerSample
-                },
-                voice
+                  voice
+                });
               });
-            });
-            speechChunkCount += audioChunks.length;
-            emit({
-              type: "stackchan.speech.audio_sent",
-              chunks: audioChunks.length,
-              totalChunks: speechChunkCount,
-              bytes: audio.dataBase64.length
-            });
+              speechChunkCount += audioChunks.length;
+              emit({
+                type: "stackchan.speech.audio_sent",
+                chunks: audioChunks.length,
+                totalChunks: speechChunkCount,
+                bytes: audio.dataBase64.length
+              });
+            }
+          });
+          const completed = queue?.snapshot?.().current;
+          if (completed?.id && queue?.complete) {
+            queue.complete(completed.id);
           }
-        });
-        const completed = queue?.snapshot?.().current;
-        if (completed?.id && queue?.complete) {
-          queue.complete(completed.id);
+          send({
+            type: "response.final",
+            text: responseText
+          });
+          emit({
+            type: "stackchan.speech.completed",
+            chunks: speechChunkCount
+          });
+          return Object.freeze(speechEvents);
+        } finally {
+          speechInFlight = false;
         }
-        send({
-          type: "response.final",
-          text: responseText
-        });
-        emit({
-          type: "stackchan.speech.completed",
-          chunks: speechChunkCount
-        });
-        return Object.freeze(speechEvents);
       };
 
       const handleTurnResult = async (result) => {
@@ -3533,6 +3556,12 @@ export const createStackChanRealtimeSessionHandler = ({
           });
         }
         audioLevelDebugCounter += 1;
+        if (speechInFlight && !payload.final) {
+          return Object.freeze([]);
+        }
+        if (vad.bytes < minAudioBytes && !payload.final && !sttSession) {
+          return Object.freeze([]);
+        }
         const deviceFinal = Boolean(payload.final);
         const shouldStart = deviceFinal || vad.isSpeech;
         if (!sttSession && !shouldStart) {
