@@ -44,7 +44,7 @@
 |------|------|-----|---------|--------|
 | 2.1 | run 完了時に runs/artifacts から score を ledger へ記録 | ダミー run 1 件で ledger の calls/success/last_used/avg_score が更新される。**specialist は agent-stats 名前空間へ書込不可（Hanaita のみ書込可）**の負テストが通る (W-4) | 1.2, 0.1 | cc:完了 |
 | 2.2 | **単一合成昇格ガード**（閾値 AND sandbox-verified AND security_review-passed AND folder権威）＋ decay 判定 | 4 条件すべて満たす時のみ staging→active、N 日未使用で active→archived。合成ガードを通らない昇格経路が存在しないテストが通る (W-5) | 2.1, 5.1, 5.2 | cc:完了 |
-| 2.3 | CLI `iroharness bank list` / `bank promote` | コマンドで registry 状態表示・手動昇格ができ、出力スナップショットテストが通る | 2.2 | cc:TODO |
+| 2.3 | CLI `iroharness bank list` / `bank promote` | コマンドで registry 状態表示・手動昇格ができ、出力スナップショットテストが通る | 2.2 | cc:完了 |
 
 ## Phase 5a: 権限ゲート（動的生成より前に固める・安全の核）⚠️
 
