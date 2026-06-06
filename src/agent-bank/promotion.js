@@ -23,3 +23,62 @@ export const canPromoteToActive = ({
 
   return { ok: reasons.length === 0, reasons };
 };
+
+// The single composite promotion gate (Phase 2.2, W-5). There is no other path
+// from staging to active: threshold (ledger) AND sandbox-verified AND the 5.2
+// eligibility (security review + owner-in-loop for minted) must ALL hold.
+export const DEFAULT_PROMOTION_THRESHOLDS = Object.freeze({
+  minCalls: 3,
+  minSuccessRate: 0.8,
+  minScore: 4.0,
+});
+
+export const evaluatePromotion = ({
+  ledgerEntry,
+  thresholds = DEFAULT_PROMOTION_THRESHOLDS,
+  sandboxVerified = false,
+  securityReview,
+  origin,
+  ownerApproval = false,
+} = {}) => {
+  const reasons = [];
+  const entry = ledgerEntry || { calls: 0, success: 0, avgScore: null };
+
+  if (entry.calls < thresholds.minCalls) {
+    reasons.push(`calls ${entry.calls} < required ${thresholds.minCalls}`);
+  }
+  const successRate = entry.calls > 0 ? entry.success / entry.calls : 0;
+  if (successRate < thresholds.minSuccessRate) {
+    reasons.push(
+      `success rate ${successRate.toFixed(2)} < required ${thresholds.minSuccessRate}`,
+    );
+  }
+  if (
+    thresholds.minScore != null &&
+    (entry.avgScore == null || entry.avgScore < thresholds.minScore)
+  ) {
+    reasons.push(
+      `avgScore ${entry.avgScore} < required ${thresholds.minScore}`,
+    );
+  }
+  if (sandboxVerified !== true) {
+    reasons.push("not sandbox-verified");
+  }
+
+  reasons.push(
+    ...canPromoteToActive({ securityReview, origin, ownerApproval }).reasons,
+  );
+
+  return { promote: reasons.length === 0, reasons };
+};
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+// Decay: an active recipe idle beyond the window is retired to archived.
+export const shouldDecay = ({ lastUsed, now, maxIdleDays }) => {
+  if (!lastUsed) {
+    return false;
+  }
+  const idleMs = new Date(now).getTime() - new Date(lastUsed).getTime();
+  return idleMs > maxIdleDays * DAY_MS;
+};
