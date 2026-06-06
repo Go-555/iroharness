@@ -36,7 +36,7 @@
 | 1.2 | Bank registry（staging/active/archived の list / read / move） | フォルダ間 move と一覧取得のユニットテストが通る | 1.1 | cc:完了 |
 | 1.3 | `_index.md` 自動生成（archived は集計から除外可能に） | registry 状態から `_index.md` を再生成し内容一致、archived 除外オプションのテストが通る | 1.2 | cc:完了 |
 | 1.4 | 既存固定 micro-harness を recipe として登録する seed | Codex/OpenClaw adapter が `active/` に recipe 登録され list に出る。**既存の直接 delegation 経路は不変で、Bank は並列の追加経路**であることを保証するテストが通る (非破壊) | 1.2 | cc:完了 |
-| 1.5 | staging 許可ツール allowlist の定義 | staging が要求できるツールの allowlist が設定として定義され、読込テストが通る（mint の intersect 元・3.1 が参照） (B-1) | 1.1 | cc:TODO |
+| 1.5 | staging 許可ツール allowlist の定義 | staging が要求できるツールの allowlist が設定として定義され、読込テストが通る（mint の intersect 元・3.1 が参照） (B-1) | 1.1 | cc:完了 |
 
 ## Phase 2: 評価＋昇格ループ（MVP後半）
 
