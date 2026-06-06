@@ -52,7 +52,7 @@
 
 | Task | 内容 | DoD | Depends | Status |
 |------|------|-----|---------|--------|
-| 5.1 | bantou ゲート: staging に owner 権限 / vault ツール / **allowlist 外ツール**を渡さない | staging recipe に owner visibility や許可外ツール付与を試みると拒否される負テストが通る (B-1) | 1.5, 2.1 | cc:TODO |
+| 5.1 | bantou ゲート: staging に owner 権限 / vault ツール / **allowlist 外ツール**を渡さない | staging recipe に owner visibility や許可外ツール付与を試みると拒否される負テストが通る (B-1) | 1.5, 2.1 | cc:完了 |
 | 5.2 | security_review フロー（active 昇格前に必須）＋ **動的 mint 由来の初回 active 昇格は owner human-in-loop**（seed 由来は対象外） | security_review 未通過 recipe は active 昇格不可、かつ mint 由来初回昇格が owner 承認なしに通らない負テストが通る (W-3) | 5.1 | cc:TODO |
 
 ## Phase 3: 動的生成（mint_specialist）
