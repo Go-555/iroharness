@@ -52,5 +52,24 @@ export const createBankRegistry = ({ root }) => {
     return toStatus;
   };
 
-  return Object.freeze({ list, read, move });
+  const renderIndex = ({ includeArchived = false } = {}) => {
+    const statuses = includeArchived
+      ? BANK_STATUSES
+      : BANK_STATUSES.filter((status) => status !== "archived");
+    const lines = [
+      "# Agent Bank Index",
+      "",
+      "| id | role | status |",
+      "|----|------|--------|",
+    ];
+    for (const status of statuses) {
+      for (const id of list(status)) {
+        const { recipe } = read(id);
+        lines.push(`| ${recipe.id} | ${recipe.role ?? ""} | ${status} |`);
+      }
+    }
+    return `${lines.join("\n")}\n`;
+  };
+
+  return Object.freeze({ list, read, move, renderIndex });
 };

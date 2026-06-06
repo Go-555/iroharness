@@ -59,3 +59,27 @@ test("move relocates a recipe from staging to active", () => {
   assert.deepEqual(bank.list("active"), ["delta"]);
   assert.equal(bank.read("delta").status, "active");
 });
+
+test("renderIndex lists staging and active recipes, excluding archived by default", () => {
+  const root = makeBank();
+  writeRecipe(root, "staging", "alpha");
+  writeRecipe(root, "active", "beta");
+  writeRecipe(root, "archived", "old-one");
+  const bank = createBankRegistry({ root });
+
+  const index = bank.renderIndex();
+
+  assert.match(index, /alpha/);
+  assert.match(index, /beta/);
+  assert.doesNotMatch(index, /old-one/);
+});
+
+test("renderIndex includes archived when requested", () => {
+  const root = makeBank();
+  writeRecipe(root, "archived", "old-one");
+  const bank = createBankRegistry({ root });
+
+  const index = bank.renderIndex({ includeArchived: true });
+
+  assert.match(index, /old-one/);
+});
