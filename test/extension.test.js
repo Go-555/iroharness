@@ -101,3 +101,9 @@ test("REALTIME_HOOK_EVENTS lists the protected realtime points", () => {
   assert.ok(REALTIME_HOOK_EVENTS.has("speech:chunk"));
   assert.ok(REALTIME_HOOK_EVENTS.has("device:emit"));
 });
+
+test("register rejects an empty event name and a non-function handler", () => {
+  const registry = createHookRegistry();
+  assert.throws(() => registry.register("", () => undefined), /event/);
+  assert.throws(() => registry.register("turn:before", null), /handler/);
+});

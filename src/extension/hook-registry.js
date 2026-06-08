@@ -23,6 +23,12 @@ export const createHookRegistry = () => {
     handler,
     { style = "inprocess", priority = 0 } = {},
   ) => {
+    if (typeof event !== "string" || event.length === 0) {
+      throw new Error("hook registry register requires a non-empty event name");
+    }
+    if (typeof handler !== "function") {
+      throw new Error("hook registry register requires a handler function");
+    }
     if (isRealtimeEvent(event) && style !== "inprocess") {
       throw new Error(
         `hook style "${style}" is not allowed on realtime event "${event}"; realtime hooks must be in-process`,
