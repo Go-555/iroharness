@@ -159,3 +159,10 @@ test("gateSkills excludes a malformed skill without throwing (spec §6)", () => 
     ["public-hello"],
   );
 });
+
+test("the ./skills entry exposes the gate", async () => {
+  const mod = await import("iroharness/skills");
+  assert.equal(typeof mod.gateSkills, "function");
+  assert.equal(typeof mod.isSkillEligible, "function");
+  assert.equal(typeof mod.parseSkillGating, "function");
+});
