@@ -347,8 +347,12 @@ Each unit has one purpose and a defined interface:
   skill's `SKILL.md` via the exported `parseSkillFrontmatter` and the manifest's
   `manifestPath`; a skill without the keys parses and defaults open. Upstream
   manifest/parse code is unchanged (no private functions touched).
-- **error handling**: fail-closed vs fail-open per event point; a throwing
-  in-process handler does not crash the loop; malformed `SKILL.md` is skipped.
+- **error handling**: the hook fail policy — fail-closed vs fail-open per event
+  point, and the throwing-in-process-handler catch that keeps the loop alive —
+  lands with the command runner in **Phase 3** (it needs the gate/background
+  event-point taxonomy), so it is not a Phase 1 test (see §8). The
+  malformed-`SKILL.md` skip is covered here in Phase 2 (skill-gate, the
+  `gateSkills excludes a malformed skill` test).
 
 ## 8. Phasing
 
