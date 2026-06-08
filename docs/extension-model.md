@@ -291,8 +291,11 @@ Each unit has one purpose and a defined interface:
   gating, requires gating, capability gating, and name-collision precedence.
 - **skill-injector**: the injected block differs by view layer and excludes
   ineligible skills.
-- **error handling**: fail-closed vs fail-open per event point; a throwing
-  in-process handler does not crash the loop; malformed `SKILL.md` is skipped.
+- **error handling**: the hook fail policy — fail-closed vs fail-open per event
+  point, and the throwing-in-process-handler catch that keeps the loop alive —
+  lands with the command runner in **Phase 3** (it needs the gate/background
+  event-point taxonomy), so it is not a Phase 1 test (see §8). The
+  malformed-`SKILL.md` skip is covered in Phase 2 (skill-gate).
 
 ## 8. Phasing
 
