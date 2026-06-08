@@ -211,7 +211,10 @@ three conditions, all of which must pass:
 
 1. **View layer** — the skill's `metadata.iroharness.view` must be visible from
    the session's current view layer. A `public` session never sees `trusted` or
-   `owner` skills.
+   `owner` skills. **Gating fails closed:** an absent/malformed/unrecognized
+   skill `view` resolves to `owner` (the most restrictive layer), so `public`
+   is an explicit opt-in and a skill is never silently exposed. (Phase 2
+   refines this; see the reconciled §4 once it lands.)
 2. **Requires** — `metadata.iroharness.requires` gating conditions (config,
    environment, platform, binary presence) must hold.
 3. **Capability** — the acting actor must hold the named capability in
