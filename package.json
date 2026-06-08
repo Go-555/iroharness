@@ -36,6 +36,10 @@
     "./skills": {
       "types": "./src/skills/index.d.ts",
       "default": "./src/skills/index.js"
+    },
+    "./extension": {
+      "types": "./src/extension/index.d.ts",
+      "default": "./src/extension/index.js"
     }
   },
   "scripts": {

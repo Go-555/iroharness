@@ -107,3 +107,9 @@ test("register rejects an empty event name and a non-function handler", () => {
   assert.throws(() => registry.register("", () => undefined), /event/);
   assert.throws(() => registry.register("turn:before", null), /handler/);
 });
+
+test("the ./extension subpath export resolves the registry", async () => {
+  const mod = await import("iroharness/extension");
+  assert.equal(typeof mod.createHookRegistry, "function");
+  assert.ok(mod.REALTIME_HOOK_EVENTS.has("bargein:detect"));
+});
