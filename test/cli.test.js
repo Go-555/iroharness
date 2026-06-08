@@ -1204,3 +1204,32 @@ test("CLI view export skips a malformed skill without aborting", () => {
   assert.equal(existsSync(join(skills, "good", "SKILL.md")), true);
   assert.equal(existsSync(join(skills, "broken")), false);
 });
+
+test("CLI view export lists materialized skills in the manifest", () => {
+  const dir = mkdtempSync(join(tmpdir(), "iroharness-view-skills-manifest-"));
+  const appDir = join(dir, "companion");
+  runCli(["init", appDir, "--character", "Iroha"]);
+  const skillsRoot = join(appDir, ".iroharness", "skills");
+  mkdirSync(join(skillsRoot, "pub-greet"), { recursive: true });
+  writeFileSync(
+    join(skillsRoot, "pub-greet", "SKILL.md"),
+    "---\nname: pub-greet\ndescription: public.\nview: public\n---\n\n# pub-greet\n",
+    "utf8",
+  );
+
+  const out = join(dir, "public-view");
+  runCli([
+    "view",
+    "export",
+    appDir,
+    "--zone",
+    "public",
+    "--out",
+    out,
+    "--force",
+  ]);
+  const manifest = JSON.parse(
+    readFileSync(join(out, "current", "view-manifest.json"), "utf8"),
+  );
+  assert.equal(manifest.files.includes(join("skills", "pub-greet")), true);
+});

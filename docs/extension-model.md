@@ -402,7 +402,7 @@ Each unit has one purpose and a defined interface:
    existing registry. **Done.**
 3. Zero-trust view-export integration (§4.4): `exportSkillFiles` materializes
    only view-visible skills on export, view-layer only, fail-closed, sharing
-   `gate.js`'s normalizer. **This phase.**
+   `gate.js`'s normalizer. **Done.**
 4. Command runner (text-path hook gates) — **and** the hook fail policy (§6):
    the throwing-in-process-handler catch and per-event fail-closed/fail-open
    classification land here, with `dispatch`'s first real loop consumer to
