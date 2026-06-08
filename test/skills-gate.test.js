@@ -166,3 +166,21 @@ test("the ./skills entry exposes the gate", async () => {
   assert.equal(typeof mod.isSkillEligible, "function");
   assert.equal(typeof mod.parseSkillGating, "function");
 });
+
+test("view passes but capability fails -> excluded (AND composition)", () => {
+  const g = parseSkillGating({ view: "trusted", capability: "delegate_work" });
+  // owner session clears the view gate, but lacks the capability
+  assert.equal(
+    isSkillEligible({ gating: g, view: "owner", permissions: [] }),
+    false,
+  );
+  // ...and with the capability, it passes
+  assert.equal(
+    isSkillEligible({
+      gating: g,
+      view: "owner",
+      permissions: ["delegate_work"],
+    }),
+    true,
+  );
+});

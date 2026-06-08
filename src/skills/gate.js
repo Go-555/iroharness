@@ -1,7 +1,9 @@
 import { readFileSync } from "node:fs";
 
+// index.js re-exports this file; importing parseSkillFrontmatter here forms a cycle that Node ESM resolves via live bindings (used only at call time).
 import { parseSkillFrontmatter } from "./index.js";
 
+// View order mirrors the zone list in bin/iroharness.mjs (public < trusted < owner); keep both in sync.
 const VIEW_RANK = Object.freeze({ public: 0, trusted: 1, owner: 2 });
 
 export const parseSkillGating = (frontmatter = {}) =>
