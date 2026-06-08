@@ -113,3 +113,26 @@ test("the ./extension subpath export resolves the registry", async () => {
   assert.equal(typeof mod.createHookRegistry, "function");
   assert.ok(mod.REALTIME_HOOK_EVENTS.has("bargein:detect"));
 });
+
+test("equal-priority handlers run in registration order", () => {
+  const registry = createHookRegistry();
+  const order = [];
+  registry.register(
+    "turn:before",
+    () => {
+      order.push("a");
+      return undefined;
+    },
+    { priority: 5 },
+  );
+  registry.register(
+    "turn:before",
+    () => {
+      order.push("b");
+      return undefined;
+    },
+    { priority: 5 },
+  );
+  registry.dispatch("turn:before", {});
+  assert.deepEqual(order, ["a", "b"]);
+});

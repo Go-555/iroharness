@@ -1,3 +1,4 @@
+// Shallow freeze: top-level is frozen; nested objects/arrays in a context are not.
 const freezeCopy = (value) => Object.freeze({ ...value });
 
 // Enforcement source of truth: any event under these prefixes is realtime (spec §3.5).
@@ -38,6 +39,7 @@ export const createHookRegistry = () => {
       ...(handlers.get(event) || []),
       { style, priority, run: handler },
     ];
+    // Stable sort: equal-priority handlers run in registration order.
     next.sort((a, b) => b.priority - a.priority);
     handlers.set(event, next);
     return registry;
