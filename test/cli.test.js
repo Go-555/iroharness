@@ -1169,3 +1169,38 @@ test("CLI view export materializes only view-visible skills per zone", () => {
   assert.equal(existsSync(join(owner, "owner-secret", "SKILL.md")), true);
   assert.equal(existsSync(join(owner, "ungated", "SKILL.md")), true);
 });
+
+test("CLI view export skips a malformed skill without aborting", () => {
+  const dir = mkdtempSync(join(tmpdir(), "iroharness-view-skills-bad-"));
+  const appDir = join(dir, "companion");
+  runCli(["init", appDir, "--character", "Iroha"]);
+  const skillsRoot = join(appDir, ".iroharness", "skills");
+  mkdirSync(join(skillsRoot, "good"), { recursive: true });
+  writeFileSync(
+    join(skillsRoot, "good", "SKILL.md"),
+    "---\nname: good\ndescription: a good public skill.\nview: public\n---\n\n# good\n",
+    "utf8",
+  );
+  mkdirSync(join(skillsRoot, "broken"), { recursive: true });
+  writeFileSync(
+    join(skillsRoot, "broken", "SKILL.md"),
+    "---\nname: broken\ndescription: malformed.\n\n# broken\n",
+    "utf8",
+  );
+
+  const out = join(dir, "public-view");
+  const result = runCli([
+    "view",
+    "export",
+    appDir,
+    "--zone",
+    "public",
+    "--out",
+    out,
+    "--force",
+  ]);
+  assert.equal(result.status, 0, result.stderr);
+  const skills = join(out, "current", "skills");
+  assert.equal(existsSync(join(skills, "good", "SKILL.md")), true);
+  assert.equal(existsSync(join(skills, "broken")), false);
+});
