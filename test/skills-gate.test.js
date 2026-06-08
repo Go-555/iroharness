@@ -1,7 +1,26 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
-import { isSkillEligible, parseSkillGating } from "../src/skills/gate.js";
+import {
+  gateSkills,
+  isSkillEligible,
+  parseSkillGating,
+  readSkillGating,
+} from "../src/skills/gate.js";
+import { createSkillContextListing } from "../src/skills/index.js";
+
+const fixtureDir = join(
+  dirname(fileURLToPath(import.meta.url)),
+  "fixtures",
+  "skills-gate",
+);
+const skillStub = (id) => ({
+  id,
+  name: id,
+  metadata: { manifestPath: join(fixtureDir, id, "SKILL.md") },
+});
 
 test("parseSkillGating reads the three flat keys", () => {
   const g = parseSkillGating({
@@ -93,5 +112,50 @@ test("absent capability/requires impose no restriction", () => {
       satisfiedRequirements: [],
     }),
     true,
+  );
+});
+
+test("readSkillGating reads gating keys from a SKILL.md", () => {
+  const g = readSkillGating(skillStub("trusted-secret"));
+  assert.equal(g.view, "trusted");
+  assert.equal(g.capability, "delegate_work");
+});
+
+test("gateSkills filters by view + capability, and the listing reflects it", () => {
+  const skills = [skillStub("public-hello"), skillStub("trusted-secret")];
+  const publicEligible = gateSkills({
+    skills,
+    view: "public",
+    permissions: [],
+  });
+  assert.deepEqual(
+    publicEligible.map((s) => s.id),
+    ["public-hello"],
+  );
+  const ownerEligible = gateSkills({
+    skills,
+    view: "owner",
+    permissions: ["delegate_work"],
+  });
+  assert.deepEqual(ownerEligible.map((s) => s.id).sort(), [
+    "public-hello",
+    "trusted-secret",
+  ]);
+  const listing = createSkillContextListing({ skills: publicEligible });
+  assert.deepEqual(
+    listing.map((s) => s.id),
+    ["public-hello"],
+  );
+});
+
+test("gateSkills excludes a malformed skill without throwing (spec §6)", () => {
+  const skills = [skillStub("public-hello"), skillStub("broken")];
+  let eligible;
+  assert.doesNotThrow(() => {
+    eligible = gateSkills({ skills, view: "owner", permissions: [] });
+  });
+  assert.deepEqual(
+    eligible.map((s) => s.id),
+    ["public-hello"],
   );
 });
