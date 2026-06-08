@@ -166,66 +166,98 @@ today (observe only).
 
 ## 4. Skills
 
+**This section builds on the existing `src/skills/` subsystem.** IroHarness
+already ships a skills system: `parseSkillFrontmatter` (SKILL.md parser),
+`createFileSkillRegistry` (discovery + dedupe + sorted `snapshot()`),
+`createSkillContextListing` (the compact listing injected into context), and
+`readSkillInvocationContext` (body load on invocation), with its own metadata
+axes (`purpose`, `trigger`, `shape`, `role`). Phase 2 does **not** rebuild any
+of this. It adds the one thing the existing system lacks: **zero-trust gating
+by view layer and actor capability.** What follows describes the format
+adjustment and the gating delta only.
+
 ### 4.1 Format
 
-A skill is a `SKILL.md` file with YAML frontmatter and a markdown body. The
-frontmatter borrows the Claude Code / OpenClaw fields for ecosystem
-compatibility and adds an IroHarness extension block:
+A skill is a `SKILL.md` file with YAML frontmatter and a markdown body, parsed
+by the existing `parseSkillFrontmatter`. That parser reads **flat** frontmatter
+(`key: value` and `key:` lists) — it does not parse nested maps. The gating
+fields are therefore **flat top-level keys**, not a nested block:
 
 ```yaml
 ---
-name: stream-greeting               # borrowed: identifier
-description: Greeting routine for stream start   # borrowed: when to use
-metadata:
-  iroharness:
-    view: trusted                   # extension: minimum view layer (public|trusted|owner)
-    requires: { config: "stream.enabled" }   # extension: gating condition
-    capability: delegate_work       # extension: named capability the actor must hold (ties to §5)
+name: stream-greeting               # existing: identifier
+description: Greeting routine for stream start   # existing: when to use
+view: trusted                       # NEW gating key: minimum view layer (public|trusted|owner)
+capability: delegate_work           # NEW gating key: named capability the actor must hold (ties to §5)
+requires: stream.enabled            # NEW gating key: a gating condition the runtime can evaluate
 ---
 (markdown body: the instructions)
 ```
 
-`name` and `description` carry the same meaning as in Claude Code and OpenClaw,
-so existing skills are reusable. Everything IroHarness-specific lives under
-`metadata.iroharness` and is ignored by other runtimes.
+`name`, `description`, and the existing axes keep their current meaning, so
+existing skills remain valid. The three new keys (`view`, `capability`,
+`requires`) do not collide with **any** existing frontmatter key (the upstream
+parser reads `name`, `description`, `purpose`, `trigger`, `shape`, `role`,
+`kind`, `version`, `prefix`, `context`, `user-invocable`,
+`disable-model-invocation`, `argument-hint`, `allowed-tools`, `agent`, `model`,
+`base`, `pair`, `evaluator`, `inputs`, `outputs`, `references`). They are simply
+absent on skills that do not opt into gating. **Gating fails closed:** an absent,
+malformed, or unrecognized `view` resolves to `owner` (the most restrictive
+layer) — `public` must be an explicit opt-in, so a skill authored without a
+`view` is never silently exposed. View values are case-folded and alias-mapped
+(`external`→`public`, `team`/`internal`→`trusted`) to match `normalizeVisibility`
+in `bin/iroharness.mjs`. An absent `capability`/`requires` imposes no additional
+restriction (the `view` gate still applies). Other runtimes ignore the keys they
+do not recognize.
+
+**Reading the gating keys without touching upstream internals.** The upstream
+manifest builder (`skillManifestFromFrontmatter`) and its normalizer
+(`normalizeSkillManifest`) are module-private and freeze a fixed field set, so
+new keys added there would be dropped before reaching the manifest. Phase 2
+therefore does **not** modify them. Instead `skill-gate.js` reads `view`,
+`capability`, and `requires` directly from each skill's `SKILL.md` using the
+**exported** `parseSkillFrontmatter` and the `manifestPath` the upstream
+manifest already carries in `skill.metadata.manifestPath`. This keeps the delta
+to a single new file and touches no upstream-private code.
 
 ### 4.2 Discovery
 
-Skills are discovered by locating `SKILL.md` files in priority-ordered roots;
-on a name collision the highest-priority source wins:
-
-1. Workspace skills
-2. Project skills
-3. Personal skills
-4. Managed/local skills
-5. Bundled skills
-6. Extra directories
-
-The folder layout is organizational only; the `name` frontmatter field is the
-identifier.
+Discovery **reuses** `createFileSkillRegistry` and its existing roots —
+repo-level built-in `skills/` (`defaultBuiltInSkillDir`), user-managed
+`~/.iroharness/skills/` (`defaultIroHarnessSkillDir`), and app-local
+`.iroharness/skills/`. The registry's `snapshot()` already collects, dedupes by
+`id` (user-managed and app-local skills win over built-ins on an id collision),
+and sorts; Phase 2 adds no new discovery mechanism and no new root. Note that
+`snapshot()` re-reads the filesystem on each call, so `skill-gate.js` takes one
+snapshot at session start and caches the eligible result for the session (§4.3)
+rather than calling it repeatedly.
 
 ### 4.3 Gating and Injection
 
-At session start the loader captures the **eligible** skill set by filtering on
-three conditions, all of which must pass:
+The new work is a **gating filter** inserted between the registry's skill list
+and `createSkillContextListing`. Given the registry skills plus a session
+context (current view layer + acting actor), it returns the **eligible** subset
+by applying three checks, all of which must pass:
 
-1. **View layer** — the skill's `metadata.iroharness.view` must be visible from
-   the session's current view layer. A `public` session never sees `trusted` or
-   `owner` skills. **Gating fails closed:** an absent/malformed/unrecognized
-   skill `view` resolves to `owner` (the most restrictive layer), so `public`
-   is an explicit opt-in and a skill is never silently exposed. (Phase 2
-   refines this; see the reconciled §4 once it lands.)
-2. **Requires** — `metadata.iroharness.requires` gating conditions (config,
-   environment, platform, binary presence) must hold.
-3. **Capability** — the acting actor must hold the named capability in
-   `metadata.iroharness.capability` (§5 Permissions Are Separate From Affection).
-   This is a capability test (e.g. `delegate_work`, `manage_stream`), not a
-   comparison against an ordered rank, because the permission model is
-   non-linear.
+1. **View layer** — the skill's `view` must be visible from the session's
+   current view layer (eligible iff `rank(session) >= rank(skill.view)`, with
+   `public` < `trusted` < `owner`). A `public` session never sees `trusted` or
+   `owner` skills. **Fail closed:** an absent/malformed/unrecognized skill `view`
+   resolves to `owner` (deny by default); an unrecognized *session* view falls
+   back to `public` (least privilege).
+2. **Requires** — the skill's `requires` condition (config, environment,
+   platform, binary presence) must hold. An absent `requires` always passes.
+3. **Capability** — the acting actor must hold the named `capability` (§5
+   Permissions Are Separate From Affection). This is a capability test (e.g.
+   `delegate_work`, `manage_stream`), not a comparison against an ordered rank,
+   because the permission model is non-linear. An absent `capability` imposes
+   no restriction.
 
 The eligible set is captured once at session start and reused for the session.
-Eligible skills are compiled into a compact block injected into the macro
-harness prompt.
+The existing `createSkillContextListing` then compiles that eligible set into
+the compact block injected into the macro harness prompt — unchanged, it simply
+receives a pre-filtered list. Invocation still goes through the existing
+`readSkillInvocationContext`.
 
 ### 4.4 Zero-Trust View Integration
 
@@ -241,6 +273,9 @@ the per-actor `requires` and `capability` checks still run at session start, so
 a skill materialized in a trusted view is still withheld from an actor who lacks
 its required capability.
 
+This view-export integration is the heaviest piece and is sequenced last (see
+§8); the runtime gate (§4.3) lands first and is independently useful.
+
 ## 5. Module Boundaries
 
 ```
@@ -251,18 +286,33 @@ extension/
     inprocess.js       (style 1) ctx -> decision, pure in-process call
     command.js         (style 2) spawn child process, JSON stdin/stdout contract
     agent.js           (style 3) LLM judgment, JSON decision
-  skill-loader.js      discover SKILL.md, parse frontmatter, apply view/requires/
-                       capability gating -> eligible set. Depends on: view layer, permission.
-  skill-injector.js    compile eligible skills into a prompt block. Depends on: skill-loader.
+  skill-gate.js        filter the existing registry's skills by view layer,
+                       capability, and requires -> eligible set. Reads the gating
+                       keys from each SKILL.md via the exported
+                       parseSkillFrontmatter + skill.metadata.manifestPath.
+                       Depends on: src/skills/ (registry + parser), view layer,
+                       permission. (NEW — the only skills code Phase 2 adds.)
 ```
+
+Skills reuse the existing `src/skills/` subsystem (`parseSkillFrontmatter`,
+`createFileSkillRegistry`, `createSkillContextListing`,
+`readSkillInvocationContext`). Phase 2 adds only `src/skills/gate.js` (living
+with the subsystem it extends, exported via the existing `./skills` entry) and
+touches no upstream-private code: the gating keys are read through the exported
+parser via the manifest's `manifestPath`, not by extending the private manifest
+builder. There is no `skill-loader` or `skill-injector` — those roles already
+exist upstream. The view-layer order (`public` < `trusted` < `owner`) mirrors
+the existing zone list in `bin/iroharness.mjs`; the actor's held capabilities
+are the `permissions` array from the audience context
+(`createAudienceContextPolicy`), tested by membership.
 
 Each unit has one purpose and a defined interface:
 
 - `hook-registry` is the only place that knows the realtime invariant.
 - The three runners share a `(ctx) -> decision` shape, so the registry dispatches
   uniformly regardless of style.
-- `skill-loader` produces a plain eligible set; `skill-injector` consumes it.
-  Neither knows about hooks.
+- `skill-gate` produces a pre-filtered eligible set that the existing
+  `createSkillContextListing` consumes unchanged. It knows nothing about hooks.
 
 ## 6. Error Handling
 
@@ -287,22 +337,35 @@ Each unit has one purpose and a defined interface:
   Golden fixtures consistent with the existing `fixtures/golden/` approach.
 - **hook-runners**: in-process as a pure function; command against a fixture
   script asserting the JSON contract; agent against a mocked model.
-- **skill-loader**: fixtures with `public`/`trusted`/`owner` skills assert view
-  gating, requires gating, capability gating, and name-collision precedence.
-- **skill-injector**: the injected block differs by view layer and excludes
-  ineligible skills.
+- **skill-gate**: fixtures with `public`/`trusted`/`owner` skills assert view
+  gating, requires gating, and capability gating; **fail-closed defaults** (absent/
+  malformed/unknown `view` => `owner`, including the owner-vs-trusted denial
+  boundary; unknown session view => `public`; case-fold + alias normalization);
+  absent `capability`/`requires` = no extra restriction; the pre-filtered set fed
+  to `createSkillContextListing` excludes ineligible skills.
+- **gating-key read**: `skill-gate` reads `view`/`capability`/`requires` from a
+  skill's `SKILL.md` via the exported `parseSkillFrontmatter` and the manifest's
+  `manifestPath`; a skill without the keys parses and defaults open. Upstream
+  manifest/parse code is unchanged (no private functions touched).
 - **error handling**: the hook fail policy — fail-closed vs fail-open per event
   point, and the throwing-in-process-handler catch that keeps the loop alive —
   lands with the command runner in **Phase 3** (it needs the gate/background
   event-point taxonomy), so it is not a Phase 1 test (see §8). The
-  malformed-`SKILL.md` skip is covered in Phase 2 (skill-gate).
+  malformed-`SKILL.md` skip is covered here in Phase 2 (skill-gate, the
+  `gateSkills excludes a malformed skill` test).
 
 ## 8. Phasing
 
-1. Hook registry + in-process runner + realtime invariant (the backbone).
-2. Skill loader + injector + view/permission gating.
-3. Command runner (text-path gates).
-4. Agent runner (response review).
+1. Hook registry + in-process runner + realtime invariant (the backbone). **Done.**
+2. Skill gating: add `skill-gate.js`, which reads `view`/`capability`/`requires`
+   from each `SKILL.md` via the exported `parseSkillFrontmatter` and filters the
+   existing registry before `createSkillContextListing`. Touches no
+   upstream-private code; builds on the existing `src/skills/` subsystem.
+3. Zero-trust view-export integration (§4.4): materialize only view-visible
+   skills on export. Heaviest skills piece, sequenced after the runtime gate.
+4. Command runner (text-path hook gates).
+5. Agent runner (response review).
 
-Phase 1 delivers the latency-critical capability; later phases add the text-path
-conveniences along the seam the backbone already establishes.
+Phase 1 delivered the latency-critical capability. Phase 2 adds skill gating as
+a thin filter over the existing skills subsystem; later phases add the
+text-path hook conveniences along the seam the backbone already establishes.

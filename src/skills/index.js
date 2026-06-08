@@ -424,3 +424,5 @@ export const evaluateStackChanAvatarPack = ({ packDir }) => {
     checks: Object.freeze(checks)
   });
 };
+
+export { parseSkillGating, isSkillEligible, readSkillGating, gateSkills } from "./gate.js";
