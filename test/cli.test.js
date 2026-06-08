@@ -5,7 +5,7 @@ import {
   mkdtempSync,
   readFileSync,
   symlinkSync,
-  writeFileSync
+  writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -13,16 +13,20 @@ import { spawn, spawnSync } from "node:child_process";
 import test from "node:test";
 
 const runCli = (args, { env = {} } = {}) =>
-  spawnSync(process.execPath, [join(process.cwd(), "bin", "iroharness.mjs"), ...args], {
-    cwd: process.cwd(),
-    env: Object.fromEntries(
-      Object.entries({
-        ...process.env,
-        ...env
-      }).filter(([, value]) => value !== undefined)
-    ),
-    encoding: "utf8"
-  });
+  spawnSync(
+    process.execPath,
+    [join(process.cwd(), "bin", "iroharness.mjs"), ...args],
+    {
+      cwd: process.cwd(),
+      env: Object.fromEntries(
+        Object.entries({
+          ...process.env,
+          ...env,
+        }).filter(([, value]) => value !== undefined),
+      ),
+      encoding: "utf8",
+    },
+  );
 
 const pngHeader = ({ width = 320, height = 240, colorType = 2 } = {}) => {
   const buffer = Buffer.alloc(33);
@@ -40,11 +44,17 @@ const waitForServerUrl = (child) =>
   new Promise((resolve, reject) => {
     let output = "";
     const timer = setTimeout(() => {
-      reject(new Error(`Timed out waiting for generated app server. Output:\n${output}`));
+      reject(
+        new Error(
+          `Timed out waiting for generated app server. Output:\n${output}`,
+        ),
+      );
     }, 5000);
     child.stdout.on("data", (chunk) => {
       output += chunk.toString("utf8");
-      const match = output.match(/companion server: (http:\/\/127\.0\.0\.1:\d+)/);
+      const match = output.match(
+        /companion server: (http:\/\/127\.0\.0\.1:\d+)/,
+      );
       if (match) {
         clearTimeout(timer);
         resolve(match[1]);
@@ -60,7 +70,11 @@ const waitForServerUrl = (child) =>
     child.on("exit", (code) => {
       if (code !== null && code !== 0) {
         clearTimeout(timer);
-        reject(new Error(`Generated app exited early with code ${code}. Output:\n${output}`));
+        reject(
+          new Error(
+            `Generated app exited early with code ${code}. Output:\n${output}`,
+          ),
+        );
       }
     });
   });
@@ -77,7 +91,14 @@ test("CLI init creates a minimal IroHarness app", () => {
   const dir = mkdtempSync(join(tmpdir(), "iroharness-init-"));
   const appDir = join(dir, "companion");
 
-  const result = runCli(["init", appDir, "--name", "companion-app", "--character", "Iroha"]);
+  const result = runCli([
+    "init",
+    appDir,
+    "--name",
+    "companion-app",
+    "--character",
+    "Iroha",
+  ]);
 
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /Created companion-app/);
@@ -91,7 +112,9 @@ test("CLI init creates a minimal IroHarness app", () => {
   assert.equal(existsSync(join(appDir, ".env.example")), true);
   assert.equal(existsSync(join(appDir, ".iroharness")), true);
 
-  const packageJson = JSON.parse(readFileSync(join(appDir, "package.json"), "utf8"));
+  const packageJson = JSON.parse(
+    readFileSync(join(appDir, "package.json"), "utf8"),
+  );
   const app = readFileSync(join(appDir, "src", "app.mjs"), "utf8");
   const agents = readFileSync(join(appDir, "AGENTS.md"), "utf8");
   const soul = readFileSync(join(appDir, "SOUL.md"), "utf8");
@@ -101,7 +124,10 @@ test("CLI init creates a minimal IroHarness app", () => {
 
   assert.equal(packageJson.dependencies.iroharness, "^0.1.0");
   assert.equal(packageJson.scripts.doctor, "iroharness doctor .");
-  assert.equal(packageJson.scripts["doctor:production"], "iroharness doctor . --production");
+  assert.equal(
+    packageJson.scripts["doctor:production"],
+    "iroharness doctor . --production",
+  );
   assert.match(app, /createFileCharacterProfile/);
   assert.match(app, /createIroHarness/);
   assert.match(app, /createHttpBrain/);
@@ -136,7 +162,10 @@ test("CLI init creates a minimal IroHarness app", () => {
   assert.match(agents, /Check permissions before deep discussion/);
   assert.match(agents, /Record long-running work in Project OS/);
   assert.match(agents, /They are not automatically the character/);
-  assert.match(soul, /Consistent across text, voice, browser, OBS, YouTube, Discord, and devices/);
+  assert.match(
+    soul,
+    /Consistent across text, voice, browser, OBS, YouTube, Discord, and devices/,
+  );
   assert.match(identity, /reply engine, body renderer, platform, or/);
   assert.match(memory, /Use Project OS for tickets/);
   assert.match(voice, /prefer low latency/);
@@ -200,7 +229,10 @@ test("CLI doctor validates generated companion app shape", () => {
   assert.match(doctor.stdout, /IroHarness project looks ready/);
   assert.equal(parsed.ok, true);
   assert.equal(parsed.production, false);
-  assert.equal(parsed.checks.some((check) => check.label === "SOUL.md" && check.ok), true);
+  assert.equal(
+    parsed.checks.some((check) => check.label === "SOUL.md" && check.ok),
+    true,
+  );
 });
 
 test("CLI audience manages users, platform identities, permissions, and streams", () => {
@@ -220,7 +252,7 @@ test("CLI audience manages users, platform identities, permissions, and streams"
     "--youtube",
     "UCOWNER",
     "--discord",
-    "DOWNER"
+    "DOWNER",
   ]);
   const link = runCli([
     "audience",
@@ -231,7 +263,7 @@ test("CLI audience manages users, platform identities, permissions, and streams"
     "--platform",
     "slack",
     "--platform-user-id",
-    "UOWNER"
+    "UOWNER",
   ]);
   const grant = runCli([
     "audience",
@@ -244,7 +276,7 @@ test("CLI audience manages users, platform identities, permissions, and streams"
     "--scope",
     "stream:youtube",
     "--expires-at",
-    "2099-01-01T00:00:00Z"
+    "2099-01-01T00:00:00Z",
   ]);
   const revoke = runCli([
     "audience",
@@ -255,7 +287,7 @@ test("CLI audience manages users, platform identities, permissions, and streams"
     "--permission",
     "manage_stream",
     "--scope",
-    "stream:youtube"
+    "stream:youtube",
   ]);
   const grantAgain = runCli([
     "audience",
@@ -268,7 +300,7 @@ test("CLI audience manages users, platform identities, permissions, and streams"
     "--scope",
     "stream:youtube",
     "--expires-at",
-    "2099-01-01T00:00:00Z"
+    "2099-01-01T00:00:00Z",
   ]);
   const stream = runCli([
     "audience",
@@ -281,12 +313,18 @@ test("CLI audience manages users, platform identities, permissions, and streams"
     "--channel",
     "live-chat-id",
     "--host",
-    "owner"
+    "owner",
   ]);
   const backupPath = join(dir, "audience-backup.json");
   const exported = runCli(["audience", "export", appDir, "--file", backupPath]);
   const exportedJson = runCli(["audience", "export", appDir, "--json"]);
-  const refusedImport = runCli(["audience", "import", appDir, "--file", backupPath]);
+  const refusedImport = runCli([
+    "audience",
+    "import",
+    appDir,
+    "--file",
+    backupPath,
+  ]);
   const restoredDir = join(dir, "restored");
   const restoredInit = runCli(["init", restoredDir, "--character", "Iroha"]);
   const imported = runCli([
@@ -296,7 +334,7 @@ test("CLI audience manages users, platform identities, permissions, and streams"
     "--file",
     backupPath,
     "--force",
-    "--json"
+    "--json",
   ]);
   const restoredList = runCli(["audience", "list", restoredDir, "--json"]);
   const list = runCli(["audience", "list", appDir, "--json"]);
@@ -324,7 +362,10 @@ test("CLI audience manages users, platform identities, permissions, and streams"
   assert.match(link.stdout, /linked slack:UOWNER -> owner/);
   assert.match(grant.stdout, /allow manage_stream for owner in stream:youtube/);
   assert.match(grant.stdout, /2099-01-01T00:00:00.000Z/);
-  assert.match(revoke.stdout, /revoked manage_stream for owner in stream:youtube/);
+  assert.match(
+    revoke.stdout,
+    /revoked manage_stream for owner in stream:youtube/,
+  );
   assert.match(stream.stdout, /registered stream youtube-live/);
   assert.match(exported.stdout, /exported audience backup/);
   assert.equal(snapshot.users[0].id, "owner");
@@ -332,19 +373,37 @@ test("CLI audience manages users, platform identities, permissions, and streams"
   assert.equal(snapshot.users[0].identities.discord, "DOWNER");
   assert.equal(snapshot.users[0].identities.slack, "UOWNER");
   assert.equal(snapshot.permissionOverrides[0].permission, "manage_stream");
-  assert.equal(snapshot.permissionOverrides[0].expiresAt, "2099-01-01T00:00:00.000Z");
+  assert.equal(
+    snapshot.permissionOverrides[0].expiresAt,
+    "2099-01-01T00:00:00.000Z",
+  );
   assert.equal(snapshot.streamSessions[0].platformChannelId, "live-chat-id");
-  assert.equal(snapshot.auditLog.some((entry) => entry.action === "audience.permission.set"), true);
-  assert.equal(snapshot.auditLog.some((entry) => entry.action === "audience.permission.delete"), true);
+  assert.equal(
+    snapshot.auditLog.some(
+      (entry) => entry.action === "audience.permission.set",
+    ),
+    true,
+  );
+  assert.equal(
+    snapshot.auditLog.some(
+      (entry) => entry.action === "audience.permission.delete",
+    ),
+    true,
+  );
   assert.equal(exportedSnapshot.users[0].id, "owner");
   assert.equal(Array.isArray(exportedSnapshot.auditLog), true);
   assert.equal(importedSnapshot.users[0].id, "owner");
   assert.equal(
-    importedSnapshot.auditLog.some((entry) => entry.action === "audience.backup.import"),
-    true
+    importedSnapshot.auditLog.some(
+      (entry) => entry.action === "audience.backup.import",
+    ),
+    true,
   );
   assert.equal(restoredSnapshot.users[0].identities.youtube, "UCOWNER");
-  assert.equal(restoredSnapshot.permissionOverrides[0].permission, "manage_stream");
+  assert.equal(
+    restoredSnapshot.permissionOverrides[0].permission,
+    "manage_stream",
+  );
   assert.equal(restoredSnapshot.auditLog.length, snapshot.auditLog.length + 1);
 });
 
@@ -365,7 +424,7 @@ test("CLI connect prepares Slack and StackChan onboarding files", () => {
     "UIROHA",
     "--owner-slack-user-id",
     "UOWNER",
-    "--json"
+    "--json",
   ]);
   const stackchan = runCli([
     "connect",
@@ -381,33 +440,48 @@ test("CLI connect prepares Slack and StackChan onboarding files", () => {
     "device-secret-test",
     "--firmware-config-out",
     firmwareConfigOut,
-    "--json"
+    "--json",
   ]);
   const slackResult = JSON.parse(slack.stdout);
   const stackchanResult = JSON.parse(stackchan.stdout);
   const env = readFileSync(join(appDir, ".env"), "utf8");
   const slackOnboarding = readFileSync(
     join(appDir, ".iroharness", "connections", "slack-onboarding.md"),
-    "utf8"
+    "utf8",
   );
   const slackConnection = JSON.parse(
-    readFileSync(join(appDir, ".iroharness", "connections", "slack.json"), "utf8")
+    readFileSync(
+      join(appDir, ".iroharness", "connections", "slack.json"),
+      "utf8",
+    ),
   );
   const stackchanDevice = JSON.parse(
-    readFileSync(join(appDir, ".iroharness", "connections", "stackchan.device.json"), "utf8")
+    readFileSync(
+      join(appDir, ".iroharness", "connections", "stackchan.device.json"),
+      "utf8",
+    ),
   );
   const firmwareConfig = JSON.parse(
     readFileSync(
-      join(appDir, ".iroharness", "connections", "stackchan-firmware-config.json"),
-      "utf8"
-    )
+      join(
+        appDir,
+        ".iroharness",
+        "connections",
+        "stackchan-firmware-config.json",
+      ),
+      "utf8",
+    ),
   );
-  const firmwareConfigCopy = JSON.parse(readFileSync(firmwareConfigOut, "utf8"));
+  const firmwareConfigCopy = JSON.parse(
+    readFileSync(firmwareConfigOut, "utf8"),
+  );
   const stackchanProvisioning = readFileSync(
     join(appDir, ".iroharness", "connections", "stackchan-provisioning.md"),
-    "utf8"
+    "utf8",
   );
-  const audience = JSON.parse(readFileSync(join(appDir, ".iroharness", "users.json"), "utf8"));
+  const audience = JSON.parse(
+    readFileSync(join(appDir, ".iroharness", "users.json"), "utf8"),
+  );
 
   assert.equal(init.status, 0, init.stderr);
   assert.equal(slack.status, 0, slack.stderr);
@@ -418,46 +492,91 @@ test("CLI connect prepares Slack and StackChan onboarding files", () => {
   assert.match(env, /STACKCHAN_DEVICE_TOKEN=device-secret-test/);
   assert.equal(slackConnection.preset, "slack-text");
   assert.equal(slackConnection.body.kind, "presence");
-  assert.equal(slackResult.connection.requiredEnv.includes("SLACK_BOT_TOKEN"), true);
-  assert.equal(slackResult.onboardingPath.endsWith("slack-onboarding.md"), true);
+  assert.equal(
+    slackResult.connection.requiredEnv.includes("SLACK_BOT_TOKEN"),
+    true,
+  );
+  assert.equal(
+    slackResult.onboardingPath.endsWith("slack-onboarding.md"),
+    true,
+  );
   assert.match(slackOnboarding, /app_mentions:read/);
   assert.match(slackOnboarding, /chat:write/);
   assert.match(slackOnboarding, /https:\/\/YOUR_HOST\/slack\/events/);
   assert.match(slackOnboarding, /SLACK_BOT_USER_ID=UIROHA/);
   assert.match(slackOnboarding, /IROHARNESS_SLACK_OWNER_USER_ID=UOWNER/);
-  assert.equal(audience.users.some((user) => user.id === "owner"), true);
-  assert.equal(stackchanResult.deviceConfig.server.baseUrl, "http://100.64.0.10:4182");
+  assert.equal(
+    audience.users.some((user) => user.id === "owner"),
+    true,
+  );
+  assert.equal(
+    stackchanResult.deviceConfig.server.baseUrl,
+    "http://100.64.0.10:4182",
+  );
   assert.equal(stackchanDevice.kind, "stackchan");
   assert.equal(stackchanDevice.server.facePath, "/stackchan/face");
   assert.equal(stackchanDevice.server.invokePath, "/device/stackchan/invoke");
-  assert.equal(stackchanDevice.server.realtimePath, "/device/stackchan/realtime");
-  assert.equal(stackchanDevice.metadata.connectionMode, "aiavatarstackchan-websocket");
-  assert.equal(stackchanDevice.metadata.auth, "websocket-query-or-device-token-header");
+  assert.equal(
+    stackchanDevice.server.realtimePath,
+    "/device/stackchan/realtime",
+  );
+  assert.equal(
+    stackchanDevice.metadata.connectionMode,
+    "aiavatarstackchan-websocket",
+  );
+  assert.equal(
+    stackchanDevice.metadata.auth,
+    "websocket-query-or-device-token-header",
+  );
   assert.equal(
     stackchanDevice.metadata.provisioning,
-    "manual-flash-now-ota-firmware-package-later"
+    "manual-flash-now-ota-firmware-package-later",
   );
   assert.equal(stackchanDevice.metadata.deviceReachability.ok, true);
   assert.equal(stackchanResult.deviceReachability.ok, true);
-  assert.equal(stackchanResult.provisioningPath.endsWith("stackchan-provisioning.md"), true);
-  assert.equal(stackchanResult.firmwareConfigOutPath.endsWith("firmware/config.json"), true);
+  assert.equal(
+    stackchanResult.provisioningPath.endsWith("stackchan-provisioning.md"),
+    true,
+  );
+  assert.equal(
+    stackchanResult.firmwareConfigOutPath.endsWith("firmware/config.json"),
+    true,
+  );
   assert.equal(firmwareConfig.wifi_networks[0].ssid, "ssid-test");
   assert.equal(firmwareConfig.wifi_networks[0].pass, "pass-test");
   assert.equal(firmwareConfig.ws_host, "100.64.0.10");
   assert.equal(firmwareConfig.ws_port, 4182);
-  assert.equal(firmwareConfig.ws_path, "/device/stackchan/realtime?token=device-secret-test");
+  assert.equal(
+    firmwareConfig.ws_path,
+    "/device/stackchan/realtime?token=device-secret-test",
+  );
   assert.equal(firmwareConfig.user_id, "stackchan");
   assert.equal(firmwareConfig.channel, "local");
-  assert.equal(firmwareConfig.realtime_ws_url, "ws://100.64.0.10:4182/device/stackchan/realtime");
+  assert.equal(
+    firmwareConfig.realtime_ws_url,
+    "ws://100.64.0.10:4182/device/stackchan/realtime",
+  );
   assert.equal(firmwareConfig.device_token, "device-secret-test");
   assert.deepEqual(firmwareConfigCopy, firmwareConfig);
-  assert.equal(firmwareConfig.iroharness.invoke_url, "http://100.64.0.10:4182/device/stackchan/invoke");
+  assert.equal(
+    firmwareConfig.iroharness.invoke_url,
+    "http://100.64.0.10:4182/device/stackchan/invoke",
+  );
   assert.match(stackchanProvisioning, /First Flash/);
   assert.match(stackchanProvisioning, /Realtime WebSocket/);
   assert.match(stackchanProvisioning, /1-second conversation path/);
-  assert.match(stackchanProvisioning, /OTA should be added in the firmware package/);
-  assert.equal(stackchanResult.firmwareConfig.wifi_networks[0].pass, "[redacted]");
-  assert.equal(stackchanResult.firmwareConfig.ws_path, "/device/stackchan/realtime?token=[redacted]");
+  assert.match(
+    stackchanProvisioning,
+    /OTA should be added in the firmware package/,
+  );
+  assert.equal(
+    stackchanResult.firmwareConfig.wifi_networks[0].pass,
+    "[redacted]",
+  );
+  assert.equal(
+    stackchanResult.firmwareConfig.ws_path,
+    "/device/stackchan/realtime?token=[redacted]",
+  );
   assert.equal(stackchanResult.firmwareConfig.device_token, "[redacted]");
 });
 
@@ -471,7 +590,7 @@ test("CLI doctor flags StackChan host URLs that firmware cannot reach", () => {
     appDir,
     "--host-url",
     "http://127.0.0.1:4182",
-    "--json"
+    "--json",
   ]);
   const doctor = runCli(["doctor", appDir]);
   const jsonDoctor = runCli(["doctor", appDir, "--json"]);
@@ -482,15 +601,18 @@ test("CLI doctor flags StackChan host URLs that firmware cannot reach", () => {
   assert.equal(stackchan.status, 0, stackchan.stderr);
   assert.equal(stackchanResult.deviceReachability.ok, false);
   assert.notEqual(doctor.status, 0);
-  assert.match(doctor.stdout, /failed StackChan host URL is firmware-reachable/);
+  assert.match(
+    doctor.stdout,
+    /failed StackChan host URL is firmware-reachable/,
+  );
   assert.match(doctor.stdout, /use the Mac mini LAN or Tailscale IP/);
   assert.equal(jsonDoctor.status, 1);
   assert.equal(doctorResult.ok, false);
   assert.equal(
     doctorResult.failedStackChanChecks.some(
-      (check) => check.label === "StackChan host URL is firmware-reachable"
+      (check) => check.label === "StackChan host URL is firmware-reachable",
     ),
-    true
+    true,
   );
 });
 
@@ -506,7 +628,7 @@ test("CLI skill commands list, plan, and evaluate StackChan avatar packs", () =>
   writeFileSync(
     join(localSkillDir, "SKILL.md"),
     `---\nname: ref-cli-local\ndescription: Use when listing app-local CLI skills.\nkind: reference\npurpose: knowledge\nshape: atomic\nrole: dictionary\nuser-invocable: false\n---\n\n# CLI local skill\n`,
-    "utf8"
+    "utf8",
   );
   writeFileSync(referenceImage, pngHeader());
 
@@ -522,7 +644,7 @@ test("CLI skill commands list, plan, and evaluate StackChan avatar packs", () =>
     "iroha-test",
     "--out",
     packDir,
-    "--json"
+    "--json",
   ]);
   mkdirSync(avatarDir, { recursive: true });
   [
@@ -531,10 +653,12 @@ test("CLI skill commands list, plan, and evaluate StackChan avatar packs", () =>
     "joy.png",
     "fun.png",
     "angry.png",
-    "sorrow.png"
-  ].forEach((file) => writeFileSync(join(avatarDir, file), pngHeader({ colorType: 2 })));
+    "sorrow.png",
+  ].forEach((file) =>
+    writeFileSync(join(avatarDir, file), pngHeader({ colorType: 2 })),
+  );
   ["mouth_half.png", "mouth_open.png"].forEach((file) =>
-    writeFileSync(join(avatarDir, file), pngHeader({ colorType: 6 }))
+    writeFileSync(join(avatarDir, file), pngHeader({ colorType: 6 })),
   );
   const evalResult = runCli([
     "skill",
@@ -543,7 +667,7 @@ test("CLI skill commands list, plan, and evaluate StackChan avatar packs", () =>
     appDir,
     "--pack-dir",
     packDir,
-    "--json"
+    "--json",
   ]);
   const listed = JSON.parse(list.stdout);
   const planned = JSON.parse(plan.stdout);
@@ -553,14 +677,22 @@ test("CLI skill commands list, plan, and evaluate StackChan avatar packs", () =>
   assert.equal(list.status, 0, list.stderr);
   assert.equal(plan.status, 0, plan.stderr);
   assert.equal(evalResult.status, 0, evalResult.stderr);
-  assert.equal(listed.skills.some((skill) => skill.id === "run-stackchan-avatar-pack"), true);
-  assert.equal(listed.skills.some((skill) => skill.id === "ref-cli-local"), true);
+  assert.equal(
+    listed.skills.some((skill) => skill.id === "run-stackchan-avatar-pack"),
+    true,
+  );
+  assert.equal(
+    listed.skills.some((skill) => skill.id === "ref-cli-local"),
+    true,
+  );
   assert.equal(planned.plan.packId, "iroha-test");
   assert.equal(existsSync(planned.planPath), true);
   assert.equal(evaluated.ok, true);
   assert.equal(
-    evaluated.checks.some((check) => check.id === "mouth_open.png:alpha" && check.ok),
-    true
+    evaluated.checks.some(
+      (check) => check.id === "mouth_open.png:alpha" && check.ok,
+    ),
+    true,
   );
 });
 
@@ -581,7 +713,7 @@ test("CLI view export creates zone-limited runtime views", () => {
     "--bot-user-id",
     "UIROHA",
     "--owner-slack-user-id",
-    "UOWNER"
+    "UOWNER",
   ]);
   const stackchan = runCli([
     "connect",
@@ -594,12 +726,24 @@ test("CLI view export creates zone-limited runtime views", () => {
     "--wifi-pass",
     "pass-test",
     "--device-token",
-    "device-secret-test"
+    "device-secret-test",
   ]);
   mkdirSync(join(appDir, "memory"), { recursive: true });
-  writeFileSync(join(appDir, "MEMORY.md"), "# Core Memory\nprivate-core-secret\n", "utf8");
-  writeFileSync(join(appDir, "memory", "public.md"), "# Public Memory\npublic-safe\n", "utf8");
-  writeFileSync(join(appDir, "memory", "trusted.md"), "# Trusted Memory\ntrusted-safe\n", "utf8");
+  writeFileSync(
+    join(appDir, "MEMORY.md"),
+    "# Core Memory\nprivate-core-secret\n",
+    "utf8",
+  );
+  writeFileSync(
+    join(appDir, "memory", "public.md"),
+    "# Public Memory\npublic-safe\n",
+    "utf8",
+  );
+  writeFileSync(
+    join(appDir, "memory", "trusted.md"),
+    "# Trusted Memory\ntrusted-safe\n",
+    "utf8",
+  );
   writeFileSync(
     join(appDir, ".iroharness", "pjos.json"),
     `${JSON.stringify(
@@ -615,7 +759,7 @@ test("CLI view export creates zone-limited runtime views", () => {
             status: "open",
             createdAt: "2026-05-28T00:00:00.000Z",
             updatedAt: "2026-05-28T00:00:00.000Z",
-            metadata: { visibility: "public" }
+            metadata: { visibility: "public" },
           },
           {
             id: "ticket_trusted",
@@ -627,7 +771,7 @@ test("CLI view export creates zone-limited runtime views", () => {
             status: "open",
             createdAt: "2026-05-28T00:00:00.000Z",
             updatedAt: "2026-05-28T00:00:00.000Z",
-            metadata: { visibility: "trusted" }
+            metadata: { visibility: "trusted" },
           },
           {
             id: "ticket_owner",
@@ -639,8 +783,8 @@ test("CLI view export creates zone-limited runtime views", () => {
             status: "open",
             createdAt: "2026-05-28T00:00:00.000Z",
             updatedAt: "2026-05-28T00:00:00.000Z",
-            metadata: {}
-          }
+            metadata: {},
+          },
         ],
         runs: [
           {
@@ -651,7 +795,7 @@ test("CLI view export creates zone-limited runtime views", () => {
             input: {},
             output: {},
             createdAt: "2026-05-28T00:00:00.000Z",
-            updatedAt: "2026-05-28T00:00:00.000Z"
+            updatedAt: "2026-05-28T00:00:00.000Z",
           },
           {
             id: "run_owner",
@@ -661,8 +805,8 @@ test("CLI view export creates zone-limited runtime views", () => {
             input: {},
             output: { token: "secret-run-token" },
             createdAt: "2026-05-28T00:00:00.000Z",
-            updatedAt: "2026-05-28T00:00:00.000Z"
-          }
+            updatedAt: "2026-05-28T00:00:00.000Z",
+          },
         ],
         artifacts: [
           {
@@ -672,7 +816,7 @@ test("CLI view export creates zone-limited runtime views", () => {
             kind: "doc",
             uri: "https://example.com/public",
             title: "Public note",
-            createdAt: "2026-05-28T00:00:00.000Z"
+            createdAt: "2026-05-28T00:00:00.000Z",
           },
           {
             id: "artifact_owner",
@@ -681,14 +825,14 @@ test("CLI view export creates zone-limited runtime views", () => {
             kind: "repo",
             uri: "file:///private/repo",
             title: "Private repo",
-            createdAt: "2026-05-28T00:00:00.000Z"
-          }
-        ]
+            createdAt: "2026-05-28T00:00:00.000Z",
+          },
+        ],
       },
       null,
-      2
+      2,
     )}\n`,
-    "utf8"
+    "utf8",
   );
   const publicExport = runCli([
     "view",
@@ -699,7 +843,7 @@ test("CLI view export creates zone-limited runtime views", () => {
     "--out",
     publicView,
     "--force",
-    "--json"
+    "--json",
   ]);
   const trustedExport = runCli([
     "view",
@@ -710,44 +854,66 @@ test("CLI view export creates zone-limited runtime views", () => {
     "--out",
     trustedView,
     "--force",
-    "--json"
+    "--json",
   ]);
-  const trustedWorkRunnerCheck = runCli(["work-runner", "check", trustedView, "--json"]);
+  const trustedWorkRunnerCheck = runCli([
+    "work-runner",
+    "check",
+    trustedView,
+    "--json",
+  ]);
   const publicResult = JSON.parse(publicExport.stdout);
   const trustedResult = JSON.parse(trustedExport.stdout);
-  const trustedWorkRunnerCheckResult = JSON.parse(trustedWorkRunnerCheck.stdout);
+  const trustedWorkRunnerCheckResult = JSON.parse(
+    trustedWorkRunnerCheck.stdout,
+  );
   const publicManifest = JSON.parse(
-    readFileSync(join(publicView, "current", "view-manifest.json"), "utf8")
+    readFileSync(join(publicView, "current", "view-manifest.json"), "utf8"),
   );
   const trustedManifest = JSON.parse(
-    readFileSync(join(trustedView, "current", "view-manifest.json"), "utf8")
+    readFileSync(join(trustedView, "current", "view-manifest.json"), "utf8"),
   );
   const trustedStackchan = JSON.parse(
-    readFileSync(join(trustedView, "current", "connections", "stackchan.device.json"), "utf8")
+    readFileSync(
+      join(trustedView, "current", "connections", "stackchan.device.json"),
+      "utf8",
+    ),
   );
   const publicGatewayPolicy = JSON.parse(
-    readFileSync(join(publicView, "current", "gateway-policy.json"), "utf8")
+    readFileSync(join(publicView, "current", "gateway-policy.json"), "utf8"),
   );
   const trustedGatewayPolicy = JSON.parse(
-    readFileSync(join(trustedView, "current", "gateway-policy.json"), "utf8")
+    readFileSync(join(trustedView, "current", "gateway-policy.json"), "utf8"),
   );
   const publicWorkRunnerPolicy = JSON.parse(
-    readFileSync(join(publicView, "current", "work-runner-policy.json"), "utf8")
+    readFileSync(
+      join(publicView, "current", "work-runner-policy.json"),
+      "utf8",
+    ),
   );
   const trustedWorkRunnerPolicy = JSON.parse(
-    readFileSync(join(trustedView, "current", "work-runner-policy.json"), "utf8")
+    readFileSync(
+      join(trustedView, "current", "work-runner-policy.json"),
+      "utf8",
+    ),
   );
-  const publicMemory = readFileSync(join(publicView, "current", "MEMORY.md"), "utf8");
-  const trustedMemory = readFileSync(join(trustedView, "current", "MEMORY.md"), "utf8");
+  const publicMemory = readFileSync(
+    join(publicView, "current", "MEMORY.md"),
+    "utf8",
+  );
+  const trustedMemory = readFileSync(
+    join(trustedView, "current", "MEMORY.md"),
+    "utf8",
+  );
   const publicProjectOs = JSON.parse(
-    readFileSync(join(publicView, "current", "project-os.json"), "utf8")
+    readFileSync(join(publicView, "current", "project-os.json"), "utf8"),
   );
   const trustedProjectOs = JSON.parse(
-    readFileSync(join(trustedView, "current", "project-os.json"), "utf8")
+    readFileSync(join(trustedView, "current", "project-os.json"), "utf8"),
   );
   const trustedProjectOsMarkdown = readFileSync(
     join(trustedView, "current", "PROJECT_OS.md"),
-    "utf8"
+    "utf8",
   );
 
   assert.equal(init.status, 0, init.stderr);
@@ -772,19 +938,30 @@ test("CLI view export creates zone-limited runtime views", () => {
   assert.doesNotMatch(trustedMemory, /private-core-secret/);
   assert.deepEqual(
     publicProjectOs.tickets.map((ticket) => ticket.id),
-    ["ticket_public"]
+    ["ticket_public"],
   );
   assert.deepEqual(
     trustedProjectOs.tickets.map((ticket) => ticket.id),
-    ["ticket_public", "ticket_trusted"]
+    ["ticket_public", "ticket_trusted"],
   );
-  assert.equal(publicProjectOs.runs.some((run) => run.id === "run_owner"), false);
-  assert.equal(trustedProjectOs.artifacts.some((artifact) => artifact.id === "artifact_owner"), false);
+  assert.equal(
+    publicProjectOs.runs.some((run) => run.id === "run_owner"),
+    false,
+  );
+  assert.equal(
+    trustedProjectOs.artifacts.some(
+      (artifact) => artifact.id === "artifact_owner",
+    ),
+    false,
+  );
   assert.match(trustedProjectOsMarkdown, /Publish public roadmap/);
   assert.match(trustedProjectOsMarkdown, /Tune StackChan room setup/);
   assert.doesNotMatch(trustedProjectOsMarkdown, /Private repo migration/);
   assert.equal(existsSync(join(publicView, "current", ".env")), false);
-  assert.equal(existsSync(join(publicView, "current", "connections", "slack.json")), false);
+  assert.equal(
+    existsSync(join(publicView, "current", "connections", "slack.json")),
+    false,
+  );
   assert.equal(existsSync(join(publicView, "state", "logs")), true);
   assert.equal(publicManifest.source, "[redacted]");
   assert.equal(trustedManifest.source, "[redacted]");
@@ -802,19 +979,34 @@ test("CLI view export creates zone-limited runtime views", () => {
   assert.equal(trustedManifest.projectOs.defaultVisibility, "owner");
   assert.equal(trustedManifest.projectOs.counts.tickets, 2);
   assert.equal(trustedManifest.files.includes("connections/slack.json"), true);
-  assert.equal(trustedManifest.files.includes("connections/stackchan.device.json"), true);
+  assert.equal(
+    trustedManifest.files.includes("connections/stackchan.device.json"),
+    true,
+  );
   assert.equal(publicManifest.files.includes("connections/slack.json"), false);
   assert.equal(trustedStackchan.wifiNetworks[0].pass, "[redacted]");
   assert.deepEqual(publicGatewayPolicy.allowedVisibility, ["public"]);
-  assert.deepEqual(trustedGatewayPolicy.allowedVisibility, ["public", "trusted"]);
+  assert.deepEqual(trustedGatewayPolicy.allowedVisibility, [
+    "public",
+    "trusted",
+  ]);
   assert.equal(publicGatewayPolicy.directAccess.codexOAuthSession, "denied");
-  assert.equal(trustedGatewayPolicy.directAccess.repositoryCredentials, "denied");
+  assert.equal(
+    trustedGatewayPolicy.directAccess.repositoryCredentials,
+    "denied",
+  );
   assert.equal(trustedGatewayPolicy.inputPolicy.requireManifestAllowlist, true);
   assert.equal(publicWorkRunnerPolicy.delegation, "denied");
   assert.equal(trustedWorkRunnerPolicy.delegation, "permission-required");
   assert.equal(trustedWorkRunnerPolicy.boundary, "runner-only");
-  assert.equal(trustedWorkRunnerPolicy.directGatewayAccess.browserSession, "denied");
-  assert.equal(trustedWorkRunnerPolicy.runnerAccess.repositoryWork, "scoped-workspace");
+  assert.equal(
+    trustedWorkRunnerPolicy.directGatewayAccess.browserSession,
+    "denied",
+  );
+  assert.equal(
+    trustedWorkRunnerPolicy.runnerAccess.repositoryWork,
+    "scoped-workspace",
+  );
 });
 
 test("CLI doctor production profile requires a strong admin token", () => {
@@ -823,24 +1015,28 @@ test("CLI doctor production profile requires a strong admin token", () => {
   const init = runCli(["init", appDir, "--character", "Iroha"]);
   const missingToken = runCli(["doctor", appDir, "--production"], {
     env: {
-      IROHARNESS_ADMIN_TOKEN: ""
-    }
+      IROHARNESS_ADMIN_TOKEN: "",
+    },
   });
   const shortToken = runCli(["doctor", appDir, "--production"], {
     env: {
-      IROHARNESS_ADMIN_TOKEN: "short"
-    }
+      IROHARNESS_ADMIN_TOKEN: "short",
+    },
   });
-  writeFileSync(join(appDir, ".env"), "IROHARNESS_ADMIN_TOKEN=env-file-token-123\n", "utf8");
+  writeFileSync(
+    join(appDir, ".env"),
+    "IROHARNESS_ADMIN_TOKEN=env-file-token-123\n",
+    "utf8",
+  );
   const readyFromEnvFile = runCli(["doctor", appDir, "--production"], {
     env: {
-      IROHARNESS_ADMIN_TOKEN: undefined
-    }
+      IROHARNESS_ADMIN_TOKEN: undefined,
+    },
   });
   const ready = runCli(["doctor", appDir, "--production"], {
     env: {
-      IROHARNESS_ADMIN_TOKEN: "production-token-123"
-    }
+      IROHARNESS_ADMIN_TOKEN: "production-token-123",
+    },
   });
 
   assert.equal(init.status, 0, init.stderr);
@@ -858,7 +1054,14 @@ test("CLI doctor production profile requires a strong admin token", () => {
 test("CLI generated app starts a local companion server", async (context) => {
   const dir = mkdtempSync(join(tmpdir(), "iroharness-generated-server-"));
   const appDir = join(dir, "companion");
-  const init = runCli(["init", appDir, "--name", "companion-app", "--character", "Iroha"]);
+  const init = runCli([
+    "init",
+    appDir,
+    "--name",
+    "companion-app",
+    "--character",
+    "Iroha",
+  ]);
   assert.equal(init.status, 0, init.stderr);
 
   mkdirSync(join(appDir, "node_modules"), { recursive: true });
@@ -868,9 +1071,9 @@ test("CLI generated app starts a local companion server", async (context) => {
     cwd: appDir,
     env: {
       ...process.env,
-      PORT: "0"
+      PORT: "0",
     },
-    stdio: ["ignore", "pipe", "pipe"]
+    stdio: ["ignore", "pipe", "pipe"],
   });
 
   try {
@@ -878,7 +1081,7 @@ test("CLI generated app starts a local companion server", async (context) => {
     const [openapi, state, health] = await Promise.all([
       fetch(`${url}/openapi.json`).then((response) => response.json()),
       fetch(`${url}/state`).then((response) => response.json()),
-      fetch(`${url}/health`).then((response) => response.json())
+      fetch(`${url}/health`).then((response) => response.json()),
     ]);
 
     assert.equal(openapi.openapi, "3.1.0");
@@ -908,6 +1111,61 @@ test("CLI doctor fails when character profile files are missing", () => {
   assert.match(doctor.stdout, /missing SOUL\.md/);
   assert.match(doctor.stderr, /project check failed/);
   assert.equal(parsed.ok, false);
-  assert.equal(parsed.missing.some((check) => check.label === "package.json"), true);
+  assert.equal(
+    parsed.missing.some((check) => check.label === "package.json"),
+    true,
+  );
   assert.equal(jsonDoctor.stderr.trim(), "");
+});
+
+test("CLI view export materializes only view-visible skills per zone", () => {
+  const dir = mkdtempSync(join(tmpdir(), "iroharness-view-skills-"));
+  const appDir = join(dir, "companion");
+  runCli(["init", appDir, "--character", "Iroha"]);
+
+  const skillsRoot = join(appDir, ".iroharness", "skills");
+  const writeSkill = (id, extraFrontmatter) => {
+    mkdirSync(join(skillsRoot, id), { recursive: true });
+    writeFileSync(
+      join(skillsRoot, id, "SKILL.md"),
+      `---\nname: ${id}\ndescription: test skill ${id}.\n${extraFrontmatter}---\n\n# ${id}\n`,
+      "utf8",
+    );
+  };
+  writeSkill("pub-greet", "view: public\n");
+  writeSkill("trust-ops", "view: trusted\ncapability: delegate_work\n");
+  writeSkill("owner-secret", "view: owner\n");
+  writeSkill("ungated", "");
+
+  const exportZone = (zone) => {
+    const out = join(dir, `${zone}-view`);
+    const result = runCli([
+      "view",
+      "export",
+      appDir,
+      "--zone",
+      zone,
+      "--out",
+      out,
+      "--force",
+    ]);
+    assert.equal(result.status, 0, result.stderr);
+    return join(out, "current", "skills");
+  };
+
+  const pub = exportZone("public");
+  assert.equal(existsSync(join(pub, "pub-greet", "SKILL.md")), true);
+  assert.equal(existsSync(join(pub, "trust-ops")), false);
+  assert.equal(existsSync(join(pub, "owner-secret")), false);
+  assert.equal(existsSync(join(pub, "ungated")), false);
+
+  const trusted = exportZone("trusted");
+  assert.equal(existsSync(join(trusted, "pub-greet", "SKILL.md")), true);
+  assert.equal(existsSync(join(trusted, "trust-ops", "SKILL.md")), true);
+  assert.equal(existsSync(join(trusted, "owner-secret")), false);
+  assert.equal(existsSync(join(trusted, "ungated")), false);
+
+  const owner = exportZone("owner");
+  assert.equal(existsSync(join(owner, "owner-secret", "SKILL.md")), true);
+  assert.equal(existsSync(join(owner, "ungated", "SKILL.md")), true);
 });

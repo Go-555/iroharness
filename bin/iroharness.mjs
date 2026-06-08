@@ -1,12 +1,14 @@
 #!/usr/bin/env node
 import { randomBytes } from "node:crypto";
-import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 
 import { createFileUserRegistry, createProjectOsMarkdown } from "../src/index.js";
 import {
   createFileSkillRegistry,
+  defaultBuiltInSkillDir,
   defaultIroHarnessSkillDir,
+  readSkillGating,
   createStackChanAvatarPackPlan,
   evaluateStackChanAvatarPack
 } from "../src/skills/index.js";
@@ -1459,6 +1461,39 @@ const exportConnectionFiles = ({ sourceRoot, targetRoot, zone, files }) => {
   });
 };
 
+const exportSkillFiles = ({ sourceRoot, targetRoot, zone, files }) => {
+  const zoneRank = viewZoneRank[zone];
+  const skillRoots = [
+    defaultBuiltInSkillDir(),
+    join(sourceRoot, ".iroharness", "skills"),
+  ];
+  for (const root of skillRoots) {
+    if (!existsSync(root)) {
+      continue;
+    }
+    for (const entry of readdirSync(root)) {
+      const skillDir = join(root, entry);
+      const manifestPath = join(skillDir, "SKILL.md");
+      if (!statSync(skillDir).isDirectory() || !existsSync(manifestPath)) {
+        continue;
+      }
+      let gating;
+      try {
+        gating = readSkillGating({ id: entry, metadata: { manifestPath } });
+      } catch (error) {
+        console.warn(`[view export] skipping unreadable skill ${entry}: ${error.message}`);
+        continue;
+      }
+      if (viewZoneRank[gating.view] > zoneRank) {
+        continue;
+      }
+      const targetPath = join("skills", entry);
+      cpSync(skillDir, join(targetRoot, targetPath), { recursive: true });
+      files.push(targetPath);
+    }
+  }
+};
+
 const exportView = (args) => {
   if (args.action !== "export") {
     throw new Error(`Unknown view action: ${args.action || "(missing)"}\n\n${usage}`);
@@ -1485,6 +1520,7 @@ const exportView = (args) => {
   exportMemoryFiles({ sourceRoot, targetRoot: currentRoot, zone, files });
   const projectOs = exportProjectOsFiles({ sourceRoot, targetRoot: currentRoot, zone, files });
   exportConnectionFiles({ sourceRoot, targetRoot: currentRoot, zone, files });
+  exportSkillFiles({ sourceRoot, targetRoot: currentRoot, zone, files });
   const gatewayPolicy = createGatewayPolicy({ zone });
   const workRunnerPolicy = createWorkRunnerPolicy({ zone });
   writeViewJson({
