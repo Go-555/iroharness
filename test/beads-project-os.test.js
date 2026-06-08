@@ -1,0 +1,192 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+
+import {
+  beadsToSnapshot,
+  createBeadsProjectOs,
+} from "../src/beads-project-os.js";
+import { computeLedger } from "../src/agent-bank/ledger.js";
+
+// bd list --json の1要素（実機で確認した形）を ProjectOs の TicketRecord に写す。
+test("beadsToSnapshot maps a bead to a ticket record", () => {
+  const beads = [
+    {
+      id: "bd-x-n9p",
+      title: "決算期の経費仕分け",
+      description: "取引データを正しい勘定科目に振り分ける",
+      acceptance_criteria: "人間レビューと95%一致",
+      status: "open",
+      issue_type: "task",
+      metadata: {
+        ownerCharacterId: "iroha",
+        executorHarnessId: "tax-v3",
+      },
+      created_at: "2026-06-08T03:04:08Z",
+      updated_at: "2026-06-08T03:04:08Z",
+    },
+  ];
+
+  const snapshot = beadsToSnapshot(beads);
+
+  assert.equal(snapshot.tickets.length, 1);
+  const ticket = snapshot.tickets[0];
+  assert.equal(ticket.id, "bd-x-n9p");
+  assert.equal(ticket.title, "決算期の経費仕分け");
+  assert.equal(ticket.purpose, "取引データを正しい勘定科目に振り分ける");
+  assert.deepEqual(ticket.acceptance, ["人間レビューと95%一致"]);
+  assert.equal(ticket.ownerCharacterId, "iroha");
+  assert.equal(ticket.executorHarnessId, "tax-v3");
+  assert.equal(ticket.status, "open");
+  assert.equal(ticket.createdAt, "2026-06-08T03:04:08Z");
+  assert.equal(ticket.updatedAt, "2026-06-08T03:04:08Z");
+});
+
+// close 時に bead.metadata.run へ畳んだ実行記録を runs[] に復元する。
+// ledger は harnessId / status / output.qualityScore / updatedAt を読み、
+// harness.test.js は runs[0].input.permissionCheck を読む（§3.1 ★）。
+test("beadsToSnapshot derives a run from a closed bead's folded metadata", () => {
+  const beads = [
+    {
+      id: "bd-x-n9p",
+      title: "決算期の経費仕分け",
+      description: "取引データを正しい勘定科目に振り分ける",
+      acceptance_criteria: "人間レビューと95%一致",
+      status: "closed",
+      issue_type: "task",
+      metadata: {
+        ownerCharacterId: "iroha",
+        executorHarnessId: "tax-v3",
+        run: {
+          id: "run-1",
+          harnessId: "tax-v3",
+          status: "completed",
+          input: { text: "経費を仕分けて", permissionCheck: { allowed: true } },
+          output: { status: "completed", qualityScore: 4.5 },
+          createdAt: "2026-06-08T03:04:08Z",
+          updatedAt: "2026-06-08T03:05:00Z",
+        },
+      },
+      created_at: "2026-06-08T03:04:08Z",
+      updated_at: "2026-06-08T03:05:00Z",
+    },
+  ];
+
+  const snapshot = beadsToSnapshot(beads);
+
+  assert.equal(snapshot.runs.length, 1);
+  const run = snapshot.runs[0];
+  assert.equal(run.id, "run-1");
+  assert.equal(run.ticketId, "bd-x-n9p");
+  assert.equal(run.harnessId, "tax-v3");
+  assert.equal(run.status, "completed");
+  assert.equal(run.input.permissionCheck.allowed, true);
+  assert.equal(run.output.qualityScore, 4.5);
+  assert.equal(run.updatedAt, "2026-06-08T03:05:00Z");
+});
+
+// run を畳んでいない bead（未委譲・未着手）からは run を出さない。
+test("beadsToSnapshot yields no run for a bead without a folded run", () => {
+  const beads = [
+    {
+      id: "bd-x-aaa",
+      title: "まだ着手してない仕事",
+      description: "...",
+      status: "open",
+      issue_type: "task",
+      metadata: {},
+      created_at: "2026-06-08T03:04:08Z",
+      updated_at: "2026-06-08T03:04:08Z",
+    },
+  ];
+
+  const snapshot = beadsToSnapshot(beads);
+
+  assert.equal(snapshot.tickets.length, 1);
+  assert.equal(snapshot.runs.length, 0);
+});
+
+// B案の証明：子 bead 無しで（1委譲=1bead=1run）、同じ専門家が3つの別 bead で
+// 完了すれば computeLedger の calls=3 に到達する。＝ 旧 BLOCK-1 は不要だった。
+test("computeLedger over a beads-derived snapshot aggregates by harnessId", () => {
+  const closedBead = (id, score) => ({
+    id,
+    title: "仕事",
+    description: "...",
+    status: "closed",
+    issue_type: "task",
+    metadata: {
+      run: {
+        id: `run-${id}`,
+        harnessId: "tax-v3",
+        status: "completed",
+        input: { permissionCheck: { allowed: true } },
+        output: { status: "completed", qualityScore: score },
+        createdAt: "2026-06-08T03:04:08Z",
+        updatedAt: `2026-06-08T03:0${Math.floor(score)}:00Z`,
+      },
+    },
+    created_at: "2026-06-08T03:04:08Z",
+    updated_at: "2026-06-08T03:05:00Z",
+  });
+
+  // 3つの別 ticket（別 bead）で、同じ専門家 tax-v3 が完了。
+  const beads = [
+    closedBead("bd-1", 4),
+    closedBead("bd-2", 5),
+    closedBead("bd-3", 3),
+  ];
+
+  const ledger = computeLedger(beadsToSnapshot(beads));
+
+  assert.equal(ledger["tax-v3"].calls, 3);
+  assert.equal(ledger["tax-v3"].success, 3);
+  assert.equal(ledger["tax-v3"].avgScore, (4 + 5 + 3) / 3);
+});
+
+// createBeadsProjectOs: exec を注入。createTicket は `bd create --json` を叩き、
+// 返った JSON を TicketRecord に写す。fake exec で bd を呼ばずに検証する。
+test("createTicket runs `bd create --json` and returns a TicketRecord", () => {
+  const calls = [];
+  const exec = (args) => {
+    calls.push(args);
+    if (args[0] === "create") {
+      return JSON.stringify({
+        id: "bd-x-1",
+        title: "経費を仕分けて",
+        description: "取引データを勘定科目へ",
+        acceptance_criteria: "95%一致",
+        status: "open",
+        issue_type: "task",
+        metadata: { ownerCharacterId: "iroha", executorHarnessId: "tax-v3" },
+        created_at: "2026-06-08T03:14:00Z",
+        updated_at: "2026-06-08T03:14:00Z",
+      });
+    }
+    return "";
+  };
+
+  const pos = createBeadsProjectOs({ exec });
+  const ticket = pos.createTicket({
+    title: "経費を仕分けて",
+    purpose: "取引データを勘定科目へ",
+    acceptance: ["95%一致"],
+    ownerCharacterId: "iroha",
+    executorHarnessId: "tax-v3",
+  });
+
+  // bd create --json を叩いている
+  assert.equal(calls[0][0], "create");
+  assert.ok(calls[0].includes("--json"), "passes --json");
+  assert.ok(calls[0].includes("経費を仕分けて"), "passes the title");
+  // メタデータに owner/executor を畳んでいる
+  const metaIdx = calls[0].indexOf("--metadata");
+  assert.ok(metaIdx >= 0, "passes --metadata");
+  const meta = JSON.parse(calls[0][metaIdx + 1]);
+  assert.equal(meta.ownerCharacterId, "iroha");
+  assert.equal(meta.executorHarnessId, "tax-v3");
+  // 返り値は TicketRecord
+  assert.equal(ticket.id, "bd-x-1");
+  assert.equal(ticket.purpose, "取引データを勘定科目へ");
+  assert.equal(ticket.ownerCharacterId, "iroha");
+  assert.equal(ticket.status, "open");
+});
