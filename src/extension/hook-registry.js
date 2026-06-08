@@ -3,8 +3,16 @@ const freezeCopy = (value) => Object.freeze({ ...value });
 export const createHookRegistry = () => {
   const handlers = new Map();
 
-  const register = (event, handler) => {
-    const next = [...(handlers.get(event) || []), { run: handler }];
+  const register = (
+    event,
+    handler,
+    { style = "inprocess", priority = 0 } = {},
+  ) => {
+    const next = [
+      ...(handlers.get(event) || []),
+      { style, priority, run: handler },
+    ];
+    next.sort((a, b) => b.priority - a.priority);
     handlers.set(event, next);
     return registry;
   };
@@ -20,6 +28,9 @@ export const createHookRegistry = () => {
           reason: decision.block.reason ?? null,
           context: current,
         });
+      }
+      if (decision && decision.transform) {
+        current = freezeCopy({ ...current, ...decision.transform });
       }
     }
     return freezeCopy({

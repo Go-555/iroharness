@@ -38,3 +38,27 @@ test("a handler returning block stops dispatch and skips later handlers", () => 
   assert.equal(result.reason, "denied");
   assert.deepEqual(ran, ["first"]);
 });
+
+test("handlers run in priority order and transform merges into the context", () => {
+  const registry = createHookRegistry();
+  const order = [];
+  registry.register(
+    "turn:before",
+    (ctx) => {
+      order.push("low");
+      return { transform: { tag: `${ctx.tag || ""}low` } };
+    },
+    { priority: 0 },
+  );
+  registry.register(
+    "turn:before",
+    (ctx) => {
+      order.push("high");
+      return { transform: { tag: `${ctx.tag || ""}high-` } };
+    },
+    { priority: 10 },
+  );
+  const result = registry.dispatch("turn:before", { tag: "" });
+  assert.deepEqual(order, ["high", "low"]);
+  assert.equal(result.context.tag, "high-low");
+});
