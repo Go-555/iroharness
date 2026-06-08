@@ -102,6 +102,36 @@ test("REALTIME_HOOK_EVENTS lists the protected realtime points", () => {
   assert.ok(REALTIME_HOOK_EVENTS.has("device:emit"));
 });
 
+test("a command/agent hook on the device: prefix (device:emit) is rejected", () => {
+  const registry = createHookRegistry();
+  assert.throws(
+    () =>
+      registry.register("device:emit", () => undefined, { style: "command" }),
+    /realtime/,
+  );
+  assert.throws(
+    () => registry.register("device:emit", () => undefined, { style: "agent" }),
+    /realtime/,
+  );
+  assert.doesNotThrow(() =>
+    registry.register("device:emit", () => undefined, { style: "inprocess" }),
+  );
+});
+
+test("every advertised realtime event is enforced by the prefix matcher (no drift)", () => {
+  // Pins REALTIME_HOOK_EVENTS (discovery) to the prefix enforcement: a
+  // command hook on any advertised realtime event must be rejected. Catches
+  // drift where an event is added to the Set but not covered by a prefix.
+  for (const event of REALTIME_HOOK_EVENTS) {
+    const registry = createHookRegistry();
+    assert.throws(
+      () => registry.register(event, () => undefined, { style: "command" }),
+      /realtime/,
+      `expected ${event} to be enforced as realtime`,
+    );
+  }
+});
+
 test("register rejects an empty event name and a non-function handler", () => {
   const registry = createHookRegistry();
   assert.throws(() => registry.register("", () => undefined), /event/);
