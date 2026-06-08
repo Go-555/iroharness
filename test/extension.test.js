@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { createHookRegistry } from "../src/extension/hook-registry.js";
+import {
+  createHookRegistry,
+  REALTIME_HOOK_EVENTS,
+} from "../src/extension/hook-registry.js";
 
 test("dispatch with no handlers passes the context through unblocked", () => {
   const registry = createHookRegistry();
@@ -61,4 +64,40 @@ test("handlers run in priority order and transform merges into the context", () 
   const result = registry.dispatch("turn:before", { tag: "" });
   assert.deepEqual(order, ["high", "low"]);
   assert.equal(result.context.tag, "high-low");
+});
+
+test("registering a command/agent hook on a realtime event throws", () => {
+  const registry = createHookRegistry();
+  assert.throws(
+    () =>
+      registry.register("bargein:detect", () => undefined, {
+        style: "command",
+      }),
+    /realtime/,
+  );
+  assert.throws(
+    () =>
+      registry.register("speech:before", () => undefined, { style: "agent" }),
+    /realtime/,
+  );
+});
+
+test("an in-process hook on a realtime event is allowed", () => {
+  const registry = createHookRegistry();
+  assert.doesNotThrow(() =>
+    registry.register(
+      "bargein:detect",
+      () => ({ block: { reason: "interrupted" } }),
+      {
+        style: "inprocess",
+      },
+    ),
+  );
+});
+
+test("REALTIME_HOOK_EVENTS lists the protected realtime points", () => {
+  assert.ok(REALTIME_HOOK_EVENTS.has("bargein:detect"));
+  assert.ok(REALTIME_HOOK_EVENTS.has("speech:before"));
+  assert.ok(REALTIME_HOOK_EVENTS.has("speech:chunk"));
+  assert.ok(REALTIME_HOOK_EVENTS.has("device:emit"));
 });
