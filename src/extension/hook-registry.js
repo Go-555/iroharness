@@ -12,7 +12,15 @@ export const createHookRegistry = () => {
   const dispatch = (event, context = {}) => {
     let current = freezeCopy(context);
     for (const entry of handlers.get(event) || []) {
-      entry.run(current);
+      const decision = entry.run(current);
+      if (decision && decision.block) {
+        return freezeCopy({
+          event,
+          blocked: true,
+          reason: decision.block.reason ?? null,
+          context: current,
+        });
+      }
     }
     return freezeCopy({
       event,

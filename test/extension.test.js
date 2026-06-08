@@ -21,3 +21,20 @@ test("a single in-process handler runs and can pass through", () => {
   assert.deepEqual(seen, ["hi"]);
   assert.equal(result.blocked, false);
 });
+
+test("a handler returning block stops dispatch and skips later handlers", () => {
+  const registry = createHookRegistry();
+  const ran = [];
+  registry.register("tool:before", () => {
+    ran.push("first");
+    return { block: { reason: "denied" } };
+  });
+  registry.register("tool:before", () => {
+    ran.push("second");
+    return undefined;
+  });
+  const result = registry.dispatch("tool:before", { tool: "codex" });
+  assert.equal(result.blocked, true);
+  assert.equal(result.reason, "denied");
+  assert.deepEqual(ran, ["first"]);
+});
