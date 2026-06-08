@@ -42,3 +42,56 @@ test("isSkillEligible rejects an unknown view layer", () => {
     false,
   );
 });
+
+test("capability gating: actor must hold the named capability", () => {
+  const g = parseSkillGating({ capability: "delegate_work" });
+  assert.equal(
+    isSkillEligible({
+      gating: g,
+      view: "owner",
+      permissions: ["delegate_work"],
+    }),
+    true,
+  );
+  assert.equal(
+    isSkillEligible({
+      gating: g,
+      view: "owner",
+      permissions: ["manage_stream"],
+    }),
+    false,
+  );
+  assert.equal(
+    isSkillEligible({ gating: g, view: "owner", permissions: [] }),
+    false,
+  );
+});
+
+test("requires gating: requirement must be satisfied", () => {
+  const g = parseSkillGating({ requires: "stream.enabled" });
+  assert.equal(
+    isSkillEligible({
+      gating: g,
+      view: "owner",
+      satisfiedRequirements: ["stream.enabled"],
+    }),
+    true,
+  );
+  assert.equal(
+    isSkillEligible({ gating: g, view: "owner", satisfiedRequirements: [] }),
+    false,
+  );
+});
+
+test("absent capability/requires impose no restriction", () => {
+  const g = parseSkillGating({ view: "public" });
+  assert.equal(
+    isSkillEligible({
+      gating: g,
+      view: "public",
+      permissions: [],
+      satisfiedRequirements: [],
+    }),
+    true,
+  );
+});
