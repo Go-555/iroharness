@@ -1134,6 +1134,7 @@ test("CLI view export materializes only view-visible skills per zone", () => {
   };
   writeSkill("pub-greet", "view: public\n");
   writeSkill("trust-ops", "view: trusted\ncapability: delegate_work\n");
+  writeSkill("alias-internal", "view: internal\n");
   writeSkill("owner-secret", "view: owner\n");
   writeSkill("ungated", "");
 
@@ -1156,12 +1157,14 @@ test("CLI view export materializes only view-visible skills per zone", () => {
   const pub = exportZone("public");
   assert.equal(existsSync(join(pub, "pub-greet", "SKILL.md")), true);
   assert.equal(existsSync(join(pub, "trust-ops")), false);
+  assert.equal(existsSync(join(pub, "alias-internal")), false);
   assert.equal(existsSync(join(pub, "owner-secret")), false);
   assert.equal(existsSync(join(pub, "ungated")), false);
 
   const trusted = exportZone("trusted");
   assert.equal(existsSync(join(trusted, "pub-greet", "SKILL.md")), true);
   assert.equal(existsSync(join(trusted, "trust-ops", "SKILL.md")), true);
+  assert.equal(existsSync(join(trusted, "alias-internal", "SKILL.md")), true);
   assert.equal(existsSync(join(trusted, "owner-secret")), false);
   assert.equal(existsSync(join(trusted, "ungated")), false);
 
@@ -1232,4 +1235,35 @@ test("CLI view export lists materialized skills in the manifest", () => {
     readFileSync(join(out, "current", "view-manifest.json"), "utf8"),
   );
   assert.equal(manifest.files.includes(join("skills", "pub-greet")), true);
+});
+
+test("CLI view export ignores a broken symlink in the skills root without aborting", () => {
+  const dir = mkdtempSync(join(tmpdir(), "iroharness-view-skills-symlink-"));
+  const appDir = join(dir, "companion");
+  runCli(["init", appDir, "--character", "Iroha"]);
+  const skillsRoot = join(appDir, ".iroharness", "skills");
+  mkdirSync(join(skillsRoot, "good"), { recursive: true });
+  writeFileSync(
+    join(skillsRoot, "good", "SKILL.md"),
+    "---\nname: good\ndescription: good.\nview: public\n---\n\n# good\n",
+    "utf8",
+  );
+  symlinkSync(join(dir, "does-not-exist"), join(skillsRoot, "dangling")); // broken symlink
+
+  const out = join(dir, "public-view");
+  const result = runCli([
+    "view",
+    "export",
+    appDir,
+    "--zone",
+    "public",
+    "--out",
+    out,
+    "--force",
+  ]);
+  assert.equal(result.status, 0, result.stderr); // did not abort
+  assert.equal(
+    existsSync(join(out, "current", "skills", "good", "SKILL.md")),
+    true,
+  );
 });

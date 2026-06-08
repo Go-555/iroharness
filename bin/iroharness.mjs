@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { randomBytes } from "node:crypto";
-import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 
 import { createFileUserRegistry, createProjectOsMarkdown } from "../src/index.js";
@@ -1474,7 +1474,7 @@ const exportSkillFiles = ({ sourceRoot, targetRoot, zone, files }) => {
     for (const entry of readdirSync(root)) {
       const skillDir = join(root, entry);
       const manifestPath = join(skillDir, "SKILL.md");
-      if (!statSync(skillDir).isDirectory() || !existsSync(manifestPath)) {
+      if (!lstatSync(skillDir).isDirectory() || !existsSync(manifestPath)) {
         continue;
       }
       let gating;
