@@ -190,3 +190,217 @@ test("createTicket runs `bd create --json` and returns a TicketRecord", () => {
   assert.equal(ticket.ownerCharacterId, "iroha");
   assert.equal(ticket.status, "open");
 });
+
+// snapshot は `bd list --all --json`（closed も含む）を叩いて派生する。
+// --all を落とすと closed bead が消え、ledger の calls が欠ける（実機で確認済み）。
+test("snapshot runs `bd list --all --json` and derives the snapshot", () => {
+  const calls = [];
+  const exec = (args) => {
+    calls.push(args);
+    if (args[0] === "list") {
+      return JSON.stringify([
+        {
+          id: "bd-1",
+          title: "T",
+          description: "P",
+          acceptance_criteria: "A",
+          status: "open",
+          issue_type: "task",
+          metadata: { ownerCharacterId: "iroha" },
+          created_at: "2026-06-08T03:14:00Z",
+          updated_at: "2026-06-08T03:14:00Z",
+        },
+      ]);
+    }
+    return "";
+  };
+
+  const pos = createBeadsProjectOs({ exec });
+  const snap = pos.snapshot();
+
+  assert.deepEqual(calls[0], ["list", "--all", "--json"]);
+  assert.equal(snap.tickets.length, 1);
+  assert.equal(snap.tickets[0].id, "bd-1");
+  assert.equal(snap.runs.length, 0);
+});
+
+// updateTicket: ProjectOs の status 語彙（done/needs_attention）は bd の status
+// (open/closed) と別物なので metadata.projectStatus に保持する（--set-metadata で
+// 既存 metadata を壊さずマージ）。
+test("updateTicket folds ProjectOs status into metadata.projectStatus", () => {
+  const calls = [];
+  const exec = (args) => {
+    calls.push(args);
+    return "";
+  };
+
+  const pos = createBeadsProjectOs({ exec });
+  pos.updateTicket("bd-1", { status: "done" });
+
+  assert.equal(calls[0][0], "update");
+  assert.ok(calls[0].includes("bd-1"), "targets the bead");
+  const joined = calls[0].join(" ");
+  assert.ok(
+    joined.includes("projectStatus") && joined.includes("done"),
+    "folds projectStatus=done into metadata",
+  );
+});
+
+// createRun: 1委譲=1bead=1run なので run.id = ticketId。run を bead.metadata.run に
+// 畳む（--set-metadata でマージ。値は JSON 文字列）。RunRecord を返す。
+test("createRun folds a running run into the bead and returns a RunRecord", () => {
+  const calls = [];
+  const exec = (args) => {
+    calls.push(args);
+    return "";
+  };
+
+  const pos = createBeadsProjectOs({ exec });
+  const run = pos.createRun({
+    ticketId: "bd-1",
+    harnessId: "tax-v3",
+    input: { text: "経費を仕分けて", permissionCheck: { allowed: true } },
+  });
+
+  assert.equal(calls[0][0], "update");
+  assert.ok(calls[0].includes("bd-1"));
+  const sm = calls[0].indexOf("--set-metadata");
+  assert.ok(sm >= 0, "uses --set-metadata");
+  const kv = calls[0][sm + 1];
+  assert.ok(kv.startsWith("run="), "folds under the run key");
+  const folded = JSON.parse(kv.slice("run=".length));
+  assert.equal(folded.harnessId, "tax-v3");
+  assert.equal(folded.status, "running");
+  assert.equal(folded.input.permissionCheck.allowed, true);
+
+  assert.equal(run.id, "bd-1");
+  assert.equal(run.ticketId, "bd-1");
+  assert.equal(run.harnessId, "tax-v3");
+  assert.equal(run.status, "running");
+});
+
+// completeRun: 現在の run を読み（show）、status/output を更新して書き戻し、bead を close。
+test("completeRun marks the folded run complete and closes the bead", () => {
+  const calls = [];
+  const exec = (args) => {
+    calls.push(args);
+    if (args[0] === "show") {
+      // bd show --json returns an array (batchable); mirror that here.
+      return JSON.stringify([
+        {
+          id: "bd-1",
+          metadata: {
+            ownerCharacterId: "iroha",
+            run: JSON.stringify({
+              id: "bd-1",
+              ticketId: "bd-1",
+              harnessId: "tax-v3",
+              status: "running",
+              input: { permissionCheck: { allowed: true } },
+              output: null,
+              createdAt: "2026-06-08T03:04:08Z",
+              updatedAt: "2026-06-08T03:04:08Z",
+            }),
+          },
+        },
+      ]);
+    }
+    return "";
+  };
+
+  const pos = createBeadsProjectOs({ exec });
+  const done = pos.completeRun(
+    "bd-1",
+    { status: "completed", qualityScore: 4.5 },
+    "completed",
+  );
+
+  const cmds = calls.map((c) => c[0]);
+  assert.ok(cmds.includes("show"), "reads current run");
+  assert.ok(cmds.includes("update"), "writes updated run");
+  assert.ok(cmds.includes("close"), "closes the bead");
+  assert.equal(done.status, "completed");
+  assert.equal(done.output.qualityScore, 4.5);
+});
+
+// addArtifact: 既存 artifacts 配列に追記して bead.metadata.artifacts へ書き戻す。
+test("addArtifact appends an artifact to the bead metadata", () => {
+  const calls = [];
+  const exec = (args) => {
+    calls.push(args);
+    if (args[0] === "show") {
+      return JSON.stringify([
+        { id: "bd-1", metadata: { ownerCharacterId: "iroha" } },
+      ]);
+    }
+    return "";
+  };
+
+  const pos = createBeadsProjectOs({ exec });
+  const artifact = pos.addArtifact({
+    ticketId: "bd-1",
+    runId: "bd-1",
+    kind: "pr",
+    uri: "https://example/pr/1",
+    title: "PR #1",
+  });
+
+  const upd = calls.find((c) => c[0] === "update");
+  assert.ok(upd, "updates the bead");
+  const sm = upd.indexOf("--set-metadata");
+  const kv = upd[sm + 1];
+  assert.ok(kv.startsWith("artifacts="), "folds under the artifacts key");
+  const arr = JSON.parse(kv.slice("artifacts=".length));
+  assert.equal(arr.length, 1);
+  assert.equal(arr[0].uri, "https://example/pr/1");
+  assert.equal(artifact.kind, "pr");
+});
+
+// 実機の --set-metadata は入れ子を文字列化する。snapshot はそれをパースして復元し、
+// projectStatus を ticket.status に優先する。
+test("beadsToSnapshot parses string-encoded run/artifacts and honors projectStatus", () => {
+  const beads = [
+    {
+      id: "bd-1",
+      title: "T",
+      description: "P",
+      status: "closed",
+      issue_type: "task",
+      metadata: {
+        ownerCharacterId: "iroha",
+        projectStatus: "done",
+        run: JSON.stringify({
+          id: "bd-1",
+          harnessId: "tax-v3",
+          status: "completed",
+          input: { permissionCheck: { allowed: true } },
+          output: { qualityScore: 4.5 },
+          createdAt: "2026-06-08T03:04:08Z",
+          updatedAt: "2026-06-08T03:05:00Z",
+        }),
+        artifacts: JSON.stringify([
+          {
+            id: "a1",
+            ticketId: "bd-1",
+            runId: "bd-1",
+            kind: "pr",
+            uri: "https://example/pr/1",
+            title: "PR #1",
+          },
+        ]),
+      },
+      created_at: "2026-06-08T03:04:08Z",
+      updated_at: "2026-06-08T03:05:00Z",
+    },
+  ];
+
+  const snapshot = beadsToSnapshot(beads);
+
+  assert.equal(snapshot.tickets[0].status, "done"); // projectStatus 優先
+  assert.equal(snapshot.runs.length, 1);
+  assert.equal(snapshot.runs[0].harnessId, "tax-v3");
+  assert.equal(snapshot.runs[0].input.permissionCheck.allowed, true);
+  assert.equal(snapshot.runs[0].output.qualityScore, 4.5);
+  assert.equal(snapshot.artifacts.length, 1);
+  assert.equal(snapshot.artifacts[0].uri, "https://example/pr/1");
+});

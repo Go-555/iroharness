@@ -6,27 +6,42 @@
 // `bd list --json` so the ledger-compatible shape is preserved and downstream
 // (ledger / promotion / adapter) stays unchanged.
 
+// bd's --set-metadata encodes nested values as JSON strings, so folded run /
+// artifacts come back as strings. Parse them; tolerate already-parsed objects
+// (used by direct beadsToSnapshot tests).
+const parseMaybe = (value) =>
+  typeof value === "string" ? JSON.parse(value) : value;
+
+const nowIso = () => new Date().toISOString();
+const createId = (prefix) =>
+  `${prefix}-${Math.random().toString(36).slice(2, 10)}`;
+
 // Pure: bd list --json output -> ProjectOs snapshot {tickets, runs, artifacts}.
 export const beadsToSnapshot = (beads = []) => {
   const tickets = [];
   const runs = [];
+  const artifacts = [];
 
   for (const bead of beads) {
+    const meta = bead.metadata ?? {};
+
     tickets.push({
       id: bead.id,
       title: bead.title,
       purpose: bead.description,
       acceptance: bead.acceptance_criteria ? [bead.acceptance_criteria] : [],
-      ownerCharacterId: bead.metadata?.ownerCharacterId,
-      executorHarnessId: bead.metadata?.executorHarnessId ?? null,
-      status: bead.status,
+      ownerCharacterId: meta.ownerCharacterId,
+      executorHarnessId: meta.executorHarnessId ?? null,
+      // ProjectOs status (done/needs_attention/open) lives in metadata.projectStatus;
+      // fall back to bd's own status when it was never set.
+      status: meta.projectStatus ?? bead.status,
       createdAt: bead.created_at,
       updatedAt: bead.updated_at,
     });
 
-    // The run is folded into bead.metadata.run on close (§3.1). One bead = one run.
-    const run = bead.metadata?.run;
-    if (run) {
+    // The run is folded into bead.metadata.run (§3.1). One bead = one run.
+    if (meta.run) {
+      const run = parseMaybe(meta.run);
       runs.push({
         id: run.id,
         ticketId: bead.id,
@@ -38,9 +53,15 @@ export const beadsToSnapshot = (beads = []) => {
         updatedAt: run.updatedAt,
       });
     }
+
+    if (meta.artifacts) {
+      for (const artifact of parseMaybe(meta.artifacts)) {
+        artifacts.push(artifact);
+      }
+    }
   }
 
-  return { tickets, runs, artifacts: [] };
+  return { tickets, runs, artifacts };
 };
 
 // ProjectOs backend over beads. `exec(args)` runs the `bd` CLI and returns its
@@ -65,5 +86,81 @@ export const createBeadsProjectOs = ({ exec }) => {
     return beadsToSnapshot([bead]).tickets[0];
   };
 
-  return { createTicket };
+  // ProjectOs status (open/done/needs_attention) is distinct from bd status
+  // (open/closed). Keep it in metadata.projectStatus, merged via --set-metadata
+  // so existing metadata (owner/executor/run) survives.
+  const updateTicket = (ticketId, patch = {}) => {
+    const args = ["update", ticketId];
+    if (patch.status) {
+      args.push("--set-metadata", `projectStatus=${patch.status}`);
+    }
+    exec(args);
+  };
+
+  // One delegation = one bead = one run, so the run shares the bead's id.
+  const createRun = ({ ticketId, harnessId, input }) => {
+    const now = nowIso();
+    const run = {
+      id: ticketId,
+      ticketId,
+      harnessId,
+      status: "running",
+      input,
+      output: null,
+      createdAt: now,
+      updatedAt: now,
+    };
+    exec(["update", ticketId, "--set-metadata", `run=${JSON.stringify(run)}`]);
+    return run;
+  };
+
+  // Read the current folded run, mark it complete, write it back, and close the bead.
+  const completeRun = (runId, output, status = "completed") => {
+    // `bd show --json` returns an array (it can batch ids); take the first.
+    const bead = JSON.parse(exec(["show", runId, "--json"]))[0];
+    const current = parseMaybe(bead.metadata.run);
+    const next = { ...current, status, output, updatedAt: nowIso() };
+    exec(["update", runId, "--set-metadata", `run=${JSON.stringify(next)}`]);
+    exec(["close", runId]);
+    return next;
+  };
+
+  // Append to the bead's folded artifacts array (read-modify-write).
+  const addArtifact = ({ ticketId, runId, kind, uri, title }) => {
+    const bead = JSON.parse(exec(["show", ticketId, "--json"]))[0];
+    const existing = bead.metadata?.artifacts
+      ? parseMaybe(bead.metadata.artifacts)
+      : [];
+    const artifact = {
+      id: createId("artifact"),
+      ticketId,
+      runId,
+      kind,
+      uri,
+      title,
+      createdAt: nowIso(),
+    };
+    const next = [...existing, artifact];
+    exec([
+      "update",
+      ticketId,
+      "--set-metadata",
+      `artifacts=${JSON.stringify(next)}`,
+    ]);
+    return artifact;
+  };
+
+  // Read the whole board (closed beads included via --all) and derive the
+  // ledger-compatible {tickets, runs, artifacts} shape.
+  const snapshot = () =>
+    beadsToSnapshot(JSON.parse(exec(["list", "--all", "--json"])));
+
+  return {
+    createTicket,
+    updateTicket,
+    createRun,
+    completeRun,
+    addArtifact,
+    snapshot,
+  };
 };
