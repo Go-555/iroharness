@@ -33,11 +33,33 @@ test("parseSkillGating reads the three flat keys", () => {
   assert.equal(g.requires, "stream.enabled");
 });
 
-test("parseSkillGating defaults: view=public, capability/requires=null", () => {
+test("parseSkillGating fails closed: absent view => owner, capability/requires=null", () => {
   const g = parseSkillGating({});
-  assert.equal(g.view, "public");
+  assert.equal(g.view, "owner");
   assert.equal(g.capability, null);
   assert.equal(g.requires, null);
+});
+
+test("parseSkillGating fails closed on malformed/unknown view => owner", () => {
+  assert.equal(parseSkillGating({ view: [] }).view, "owner"); // YAML `view:` (empty)
+  assert.equal(parseSkillGating({ view: ["a", "b"] }).view, "owner"); // multi-item list
+  assert.equal(parseSkillGating({ view: "secret" }).view, "owner"); // unknown value
+  assert.equal(parseSkillGating({ view: 123 }).view, "owner"); // non-string
+});
+
+test("parseSkillGating normalizes case and aliases (matches normalizeVisibility)", () => {
+  assert.equal(parseSkillGating({ view: "Trusted" }).view, "trusted");
+  assert.equal(parseSkillGating({ view: "PUBLIC" }).view, "public");
+  assert.equal(parseSkillGating({ view: "external" }).view, "public");
+  assert.equal(parseSkillGating({ view: "internal" }).view, "trusted");
+  assert.equal(parseSkillGating({ view: "team" }).view, "trusted");
+  assert.equal(parseSkillGating({ view: ["trusted"] }).view, "trusted"); // single-item list resolves
+});
+
+test("owner-only skill is denied to a trusted session (top-tier boundary)", () => {
+  const ownerSkill = parseSkillGating({ view: "owner" });
+  assert.equal(isSkillEligible({ gating: ownerSkill, view: "trusted" }), false);
+  assert.equal(isSkillEligible({ gating: ownerSkill, view: "owner" }), true);
 });
 
 test("view gating: session must rank >= skill view", () => {
@@ -55,9 +77,16 @@ test("view gating: session must rank >= skill view", () => {
   assert.equal(isSkillEligible({ gating: trustedSkill, view: "owner" }), true);
 });
 
-test("isSkillEligible rejects an unknown view layer", () => {
+test("an unrecognized session view falls back to public (least privilege)", () => {
+  const publicSkill = parseSkillGating({ view: "public" });
+  const trustedSkill = parseSkillGating({ view: "trusted" });
+  // garbage session view -> treated as public: sees public, not trusted
   assert.equal(
-    isSkillEligible({ gating: parseSkillGating({}), view: "nonsense" }),
+    isSkillEligible({ gating: publicSkill, view: "nonsense" }),
+    true,
+  );
+  assert.equal(
+    isSkillEligible({ gating: trustedSkill, view: "nonsense" }),
     false,
   );
 });

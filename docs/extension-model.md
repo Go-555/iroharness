@@ -201,9 +201,14 @@ parser reads `name`, `description`, `purpose`, `trigger`, `shape`, `role`,
 `kind`, `version`, `prefix`, `context`, `user-invocable`,
 `disable-model-invocation`, `argument-hint`, `allowed-tools`, `agent`, `model`,
 `base`, `pair`, `evaluator`, `inputs`, `outputs`, `references`). They are simply
-absent on skills that do not opt into gating — an absent `view` defaults to
-`public`, an absent `capability`/`requires` imposes no restriction. Other
-runtimes ignore the keys they do not recognize.
+absent on skills that do not opt into gating. **Gating fails closed:** an absent,
+malformed, or unrecognized `view` resolves to `owner` (the most restrictive
+layer) — `public` must be an explicit opt-in, so a skill authored without a
+`view` is never silently exposed. View values are case-folded and alias-mapped
+(`external`→`public`, `team`/`internal`→`trusted`) to match `normalizeVisibility`
+in `bin/iroharness.mjs`. An absent `capability`/`requires` imposes no additional
+restriction (the `view` gate still applies). Other runtimes ignore the keys they
+do not recognize.
 
 **Reading the gating keys without touching upstream internals.** The upstream
 manifest builder (`skillManifestFromFrontmatter`) and its normalizer
@@ -235,8 +240,11 @@ context (current view layer + acting actor), it returns the **eligible** subset
 by applying three checks, all of which must pass:
 
 1. **View layer** — the skill's `view` must be visible from the session's
-   current view layer. A `public` session never sees `trusted` or `owner`
-   skills. An absent `view` is treated as `public`.
+   current view layer (eligible iff `rank(session) >= rank(skill.view)`, with
+   `public` < `trusted` < `owner`). A `public` session never sees `trusted` or
+   `owner` skills. **Fail closed:** an absent/malformed/unrecognized skill `view`
+   resolves to `owner` (deny by default); an unrecognized *session* view falls
+   back to `public` (least privilege).
 2. **Requires** — the skill's `requires` condition (config, environment,
    platform, binary presence) must hold. An absent `requires` always passes.
 3. **Capability** — the acting actor must hold the named `capability` (§5
@@ -330,9 +338,11 @@ Each unit has one purpose and a defined interface:
 - **hook-runners**: in-process as a pure function; command against a fixture
   script asserting the JSON contract; agent against a mocked model.
 - **skill-gate**: fixtures with `public`/`trusted`/`owner` skills assert view
-  gating, requires gating, and capability gating; absent keys default open
-  (absent `view` = public, absent `capability`/`requires` = no restriction); the
-  pre-filtered set fed to `createSkillContextListing` excludes ineligible skills.
+  gating, requires gating, and capability gating; **fail-closed defaults** (absent/
+  malformed/unknown `view` => `owner`, including the owner-vs-trusted denial
+  boundary; unknown session view => `public`; case-fold + alias normalization);
+  absent `capability`/`requires` = no extra restriction; the pre-filtered set fed
+  to `createSkillContextListing` excludes ineligible skills.
 - **gating-key read**: `skill-gate` reads `view`/`capability`/`requires` from a
   skill's `SKILL.md` via the exported `parseSkillFrontmatter` and the manifest's
   `manifestPath`; a skill without the keys parses and defaults open. Upstream

@@ -6,9 +6,28 @@ import { parseSkillFrontmatter } from "./index.js";
 // View order mirrors the zone list in bin/iroharness.mjs (public < trusted < owner); keep both in sync.
 const VIEW_RANK = Object.freeze({ public: 0, trusted: 1, owner: 2 });
 
+// Mirrors normalizeVisibility in bin/iroharness.mjs: case-fold + alias-map, and
+// FAIL CLOSED on anything unrecognized (absent, non-string, list, typo). Skills
+// fall back to "owner" (most restrictive); sessions fall back to "public"
+// (least privilege). Keep the alias map in sync with bin/iroharness.mjs.
+const normalizeView = (value, fallback) => {
+  const normalized = String(value ?? "").toLowerCase();
+  if (normalized === "public" || normalized === "external") return "public";
+  if (
+    normalized === "trusted" ||
+    normalized === "team" ||
+    normalized === "internal"
+  )
+    return "trusted";
+  if (normalized === "owner") return "owner";
+  return fallback;
+};
+
 export const parseSkillGating = (frontmatter = {}) =>
   Object.freeze({
-    view: typeof frontmatter.view === "string" ? frontmatter.view : "public",
+    // Fail closed: an absent/malformed/unrecognized view becomes "owner" (most
+    // restrictive). "public" must be an explicit opt-in.
+    view: normalizeView(frontmatter.view, "owner"),
     capability:
       typeof frontmatter.capability === "string"
         ? frontmatter.capability
@@ -23,7 +42,8 @@ export const isSkillEligible = ({
   permissions = [],
   satisfiedRequirements = [],
 }) => {
-  const sessionRank = VIEW_RANK[view];
+  // Session falls back to least privilege (public) on anything unrecognized.
+  const sessionRank = VIEW_RANK[normalizeView(view, "public")];
   const skillRank = VIEW_RANK[gating.view];
   if (sessionRank === undefined || skillRank === undefined) return false;
   if (sessionRank < skillRank) return false;
