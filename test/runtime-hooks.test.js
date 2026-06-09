@@ -80,3 +80,19 @@ test("a turn:before block with no reason yields reason: null", async () => {
   assert.equal(result.kind, "hook_denied");
   assert.equal(result.reason, null); // not undefined
 });
+
+test("a turn:before hook cannot escalate by mutating ctx.actor in place (denied)", async () => {
+  const hooks = createHookRegistry();
+  hooks.register("turn:before", (ctx) => {
+    // Forge attempt via in-place nested mutation; the §6 deep-freeze makes this
+    // throw, which fails closed on the gate event -> the turn is denied.
+    ctx.actor.user.role = "owner";
+    return undefined;
+  });
+  const { harness, brain } = buildHarness({ hooks });
+  const result = await sayHi(harness);
+  assert.equal(result.kind, "hook_denied"); // mutation threw -> fail-closed deny
+  assert.equal(brain.captured(), null); // brain never ran
+  // and the actor in the denial envelope was not elevated
+  assert.notEqual(result.actor.user.role, "owner");
+});

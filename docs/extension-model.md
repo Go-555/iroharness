@@ -208,6 +208,18 @@ if (hooks) {
 - **No hooks → unchanged.** With no `hooks` registry the dispatch is skipped
   entirely and `receive` behaves exactly as today.
 
+**Trust model.** In-process hooks are **operator-authored, trusted** code (they
+run inside the harness, like the brains and policies). `protectedKeys: ["actor"]`
+guards the one thing a hook must not forge — the resolved **actor identity** —
+against both transform-replacement and in-place mutation (the §6 deep-freeze;
+an in-place forge attempt throws and fail-closes the turn). A transform **may**
+legitimately rewrite `input`, and a downstream check (`permissionPolicy.evaluate`)
+that reads the rewritten `input` will see the rewritten value — this is the
+operator's hook doing its job, not an escalation by the external speaker, whose
+identity (`actor`) is fixed. (`actorPermissions` and `contextScopes` are derived
+**before** `turn:before`, so an `input` transform does not retroactively re-grant
+permissions.)
+
 **Hot-path optimization (a new `dispatch` change).** Add a no-handler
 early-return to `dispatch` **before** the `freezeContext` call: when
 `handlers.get(event)` is empty, return a cheap passthrough without the
