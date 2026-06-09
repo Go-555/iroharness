@@ -179,13 +179,21 @@ export interface UserRegistrySnapshot {
 
 export interface UserRegistry {
   registerUser(input: JsonObject): UserRecord | Promise<UserRecord>;
-  updateUser(userId: string, patch: JsonObject): UserRecord | Promise<UserRecord>;
+  updateUser(
+    userId: string,
+    patch: JsonObject,
+  ): UserRecord | Promise<UserRecord>;
   linkIdentity(input: JsonObject): JsonObject | Promise<JsonObject>;
   setPermissionOverride(input: JsonObject): JsonObject | Promise<JsonObject>;
   deletePermissionOverride(input: JsonObject): JsonObject | Promise<JsonObject>;
   createStreamSession(input: JsonObject): JsonObject | Promise<JsonObject>;
-  updateStreamSession(sessionId: string, patch: JsonObject): JsonObject | Promise<JsonObject>;
-  findByIdentity(actor: ActorInput): UserRecord | null | Promise<UserRecord | null>;
+  updateStreamSession(
+    sessionId: string,
+    patch: JsonObject,
+  ): JsonObject | Promise<JsonObject>;
+  findByIdentity(
+    actor: ActorInput,
+  ): UserRecord | null | Promise<UserRecord | null>;
   resolveActor(actor: ActorInput): ResolvedActor | Promise<ResolvedActor>;
   snapshot(): UserRegistrySnapshot | Promise<UserRegistrySnapshot>;
 }
@@ -200,7 +208,10 @@ export interface MicroHarnessOutput {
 export interface MicroHarness {
   readonly id: string;
   readonly capabilities: readonly string[];
-  run(ticket: TicketRecord, context: JsonObject): Promise<MicroHarnessOutput> | MicroHarnessOutput;
+  run(
+    ticket: TicketRecord,
+    context: JsonObject,
+  ): Promise<MicroHarnessOutput> | MicroHarnessOutput;
 }
 
 export interface Device {
@@ -219,9 +230,11 @@ export interface IroHarness {
   users(): UserRegistrySnapshot | Promise<UserRegistrySnapshot>;
 }
 
-export function createCharacterState(input: Partial<CharacterState> & {
-  readonly characterId: string;
-}): CharacterState;
+export function createCharacterState(
+  input: Partial<CharacterState> & {
+    readonly characterId: string;
+  },
+): CharacterState;
 
 export function createFileCharacterProfile(input?: {
   readonly dir?: string;
@@ -235,13 +248,20 @@ export function createFileCharacterProfile(input?: {
 }): CharacterProfile;
 
 export function createInMemoryProjectOs(): ProjectOs;
-export function createFileProjectOs(input: { readonly path: string }): ProjectOs;
+export function createFileProjectOs(input: {
+  readonly path: string;
+}): ProjectOs;
 export function createProjectOsMarkdown(snapshot: ProjectOsSnapshot): string;
 
 export function createInMemoryUserRegistry(): UserRegistry;
-export function createFileUserRegistry(input: { readonly path: string }): UserRegistry;
+export function createFileUserRegistry(input: {
+  readonly path: string;
+}): UserRegistry;
 export function createPostgresUserRegistry(input: {
-  readonly query: (sql: string, params?: readonly JsonValue[]) => Promise<{ readonly rows: readonly JsonObject[] }>;
+  readonly query: (
+    sql: string,
+    params?: readonly JsonValue[],
+  ) => Promise<{ readonly rows: readonly JsonObject[] }>;
 }): UserRegistry;
 
 export function createPermissionPolicy(input?: JsonObject): JsonObject;
@@ -254,7 +274,9 @@ export function createRealtimeLatencyTracker(input?: JsonObject): JsonObject;
 export function createRealtimeEventBus(input?: JsonObject): JsonObject;
 export function createRealtimeBargeInGate(input?: JsonObject): JsonObject;
 export function createJavascriptRealtimeCore(input?: JsonObject): JsonObject;
-export function createRustRealtimeCoreCabiAdapter(input?: JsonObject): JsonObject;
+export function createRustRealtimeCoreCabiAdapter(
+  input?: JsonObject,
+): JsonObject;
 export function createRustRealtimeCoreBinding(input?: JsonObject): JsonObject;
 export function createTextStreamingStt(input?: JsonObject): JsonObject;
 export function createHttpStreamingStt(input: JsonObject): JsonObject;
@@ -263,7 +285,10 @@ export function createHttpStreamingTts(input: JsonObject): JsonObject;
 export function createSpeechPlaybackQueue(input?: JsonObject): JsonObject;
 export function createRealtimeVoiceSession(input?: JsonObject): JsonObject;
 
-export function createStubMicroHarness(id: string, capabilities?: readonly string[]): MicroHarness;
+export function createStubMicroHarness(
+  id: string,
+  capabilities?: readonly string[],
+): MicroHarness;
 export function createRecorderStreamController(id?: string): JsonObject;
 export function createRecorderDevice(id: string): Device & {
   events(): readonly JsonObject[];
@@ -285,6 +310,7 @@ export function createIroHarness(input: {
   readonly devices?: readonly Device[];
   readonly microHarnesses?: readonly MicroHarness[];
   readonly streamController?: JsonObject | null;
+  readonly skills?: { list: () => readonly JsonValue[] } | null;
 }): IroHarness;
 
 export const constants: {
