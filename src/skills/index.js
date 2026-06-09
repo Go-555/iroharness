@@ -1,4 +1,11 @@
-import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -11,10 +18,13 @@ const REQUIRED_STACKCHAN_AVATAR_FILES = Object.freeze([
   "angry.png",
   "sorrow.png",
   "mouth_half.png",
-  "mouth_open.png"
+  "mouth_open.png",
 ]);
 
-const STACKCHAN_MOUTH_OVERLAYS = Object.freeze(["mouth_half.png", "mouth_open.png"]);
+const STACKCHAN_MOUTH_OVERLAYS = Object.freeze([
+  "mouth_half.png",
+  "mouth_open.png",
+]);
 
 const freezeCopy = (value) => Object.freeze({ ...value });
 
@@ -56,7 +66,10 @@ export const parseSkillFrontmatter = (markdown) => {
     if (!line.trim() || line.trim().startsWith("#")) return;
     const listItem = line.match(/^\s*-\s+(.+)$/);
     if (listItem && activeKey) {
-      frontmatter[activeKey] = [...(frontmatter[activeKey] || []), parseYamlScalar(listItem[1])];
+      frontmatter[activeKey] = [
+        ...(frontmatter[activeKey] || []),
+        parseYamlScalar(listItem[1]),
+      ];
       return;
     }
     const pair = line.match(/^([A-Za-z0-9_-]+):(?:\s*(.*))?$/);
@@ -73,7 +86,9 @@ export const parseSkillFrontmatter = (markdown) => {
 const commandNameFromSkillDir = (skillDir) => basename(skillDir);
 
 const frontmatterValue = (frontmatter, key, fallback = null) =>
-  Object.prototype.hasOwnProperty.call(frontmatter, key) ? frontmatter[key] : fallback;
+  Object.prototype.hasOwnProperty.call(frontmatter, key)
+    ? frontmatter[key]
+    : fallback;
 
 const frontmatterArray = (frontmatter, key) => {
   const value = frontmatterValue(frontmatter, key, []);
@@ -102,7 +117,9 @@ const inferRole = ({ id, frontmatter }) =>
     ? "dictionary"
     : id.startsWith("eval-") || id.includes("-evaluator")
       ? "evaluator"
-      : id.includes("-generator") || id.startsWith("run-") || id.startsWith("wrap-")
+      : id.includes("-generator") ||
+          id.startsWith("run-") ||
+          id.startsWith("wrap-")
         ? "generator"
         : id.startsWith("delegate-")
           ? "delegate"
@@ -111,8 +128,10 @@ const inferRole = ({ id, frontmatter }) =>
 const normalizeSkillManifest = (skill) => {
   if (!skill?.id) throw new Error("skill.id is required");
   if (!skill?.kind) throw new Error(`skill.kind is required: ${skill.id}`);
-  if (!skill?.purpose) throw new Error(`skill.purpose is required: ${skill.id}`);
-  if (!skill?.trigger) throw new Error(`skill.trigger is required: ${skill.id}`);
+  if (!skill?.purpose)
+    throw new Error(`skill.purpose is required: ${skill.id}`);
+  if (!skill?.trigger)
+    throw new Error(`skill.trigger is required: ${skill.id}`);
   if (!skill?.shape) throw new Error(`skill.shape is required: ${skill.id}`);
   if (!skill?.role) throw new Error(`skill.role is required: ${skill.id}`);
   return Object.freeze({
@@ -132,11 +151,12 @@ const normalizeSkillManifest = (skill) => {
     references: freezeArray(skill.references),
     evaluator: skill.evaluator || null,
     implementation: freezeCopy(skill.implementation || {}),
-    metadata: freezeCopy(skill.metadata || {})
+    metadata: freezeCopy(skill.metadata || {}),
   });
 };
 
-const sourceRootDir = () => resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
+const sourceRootDir = () =>
+  resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
 export const defaultBuiltInSkillDir = () => join(sourceRootDir(), "skills");
 
@@ -144,34 +164,57 @@ export const stackChanAvatarPackSpec = Object.freeze({
   requiredFiles: REQUIRED_STACKCHAN_AVATAR_FILES,
   mouthOverlays: STACKCHAN_MOUTH_OVERLAYS,
   width: 320,
-  height: 240
+  height: 240,
 });
 
 export const defaultIroHarnessSkillDir = () =>
   process.env.IROHARNESS_SKILLS_DIR || join(homedir(), ".iroharness", "skills");
 
-const skillManifestFromFrontmatter = ({ frontmatter, body, skillDir, manifestPath }) => {
+const skillManifestFromFrontmatter = ({
+  frontmatter,
+  body,
+  skillDir,
+  manifestPath,
+}) => {
   const id = String(frontmatter.name || commandNameFromSkillDir(skillDir));
   const context = frontmatterValue(frontmatter, "context");
   const userInvocable = frontmatterValue(frontmatter, "user-invocable", true);
-  const disableModelInvocation = frontmatterValue(frontmatter, "disable-model-invocation", false);
+  const disableModelInvocation = frontmatterValue(
+    frontmatter,
+    "disable-model-invocation",
+    false,
+  );
   return normalizeSkillManifest({
     id,
     name: id,
     version: String(frontmatterValue(frontmatter, "version", "0.1.0")),
-    kind: String(frontmatterValue(frontmatter, "kind", id.startsWith("ref-") ? "reference" : "workflow")),
+    kind: String(
+      frontmatterValue(
+        frontmatter,
+        "kind",
+        id.startsWith("ref-") ? "reference" : "workflow",
+      ),
+    ),
     prefix: String(frontmatterValue(frontmatter, "prefix", id.split("-")[0])),
     purpose: String(inferPurpose({ id, frontmatter })),
-    trigger: String(frontmatter.description || frontmatterValue(frontmatter, "trigger", "")),
+    trigger: String(
+      frontmatter.description || frontmatterValue(frontmatter, "trigger", ""),
+    ),
     shape: String(inferShape({ frontmatter })),
     role: String(inferRole({ id, frontmatter })),
-    description: String(frontmatter.description || frontmatterValue(frontmatter, "trigger", "")),
+    description: String(
+      frontmatter.description || frontmatterValue(frontmatter, "trigger", ""),
+    ),
     userInvocable,
     inputs: freezeArray(frontmatterArray(frontmatter, "inputs")),
     outputs: freezeArray(frontmatterArray(frontmatter, "outputs")),
     references: freezeArray(frontmatterArray(frontmatter, "references")),
-    evaluator: frontmatterValue(frontmatter, "evaluator") || frontmatterValue(frontmatter, "pair"),
-    implementation: freezeCopy(frontmatterValue(frontmatter, "implementation", {})),
+    evaluator:
+      frontmatterValue(frontmatter, "evaluator") ||
+      frontmatterValue(frontmatter, "pair"),
+    implementation: freezeCopy(
+      frontmatterValue(frontmatter, "implementation", {}),
+    ),
     metadata: {
       frontmatter,
       bodyPreview: body.slice(0, 160),
@@ -185,8 +228,8 @@ const skillManifestFromFrontmatter = ({ frontmatter, body, skillDir, manifestPat
       pair: frontmatterValue(frontmatter, "pair"),
       skillDir,
       manifestPath,
-      manifestFormat: "skill-md"
-    }
+      manifestFormat: "skill-md",
+    },
   });
 };
 
@@ -194,13 +237,15 @@ const readSkillMarkdownManifest = (manifestPath) => {
   const markdown = readFileSync(manifestPath, "utf8");
   const { frontmatter, body } = parseSkillFrontmatter(markdown);
   if (!frontmatter.name && !frontmatter.description) {
-    throw new Error(`SKILL.md frontmatter must include name or description: ${manifestPath}`);
+    throw new Error(
+      `SKILL.md frontmatter must include name or description: ${manifestPath}`,
+    );
   }
   return skillManifestFromFrontmatter({
     frontmatter,
     body,
     skillDir: dirname(manifestPath),
-    manifestPath
+    manifestPath,
   });
 };
 
@@ -214,38 +259,58 @@ const readSkillDirManifests = (skillDir) => {
     .map(readSkillMarkdownManifest);
 };
 
-export const builtInSkillManifests = () => freezeArray(readSkillDirManifests(defaultBuiltInSkillDir()));
+export const builtInSkillManifests = () =>
+  freezeArray(readSkillDirManifests(defaultBuiltInSkillDir()));
 
 export const createFileSkillRegistry = ({
   path = null,
   skillDirs = [defaultIroHarnessSkillDir()],
-  builtIns = builtInSkillManifests()
+  builtIns = builtInSkillManifests(),
 }) => {
   const registryPath = path;
-  const snapshot = () => {
+  // Memoize the snapshot so per-turn list()/get() calls don't re-scan the skill
+  // directories from disk every time. `register()` (the only in-API mutation)
+  // invalidates it. External FS edits mid-session are not reflected until then
+  // or until a new registry instance — the same assumption the per-turn caller
+  // already made.
+  let cached = null;
+  const scan = () => {
     const directorySkills = skillDirs.flatMap(readSkillDirManifests);
     const skillsById = new Map();
-    builtIns.map(normalizeSkillManifest).forEach((skill) => skillsById.set(skill.id, skill));
+    builtIns
+      .map(normalizeSkillManifest)
+      .forEach((skill) => skillsById.set(skill.id, skill));
     directorySkills.forEach((skill) => skillsById.set(skill.id, skill));
     return Object.freeze({
       path: registryPath,
       skillDirs: freezeArray(skillDirs),
-      skills: Object.freeze([...skillsById.values()].sort((left, right) => left.id.localeCompare(right.id)))
+      skills: Object.freeze(
+        [...skillsById.values()].sort((left, right) =>
+          left.id.localeCompare(right.id),
+        ),
+      ),
     });
   };
+  const snapshot = () => {
+    if (!cached) cached = scan();
+    return cached;
+  };
   const list = () => snapshot().skills;
-  const get = (id) => list().find((skill) => skill.id === id || skill.name === id) || null;
+  const get = (id) =>
+    list().find((skill) => skill.id === id || skill.name === id) || null;
   const register = (skill) => {
     const targetSkillDir = skillDirs[0];
-    if (!targetSkillDir) throw new Error("skill directory is required to register skills");
+    if (!targetSkillDir)
+      throw new Error("skill directory is required to register skills");
     const manifest = normalizeSkillManifest(skill);
     const manifestDir = join(targetSkillDir, manifest.id);
     mkdirSync(manifestDir, { recursive: true });
     writeFileSync(
       join(manifestDir, "SKILL.md"),
       `---\nname: ${manifest.id}\ndescription: ${manifest.description}\nkind: ${manifest.kind}\npurpose: ${manifest.purpose}\nshape: ${manifest.shape}\nrole: ${manifest.role}\nuser-invocable: ${manifest.userInvocable}\n---\n\n# ${manifest.name}\n`,
-      "utf8"
+      "utf8",
     );
+    cached = null; // invalidate: the next snapshot()/list()/get() re-scans and sees the new skill
     return manifest;
   };
   return Object.freeze({ path: registryPath, snapshot, list, get, register });
@@ -271,14 +336,19 @@ export const createSkillContextListing = ({ skills }) =>
         name: skill.name,
         description: skill.description,
         userInvocable: skill.userInvocable,
-        argumentHint: skill.metadata.argumentHint || null
-      })
+        argumentHint: skill.metadata.argumentHint || null,
+      }),
     );
 
 export const readSkillInvocationContext = ({ skill }) => {
   const manifestPath = skill?.metadata?.manifestPath;
-  if (!manifestPath) throw new Error(`skill manifestPath is required: ${skill?.id || "(missing)"}`);
-  const { frontmatter, body } = parseSkillFrontmatter(readFileSync(manifestPath, "utf8"));
+  if (!manifestPath)
+    throw new Error(
+      `skill manifestPath is required: ${skill?.id || "(missing)"}`,
+    );
+  const { frontmatter, body } = parseSkillFrontmatter(
+    readFileSync(manifestPath, "utf8"),
+  );
   return Object.freeze({
     id: skill.id,
     name: skill.name,
@@ -289,10 +359,10 @@ export const readSkillInvocationContext = ({ skill }) => {
       fork: frontmatterValue(frontmatter, "context") === "fork",
       agent: frontmatterValue(frontmatter, "agent"),
       model: frontmatterValue(frontmatter, "model"),
-      allowedTools: freezeArray(frontmatterArray(frontmatter, "allowed-tools"))
+      allowedTools: freezeArray(frontmatterArray(frontmatter, "allowed-tools")),
     }),
     skillDir: skill.metadata.skillDir,
-    resources: freezeArray(listSkillResources(skill.metadata.skillDir))
+    resources: freezeArray(listSkillResources(skill.metadata.skillDir)),
   });
 };
 
@@ -307,11 +377,13 @@ export const createStackChanAvatarPackPlan = ({
   outputDir,
   packId = defaultPackId(referenceImage),
   characterName = "Iroha",
-  direction = ""
+  direction = "",
 }) => {
   if (!referenceImage) throw new Error("referenceImage is required");
   const resolvedReferenceImage = resolve(referenceImage);
-  const resolvedOutputDir = resolve(outputDir || join(".iroharness", "artifacts", "avatar-packs", packId));
+  const resolvedOutputDir = resolve(
+    outputDir || join(".iroharness", "artifacts", "avatar-packs", packId),
+  );
   return Object.freeze({
     skillId: "run-stackchan-avatar-pack",
     evaluator: "eval-stackchan-avatar-pack",
@@ -327,36 +399,39 @@ export const createStackChanAvatarPackPlan = ({
       {
         id: "base-face",
         owner: "generator",
-        done: "A reviewed neutral base face exists and preserves the requested character direction."
+        done: "A reviewed neutral base face exists and preserves the requested character direction.",
       },
       {
         id: "face-expressions",
         owner: "generator",
-        done: "neutral_blink, joy, fun, angry, and sorrow are full 320x240 face PNGs."
+        done: "neutral_blink, joy, fun, angry, and sorrow are full 320x240 face PNGs.",
       },
       {
         id: "mouth-overlays",
         owner: "generator",
-        done: "mouth_half and mouth_open are transparent mouth-only overlays aligned against neutral."
+        done: "mouth_half and mouth_open are transparent mouth-only overlays aligned against neutral.",
       },
       {
         id: "deterministic-eval",
         owner: "evaluator",
-        done: "All files pass dimension and alpha checks without changing the criteria."
+        done: "All files pass dimension and alpha checks without changing the criteria.",
       },
       {
         id: "provision",
         owner: "runner",
-        done: "Approved files are copied into firmware data/avatar and uploadfs is run only after review."
-      }
-    ])
+        done: "Approved files are copied into firmware data/avatar and uploadfs is run only after review.",
+      },
+    ]),
   });
 };
 
 const readPngInfo = (path) => {
   const buffer = readFileSync(path);
   const signature = "89504e470d0a1a0a";
-  if (buffer.length < 33 || buffer.subarray(0, 8).toString("hex") !== signature) {
+  if (
+    buffer.length < 33 ||
+    buffer.subarray(0, 8).toString("hex") !== signature
+  ) {
     throw new Error("not a PNG file");
   }
   return Object.freeze({
@@ -364,7 +439,7 @@ const readPngInfo = (path) => {
     height: buffer.readUInt32BE(20),
     bitDepth: buffer.readUInt8(24),
     colorType: buffer.readUInt8(25),
-    hasAlpha: [4, 6].includes(buffer.readUInt8(25))
+    hasAlpha: [4, 6].includes(buffer.readUInt8(25)),
   });
 };
 
@@ -382,7 +457,15 @@ export const evaluateStackChanAvatarPack = ({ packDir }) => {
   const checks = REQUIRED_STACKCHAN_AVATAR_FILES.flatMap((file) => {
     const path = join(avatarDir, file);
     if (!existsSync(path)) {
-      return [freezeCopy({ id: `${file}:exists`, ok: false, file, path, detail: "missing" })];
+      return [
+        freezeCopy({
+          id: `${file}:exists`,
+          ok: false,
+          file,
+          path,
+          detail: "missing",
+        }),
+      ];
     }
     try {
       const info = readPngInfo(path);
@@ -394,15 +477,15 @@ export const evaluateStackChanAvatarPack = ({ packDir }) => {
           ok: sizeOk,
           file,
           path,
-          detail: `${info.width}x${info.height}`
+          detail: `${info.width}x${info.height}`,
         }),
         freezeCopy({
           id: `${file}:alpha`,
           ok: !alphaRequired || info.hasAlpha,
           file,
           path,
-          detail: alphaRequired ? `alpha=${info.hasAlpha}` : "not-required"
-        })
+          detail: alphaRequired ? `alpha=${info.hasAlpha}` : "not-required",
+        }),
       ];
     } catch (error) {
       return [
@@ -411,8 +494,8 @@ export const evaluateStackChanAvatarPack = ({ packDir }) => {
           ok: false,
           file,
           path,
-          detail: error.message
-        })
+          detail: error.message,
+        }),
       ];
     }
   });
@@ -421,8 +504,13 @@ export const evaluateStackChanAvatarPack = ({ packDir }) => {
     packDir: resolve(packDir),
     avatarDir,
     requiredFiles: REQUIRED_STACKCHAN_AVATAR_FILES,
-    checks: Object.freeze(checks)
+    checks: Object.freeze(checks),
   });
 };
 
-export { parseSkillGating, isSkillEligible, readSkillGating, gateSkills } from "./gate.js";
+export {
+  parseSkillGating,
+  isSkillEligible,
+  readSkillGating,
+  gateSkills,
+} from "./gate.js";
