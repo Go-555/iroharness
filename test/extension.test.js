@@ -166,3 +166,49 @@ test("equal-priority handlers run in registration order", () => {
   registry.dispatch("turn:before", {});
   assert.deepEqual(order, ["a", "b"]);
 });
+
+test("a throwing handler on a gate event fails closed (block)", () => {
+  const registry = createHookRegistry();
+  registry.register("turn:before", () => {
+    throw new Error("boom");
+  });
+  const result = registry.dispatch("turn:before", { text: "hi" });
+  assert.equal(result.blocked, true);
+  assert.match(result.reason, /hook error \(fail-closed\)/);
+  assert.equal(result.context.text, "hi");
+});
+
+test("an unrecognized event fails closed on a handler throw (default-closed)", () => {
+  const registry = createHookRegistry();
+  registry.register("mystery:event", () => {
+    throw new Error("boom");
+  });
+  assert.equal(registry.dispatch("mystery:event", {}).blocked, true);
+});
+
+test("a throwing handler on a background event fails open (skip, continue)", () => {
+  const registry = createHookRegistry();
+  const ran = [];
+  registry.register("turn:after", () => {
+    throw new Error("boom");
+  });
+  registry.register("turn:after", (ctx) => {
+    ran.push(ctx.text);
+    return undefined;
+  });
+  const result = registry.dispatch("turn:after", { text: "hi" });
+  assert.equal(result.blocked, false);
+  assert.deepEqual(ran, ["hi"]);
+});
+
+test("a throwing handler on a realtime event fails open (loop survives)", () => {
+  const registry = createHookRegistry();
+  registry.register(
+    "bargein:detect",
+    () => {
+      throw new Error("boom");
+    },
+    { style: "inprocess" },
+  );
+  assert.equal(registry.dispatch("bargein:detect", {}).blocked, false);
+});

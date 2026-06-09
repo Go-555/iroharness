@@ -11,6 +11,14 @@ const REALTIME_HOOK_PREFIXES = Object.freeze([
 const isRealtimeEvent = (event) =>
   REALTIME_HOOK_PREFIXES.some((prefix) => event.startsWith(prefix));
 
+// Background events fail open; gate events (and anything unrecognized) fail closed.
+const FAIL_OPEN_EVENTS = Object.freeze(new Set(["tool:after", "turn:after"]));
+
+// A throwing handler fails closed (block) on gate/unknown events; on background
+// and realtime events it fails open (the broken handler is skipped).
+const failModeFor = (event) =>
+  isRealtimeEvent(event) || FAIL_OPEN_EVENTS.has(event) ? "open" : "closed";
+
 // Concrete realtime events currently defined (spec §3.3) — for discovery/tests.
 export const REALTIME_HOOK_EVENTS = Object.freeze(
   new Set(["bargein:detect", "speech:before", "speech:chunk", "device:emit"]),
@@ -48,7 +56,23 @@ export const createHookRegistry = () => {
   const dispatch = (event, context = {}) => {
     let current = freezeCopy(context);
     for (const entry of handlers.get(event) || []) {
-      const decision = entry.run(current);
+      let decision;
+      try {
+        decision = entry.run(current);
+      } catch (error) {
+        if (failModeFor(event) === "closed") {
+          return freezeCopy({
+            event,
+            blocked: true,
+            reason: `hook error (fail-closed): ${error.message}`,
+            context: current,
+          });
+        }
+        console.warn(
+          `[hooks] skipping failed hook on ${event}: ${error.message}`,
+        );
+        continue;
+      }
       if (decision && decision.block) {
         return freezeCopy({
           event,
