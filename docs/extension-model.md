@@ -506,8 +506,7 @@ Each unit has one purpose and a defined interface:
    listing to `brain.respond`. The skill gate's first real consumer. **Done (2b).**
 5. Dispatch hardening (2a-A, §6): add the throwing-in-process-handler catch +
    `failModeFor` per-event fail-closed/fail-open classification, and the
-   `transform` `protectedKeys` guard, to `hook-registry.js` `dispatch`. **This
-   phase.**
+   `transform` `protectedKeys` guard, to `hook-registry.js` `dispatch`. **Done.**
 6. Hook dispatch integration (2a-B): wire in-process `dispatch` into `receive()`
    (`turn:before`/`tool:before`/`response:before`) — block→reject, transform→
    apply, passing `protectedKeys: ["actor"]` — `dispatch`'s first real loop
