@@ -454,13 +454,23 @@ Each unit has one purpose and a defined interface:
     **background** events (`tool:after`, `turn:after`) and all **realtime**
     events (`bargein:*`/`speech:*`/`device:*` — the realtime loop must never
     stall on a broken expression/barge-in hook).
-- **`transform` cannot overwrite protected keys**: `dispatch` gains a third
-  options argument defaulting to a no-op —
-  `dispatch(event, context = {}, { protectedKeys = [] } = {})` — so existing
-  two-argument callers are unaffected. When `protectedKeys` is non-empty,
-  `dispatch` drops any key a handler's `transform` tries to set that is listed in
-  it (logging a warning), so a hook cannot forge authorization-bearing context
-  fields (e.g. `actor`) to escalate privilege. The runtime wiring (2a-B) passes
+- **A hook cannot forge authorization-bearing context fields.** Two paths are
+  closed:
+  - **In-place mutation.** The context handed to handlers is a **deep-frozen
+    structural clone** (`deepFreeze(structuredClone(context))`), not a shallow
+    freeze. A handler that tries to mutate a nested authz object (e.g.
+    `ctx.actor.role = "owner"`) throws, and that throw is handled like any other
+    failing hook (fail-closed `block` on gate events). The clone also isolates
+    the caller's objects, so a forged value can never leak back into caller
+    state. (A shallow freeze left nested objects mutable — the bypass this
+    closes.)
+  - **`transform` replacement.** `dispatch` takes a third options argument
+    defaulting to a no-op — `dispatch(event, context = {}, { protectedKeys = [] } = {})`,
+    so existing two-argument callers are unaffected. When `protectedKeys` is
+    non-empty, `dispatch` drops any key a handler's `transform` tries to set that
+    is listed in it (logging a warning).
+  Together these mean a hook cannot escalate by setting `actor` (or any protected
+  key) via either channel. The runtime wiring (2a-B) passes
   `protectedKeys: ["actor"]` for events whose context carries the resolved actor.
 - **Skill parse failure**: a malformed `SKILL.md` is skipped with a logged
   warning and excluded from the eligible set; it never aborts session start.

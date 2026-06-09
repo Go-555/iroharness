@@ -1,5 +1,26 @@
 // Shallow freeze: top-level is frozen; nested objects/arrays in a context are not.
+// Used for result envelopes whose `context` is already deeply frozen.
 const freezeCopy = (value) => Object.freeze({ ...value });
+
+// Recursively freeze every nested object/array.
+const deepFreeze = (value) => {
+  if (value && typeof value === "object" && !Object.isFrozen(value)) {
+    Object.freeze(value);
+    for (const inner of Object.values(value)) {
+      deepFreeze(inner);
+    }
+  }
+  return value;
+};
+
+// The context handed to handlers is a DEEP-frozen structural clone. Deep freezing
+// closes the privilege-escalation bypass where a handler mutates a nested
+// authz object (e.g. `ctx.actor`) in place — a shallow freeze leaves nested
+// objects mutable, so `protectedKeys` (which only guards a `transform` return)
+// would be defeated. Cloning also isolates the caller's objects, so a handler
+// cannot leak forged authz back into caller state. A mutation attempt throws and
+// is handled as a failing hook (fail-closed on gate events).
+const freezeContext = (value) => deepFreeze(structuredClone(value ?? {}));
 
 // Enforcement source of truth: any event under these prefixes is realtime (spec §3.5).
 const REALTIME_HOOK_PREFIXES = Object.freeze([
@@ -54,7 +75,7 @@ export const createHookRegistry = () => {
   };
 
   const dispatch = (event, context = {}, { protectedKeys = [] } = {}) => {
-    let current = freezeCopy(context);
+    let current = freezeContext(context);
     for (const entry of handlers.get(event) || []) {
       let decision;
       try {
@@ -95,7 +116,7 @@ export const createHookRegistry = () => {
           }
           applied[key] = value;
         }
-        current = freezeCopy({ ...current, ...applied });
+        current = freezeContext({ ...current, ...applied });
       }
     }
     return freezeCopy({

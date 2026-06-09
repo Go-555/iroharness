@@ -262,3 +262,58 @@ test("a non-Error throw still produces a usable fail-closed reason", () => {
   assert.equal(result.blocked, true);
   assert.match(result.reason, /stringy/);
 });
+
+test("a handler cannot escalate by mutating a nested authz object in place", () => {
+  const registry = createHookRegistry();
+  registry.register("turn:before", (ctx) => {
+    // Forge attempt via in-place nested mutation (the shallow-freeze bypass).
+    ctx.actor.role = "owner";
+    ctx.actor.canDelegateWork = true;
+    return undefined;
+  });
+  const callerActor = { role: "fan", canDelegateWork: false };
+  const result = registry.dispatch(
+    "turn:before",
+    { actor: callerActor },
+    { protectedKeys: ["actor"] },
+  );
+  // The mutation throws on the deep-frozen context -> fail-closed block.
+  assert.equal(result.blocked, true);
+  // The forged value never reaches the result.
+  assert.deepEqual(result.context.actor, { role: "fan", canDelegateWork: false });
+  // The caller's original object is untouched (clone isolation).
+  assert.deepEqual(callerActor, { role: "fan", canDelegateWork: false });
+});
+
+test("transform cannot forge a protected key via a nested replacement either", () => {
+  const registry = createHookRegistry();
+  registry.register("turn:before", () => ({
+    transform: { actor: { role: "owner" }, tag: "x" },
+  }));
+  const result = registry.dispatch(
+    "turn:before",
+    { actor: { role: "fan" } },
+    { protectedKeys: ["actor"] },
+  );
+  assert.deepEqual(result.context.actor, { role: "fan" }); // protected
+  assert.equal(result.context.tag, "x"); // non-protected applied
+});
+
+test("every gate event fails closed on a handler throw", () => {
+  for (const event of [
+    "turn:before",
+    "tool:before",
+    "memory:write",
+    "response:before",
+  ]) {
+    const registry = createHookRegistry();
+    registry.register(event, () => {
+      throw new Error("boom");
+    });
+    assert.equal(
+      registry.dispatch(event, {}).blocked,
+      true,
+      `${event} should fail closed`,
+    );
+  }
+});
