@@ -572,10 +572,10 @@ Each unit has one purpose and a defined interface:
    `transform` `protectedKeys` guard, to `hook-registry.js` `dispatch`. **Done.**
 6. Hook dispatch integration (2a-B): wire in-process `dispatch` into `receive()`
    (§3.7) — `dispatch`'s first real loop consumer, passing
-   `protectedKeys: ["actor"]`. **2a-B (this phase): `turn:before`** (block→reject
+   `protectedKeys: ["actor"]`. **2a-B: `turn:before`** (block→reject
    via `rejectByHook`, transform→apply to `input`) + the no-handler hot-path
-   optimization in `dispatch`. **2a-B-ii (follow-on): `tool:before` /
-   `response:before`.**
+   optimization in `dispatch`. **Done.** **2a-B-ii (follow-on, remaining):
+   `tool:before` / `response:before`.**
 7. Command runner (text-path child-process hook gates).
 8. Agent runner (response review).
 
