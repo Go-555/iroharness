@@ -3010,8 +3010,28 @@ export const createIroHarness = ({
     return state;
   };
 
+  // A turn needs these fields before the rest of receive() can rely on them.
+  // Reused to re-check a hook transform that could otherwise degrade the input.
+  const hasRequiredInputFields = (value) =>
+    Boolean(
+      value &&
+      typeof value.text === "string" &&
+      value.text &&
+      value.modality &&
+      value.source,
+    );
+  // The brain contract is a { text, emotion } object; a response:before transform
+  // must not replace it with a primitive or strip the text the emit path needs.
+  const isUsableResponse = (value) =>
+    Boolean(
+      value &&
+      typeof value === "object" &&
+      typeof value.text === "string" &&
+      value.text,
+    );
+
   const receive = async (input) => {
-    if (!input || !input.text || !input.modality || !input.source) {
+    if (!hasRequiredInputFields(input)) {
       throw new Error(
         "input.source, input.modality, and input.text are required",
       );
@@ -3057,7 +3077,18 @@ export const createIroHarness = ({
       if (turnResult.blocked) {
         return rejectByHook(input, route, actor, audience, turnResult.reason);
       }
-      input = turnResult.context.input ?? input;
+      const rewritten = turnResult.context.input ?? input;
+      if (!hasRequiredInputFields(rewritten)) {
+        // fail-closed: a transform that drops a required field is rejected, not run.
+        return rejectByHook(
+          input,
+          route,
+          actor,
+          audience,
+          "turn:before transform produced an invalid input",
+        );
+      }
+      input = rewritten;
     }
 
     const permission = permissionPolicy.evaluate({
@@ -3070,6 +3101,28 @@ export const createIroHarness = ({
     }
 
     if (route.kind === "work" && route.harnessId) {
+      if (hooks) {
+        const toolResult = hooks.dispatch(
+          "tool:before",
+          { input, actor, audience, route },
+          { protectedKeys: ["actor"] },
+        );
+        if (toolResult.blocked) {
+          return rejectByHook(input, route, actor, audience, toolResult.reason);
+        }
+        const rewritten = toolResult.context.input ?? input;
+        if (!hasRequiredInputFields(rewritten)) {
+          // fail-closed: a degraded input never reaches runMicroHarness.
+          return rejectByHook(
+            input,
+            route,
+            actor,
+            audience,
+            "tool:before transform produced an invalid input",
+          );
+        }
+        input = rewritten;
+      }
       return runMicroHarness(
         input,
         route,
@@ -3101,7 +3154,7 @@ export const createIroHarness = ({
           }),
         })
       : Object.freeze([]);
-    const response = await brain.respond({
+    let response = await brain.respond({
       character,
       input,
       actor,
@@ -3111,6 +3164,35 @@ export const createIroHarness = ({
       projectOs: projectOs.snapshot(),
       skills: skillListing,
     });
+
+    if (hooks) {
+      const responseResult = hooks.dispatch(
+        "response:before",
+        { input, actor, audience, route, response },
+        { protectedKeys: ["actor"] },
+      );
+      if (responseResult.blocked) {
+        return rejectByHook(
+          input,
+          route,
+          actor,
+          audience,
+          responseResult.reason,
+        );
+      }
+      const rewritten = responseResult.context.response ?? response;
+      if (!isUsableResponse(rewritten)) {
+        // fail-closed: a primitive/text-less response never reaches emit/return.
+        return rejectByHook(
+          input,
+          route,
+          actor,
+          audience,
+          "response:before transform produced an invalid response",
+        );
+      }
+      response = rewritten;
+    }
 
     setState({
       mode: MODES.speaking,

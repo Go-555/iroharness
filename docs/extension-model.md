@@ -226,8 +226,62 @@ early-return to `dispatch` **before** the `freezeContext` call: when
 `structuredClone`/deep-freeze. Since `receive` calls `dispatch` every turn, a
 deployment with no `turn:before` hook then pays nothing.
 
-`tool:before` (around micro-harness delegation) and `response:before` (after the
-brain, before the speech emit) are wired the same way in the follow-on (2a-B-ii).
+### 3.8 Runtime Hook Integration (`receive`): `tool:before` and `response:before`
+
+2a-B-ii wires the remaining two text-path gates the **same way** as `turn:before`
+(§3.7): `if (hooks)` guards each dispatch, `protectedKeys: ["actor"]` is passed,
+`block` denies via `rejectByHook`, the no-handler hot-path keeps hookless turns
+free, and a no-`hooks` harness is unchanged.
+
+**`tool:before`** fires just **before micro-harness delegation** — inside the
+`if (route.kind === "work" && route.harnessId)` branch, before `runMicroHarness`:
+
+```js
+if (hooks) {
+  const r = hooks.dispatch(
+    "tool:before",
+    { input, actor, audience, route },
+    { protectedKeys: ["actor"] },
+  );
+  if (r.blocked) return rejectByHook(input, route, actor, audience, r.reason);
+  input = r.context.input ?? input;
+}
+return runMicroHarness(input, route, actor, audience, permission, actorPermissions, contextScopes);
+```
+
+- **`block` → deny** the delegation (a permission/policy hook stops the tool
+  before it runs), via `rejectByHook`.
+- **`transform` → rewrite `input`** only (`route` already chosen; same as
+  §3.7). `actor` is protected.
+
+**`response:before`** fires **after `brain.respond` and before the speech is
+emitted**, so it can filter or rewrite the outgoing response:
+
+```js
+let response = await brain.respond({ ... });
+if (hooks) {
+  const r = hooks.dispatch(
+    "response:before",
+    { input, actor, audience, route, response },
+    { protectedKeys: ["actor"] },
+  );
+  if (r.blocked) return rejectByHook(input, route, actor, audience, r.reason);
+  response = r.context.response ?? response;
+}
+// ...setState(speaking) + emit("speech", { text: response.text }) using the (possibly rewritten) response
+```
+
+- **`block` → suppress** the brain's response: it is not emitted; the turn is
+  denied via `rejectByHook` (the character speaks the denial text instead). This
+  is the response-moderation kill switch.
+- **`transform` → rewrite `response`** (e.g. `response.text`) — the
+  output-moderation case. The rewritten `response` is what gets emitted as speech
+  and returned. `actor` remains protected; `response` is the new transformable
+  field in this event's context.
+
+Both reuse the existing `rejectByHook` helper and the hardened `dispatch`. The
+only new wiring is threading `response` into the `response:before` context and
+reading the result downstream (the `const response` becomes a `let`).
 
 ## 4. Skills
 
@@ -586,8 +640,11 @@ Each unit has one purpose and a defined interface:
    (§3.7) — `dispatch`'s first real loop consumer, passing
    `protectedKeys: ["actor"]`. **2a-B: `turn:before`** (block→reject
    via `rejectByHook`, transform→apply to `input`) + the no-handler hot-path
-   optimization in `dispatch`. **Done.** **2a-B-ii (follow-on, remaining):
-   `tool:before` / `response:before`.**
+   optimization in `dispatch`. **Done.** **2a-B-ii: `tool:before`** (block→deny
+   delegation, transform→`input`) **and `response:before`** (block→suppress the
+   brain output, transform→rewrite `response`), §3.8 — **Done.** All three
+   in-process text-path hook points (`turn:before`/`tool:before`/`response:before`)
+   are now wired into `receive()`.
 7. Command runner (text-path child-process hook gates).
 8. Agent runner (response review).
 
