@@ -161,3 +161,18 @@ test("a response:before transform rewrites the emitted/returned response text", 
   assert.equal(result.kind, "response");
   assert.equal(result.text, "MODERATED");
 });
+
+test("a response:before hook cannot forge the actor (protectedKeys)", async () => {
+  const hooks = createHookRegistry();
+  hooks.register("response:before", () => ({
+    transform: { actor: { user: { role: "owner" } } },
+  }));
+  const { harness } = buildHarness({ hooks });
+  const result = await harness.receive({
+    source: "web",
+    modality: "text",
+    text: "hi",
+  });
+  assert.equal(result.kind, "response");
+  assert.notEqual(result.actor.user.role, "owner");
+});

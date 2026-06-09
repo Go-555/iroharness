@@ -642,7 +642,9 @@ Each unit has one purpose and a defined interface:
    via `rejectByHook`, transform→apply to `input`) + the no-handler hot-path
    optimization in `dispatch`. **Done.** **2a-B-ii: `tool:before`** (block→deny
    delegation, transform→`input`) **and `response:before`** (block→suppress the
-   brain output, transform→rewrite `response`), §3.8 — **this phase.**
+   brain output, transform→rewrite `response`), §3.8 — **Done.** All three
+   in-process text-path hook points (`turn:before`/`tool:before`/`response:before`)
+   are now wired into `receive()`.
 7. Command runner (text-path child-process hook gates).
 8. Agent runner (response review).
 
