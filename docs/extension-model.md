@@ -329,6 +329,67 @@ Both layers then apply: presence on disk (this export filter) is necessary but
 not sufficient; within a view the per-actor `requires`/`capability` checks still
 run at session start (§4.3).
 
+### 4.5 Runtime Integration (`receive`)
+
+The gate of §4.3 is wired into the macro runtime so eligible skills actually
+reach the brain. `createIroHarness` accepts an optional `skills` parameter — a
+registry from `createFileSkillRegistry`. When omitted it defaults to none, so
+existing harnesses are unchanged.
+
+The gate runs **on the brain path only**, **per turn** (the acting actor can
+differ between turns). The `work` and `stream` routes return early (via
+`runMicroHarness`/`runStreamController`) before the brain responds and receive no
+skill listing; the gating code sits immediately before `brain.respond`, after
+those early returns:
+
+```js
+const skillListing = skills
+  ? createSkillContextListing({
+      skills: gateSkills({
+        skills: skills.list(),
+        view: tierToView(audience.tier),
+        permissions: actorPermissions,
+        // satisfiedRequirements intentionally omitted (see note below)
+      }),
+    })
+  : Object.freeze([]);
+// ... brain.respond({ ..., skills: skillListing })
+```
+
+Discovery is captured once by the registry; only the per-actor **filter** runs
+each turn. The eligible listing is passed to `brain.respond` as a new `skills`
+field. Existing brains ignore unknown context fields, so the addition is
+non-breaking; a brain that wants to use skills reads `context.skills`.
+
+**`requires` is fail-closed this phase.** `gateSkills` also accepts
+`satisfiedRequirements` (the set of currently-met `requires` conditions). This
+phase does **not** pass it (there is no runtime requirement evaluator yet), so it
+defaults to `[]` and any skill that declares a `requires` condition is excluded
+(fail-closed) until a requirement evaluator is wired in (follow-on). Skills
+without a `requires` key are unaffected.
+
+**Tier-to-view mapping.** The actor's audience `tier` maps to the view layer the
+gate filters by:
+
+| tier | view |
+|---|---|
+| `owner` | `owner` |
+| `trusted` (developer) | `trusted` |
+| `operator` (moderator) | `trusted` |
+| `member`, `public`, `anonymous`, or any unrecognized tier | `public` |
+
+The mapping **fails closed**: an unrecognized tier resolves to `public` (least
+privilege). `operator` is granted `trusted` because a moderator's job (stream
+operations) may rely on trusted-shelf operational playbooks; the owner controls
+what lives on the trusted shelf. `capability`/`requires` are applied per actor by
+the gate regardless of tier, so a tier that clears the view gate can still be
+denied a specific skill it lacks the capability for.
+
+This is the per-actor runtime layer. It composes with the disk-level view export
+of §4.4 (a public-gateway deployment never has trusted/owner skills on disk in
+the first place); the runtime gate is defense in depth for harnesses loaded from
+a fuller skill set.
+
 ## 5. Module Boundaries
 
 ```
@@ -415,11 +476,17 @@ Each unit has one purpose and a defined interface:
 3. Zero-trust view-export integration (§4.4): `exportSkillFiles` materializes
    only view-visible skills on export, view-layer only, fail-closed, sharing
    `gate.js`'s normalizer. **Done.**
-4. Command runner (text-path hook gates) — **and** the hook fail policy (§6):
-   the throwing-in-process-handler catch and per-event fail-closed/fail-open
-   classification land here, with `dispatch`'s first real loop consumer to
-   ground the gate/background taxonomy.
-5. Agent runner (response review).
+4. Runtime skill integration (§4.5): wire `gateSkills` into
+   `createIroHarness.receive()` (per-turn, tier-to-view), passing the eligible
+   listing to `brain.respond`. The skill gate's first real consumer. **This
+   phase (2b).**
+5. Hook dispatch integration (2a): wire in-process `dispatch` into `receive()`
+   (`turn:before`/`tool:before`/`response:before`) — **and** the hook fail policy
+   (§6): the throwing-in-process-handler catch + per-event fail-closed/fail-open
+   classification, plus the `transform`×authz guard, land here with `dispatch`'s
+   first real loop consumer.
+6. Command runner (text-path child-process hook gates).
+7. Agent runner (response review).
 
 Note: the realtime invariant's coverage (device:emit, prefix/Set drift) is
 hardened with tests as part of Phase 3, independent of the deferred fail policy.
