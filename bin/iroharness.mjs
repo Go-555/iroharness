@@ -1463,33 +1463,49 @@ const exportConnectionFiles = ({ sourceRoot, targetRoot, zone, files }) => {
 
 const exportSkillFiles = ({ sourceRoot, targetRoot, zone, files }) => {
   const zoneRank = viewZoneRank[zone];
+  // App-local first: an app-local skill shadows a built-in of the same id
+  // (spec §4.2 — app-local wins on collision). `seen` makes that dedup explicit
+  // so a colliding id is never copied or listed twice.
   const skillRoots = [
-    defaultBuiltInSkillDir(),
     join(sourceRoot, ".iroharness", "skills"),
+    defaultBuiltInSkillDir(),
   ];
+  const seen = new Set();
   for (const root of skillRoots) {
     if (!existsSync(root)) {
       continue;
     }
     for (const entry of readdirSync(root)) {
+      if (seen.has(entry)) {
+        continue; // shadowed by a higher-priority root
+      }
       const skillDir = join(root, entry);
       const manifestPath = join(skillDir, "SKILL.md");
-      if (!lstatSync(skillDir).isDirectory() || !existsSync(manifestPath)) {
-        continue;
-      }
-      let gating;
+      // The whole per-skill body is guarded so no single bad skill (malformed
+      // frontmatter, dangling symlink, permission error) can abort the export.
       try {
-        gating = readSkillGating({ id: entry, metadata: { manifestPath } });
+        if (!lstatSync(skillDir).isDirectory() || !existsSync(manifestPath)) {
+          continue; // not a skill directory; do not claim the id
+        }
+        seen.add(entry); // this root defines the skill; lower roots are shadowed
+        const gating = readSkillGating({ id: entry, metadata: { manifestPath } });
+        if (viewZoneRank[gating.view] > zoneRank) {
+          continue; // claimed, but not visible in this zone
+        }
+        const targetPath = join("skills", entry);
+        // Reject symlinks: a link inside an eligible (lower-zone) skill dir could
+        // dereference to higher-zone content, leaking it into the export. Copying
+        // links verbatim would smuggle that content across the zone boundary, so
+        // we drop every symlink (fail-closed) rather than trust the directory.
+        cpSync(skillDir, join(targetRoot, targetPath), {
+          recursive: true,
+          filter: (src) => !lstatSync(src).isSymbolicLink(),
+        });
+        files.push(targetPath);
       } catch (error) {
         console.warn(`[view export] skipping unreadable skill ${entry}: ${error.message}`);
         continue;
       }
-      if (viewZoneRank[gating.view] > zoneRank) {
-        continue;
-      }
-      const targetPath = join("skills", entry);
-      cpSync(skillDir, join(targetRoot, targetPath), { recursive: true });
-      files.push(targetPath);
     }
   }
 };

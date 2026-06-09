@@ -1267,3 +1267,72 @@ test("CLI view export ignores a broken symlink in the skills root without aborti
     true,
   );
 });
+
+test("CLI view export drops symlinks inside a skill dir (no cross-zone leak)", () => {
+  const dir = mkdtempSync(join(tmpdir(), "iroharness-view-skills-symleak-"));
+  const appDir = join(dir, "companion");
+  runCli(["init", appDir, "--character", "Iroha"]);
+  const secret = join(appDir, "owner-secret.md");
+  writeFileSync(secret, "OWNER ONLY SECRET\n", "utf8");
+  const skillsRoot = join(appDir, ".iroharness", "skills");
+  mkdirSync(join(skillsRoot, "pub", "references"), { recursive: true });
+  writeFileSync(
+    join(skillsRoot, "pub", "SKILL.md"),
+    "---\nname: pub\ndescription: public.\nview: public\n---\n\n# pub\n",
+    "utf8",
+  );
+  // A public-visible skill smuggles a symlink to owner-zone content.
+  symlinkSync(secret, join(skillsRoot, "pub", "references", "leak.md"));
+
+  const out = join(dir, "public-view");
+  const result = runCli([
+    "view",
+    "export",
+    appDir,
+    "--zone",
+    "public",
+    "--out",
+    out,
+    "--force",
+  ]);
+  assert.equal(result.status, 0, result.stderr);
+  const exported = join(out, "current", "skills", "pub");
+  assert.equal(existsSync(join(exported, "SKILL.md")), true); // skill still materialized
+  // The symlink must NOT be materialized — otherwise it dereferences to the
+  // owner secret inside a public export (zero-trust bypass).
+  assert.equal(existsSync(join(exported, "references", "leak.md")), false);
+});
+
+test("CLI view export lists a colliding skill id only once (app-local shadows built-in)", () => {
+  const dir = mkdtempSync(join(tmpdir(), "iroharness-view-skills-dedup-"));
+  const appDir = join(dir, "companion");
+  runCli(["init", appDir, "--character", "Iroha"]);
+  const skillsRoot = join(appDir, ".iroharness", "skills");
+  // Override a real built-in id app-local (built-ins are run-/ref-/eval-stackchan-avatar-pack).
+  const collidingId = "run-stackchan-avatar-pack";
+  mkdirSync(join(skillsRoot, collidingId), { recursive: true });
+  writeFileSync(
+    join(skillsRoot, collidingId, "SKILL.md"),
+    "---\nname: " +
+      collidingId +
+      "\ndescription: app-local override.\nview: owner\n---\n\n# override\n",
+    "utf8",
+  );
+
+  const out = join(dir, "owner-view");
+  runCli([
+    "view",
+    "export",
+    appDir,
+    "--zone",
+    "owner",
+    "--out",
+    out,
+    "--force",
+  ]);
+  const manifest = JSON.parse(
+    readFileSync(join(out, "current", "view-manifest.json"), "utf8"),
+  );
+  const hits = manifest.files.filter((f) => f === join("skills", collidingId));
+  assert.equal(hits.length, 1); // no duplicate entry across roots
+});
