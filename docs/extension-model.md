@@ -689,6 +689,13 @@ the turn never crashes, a skill is never opened on error). The default `[]`
 keeps the prior behavior (every `requires`-gated skill excluded). Skills without
 a `requires` key are unaffected.
 
+The resolver runs **once per turn** (only on the brain/text path — work and
+stream routes early-return before it) and its `context` is **operator-trusted and
+read-only by convention** (the same trust model as `permissionPolicy`'s inputs):
+it is not deep-frozen, so a resolver must treat it as read-only. Only the
+returned array affects gating, and it is re-validated — a resolver cannot open a
+gated skill regardless of what it does with the context.
+
 **Tier-to-view mapping.** The actor's audience `tier` maps to the view layer the
 gate filters by:
 
