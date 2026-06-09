@@ -3146,7 +3146,7 @@ export const createIroHarness = ({
           : brains.text;
     const skillListing = skills
       ? createSkillContextListing({
-          // skills.list() re-scans the skill directory each turn; acceptable for local FS at this scale.
+          // skills.list() returns a memoized snapshot (invalidated by register() or a new registry instance), so this is not a per-turn FS re-scan.
           skills: gateSkills({
             skills: skills.list(),
             view: tierToView(audience.tier),

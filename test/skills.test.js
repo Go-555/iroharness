@@ -12,7 +12,7 @@ import {
   createStackChanAvatarPackPlan,
   evaluateStackChanAvatarPack,
   parseSkillFrontmatter,
-  readSkillInvocationContext
+  readSkillInvocationContext,
 } from "../src/skills/index.js";
 
 const pngHeader = ({ width = 320, height = 240, colorType = 2 }) => {
@@ -30,12 +30,21 @@ const pngHeader = ({ width = 320, height = 240, colorType = 2 }) => {
 test("built-in skills separate reference, generator, and evaluator roles", () => {
   const skills = builtInSkillManifests();
 
-  assert.equal(skills.some((skill) => skill.id === "ref-stackchan-avatar-spec"), true);
-  assert.equal(skills.some((skill) => skill.id === "run-stackchan-avatar-pack"), true);
-  assert.equal(skills.some((skill) => skill.id === "eval-stackchan-avatar-pack"), true);
+  assert.equal(
+    skills.some((skill) => skill.id === "ref-stackchan-avatar-spec"),
+    true,
+  );
+  assert.equal(
+    skills.some((skill) => skill.id === "run-stackchan-avatar-pack"),
+    true,
+  );
+  assert.equal(
+    skills.some((skill) => skill.id === "eval-stackchan-avatar-pack"),
+    true,
+  );
   assert.equal(
     skills.find((skill) => skill.id === "run-stackchan-avatar-pack").evaluator,
-    "eval-stackchan-avatar-pack"
+    "eval-stackchan-avatar-pack",
   );
 });
 
@@ -44,7 +53,7 @@ test("file skill registry overlays project skills on built-ins", () => {
   const skillDir = join(dir, ".iroharness", "skills");
   const registry = createFileSkillRegistry({
     path: null,
-    skillDirs: [skillDir]
+    skillDirs: [skillDir],
   });
 
   registry.register({
@@ -53,10 +62,13 @@ test("file skill registry overlays project skills on built-ins", () => {
     purpose: "Local reference.",
     trigger: "Use in local tests.",
     shape: "Read-only.",
-    role: "dictionary"
+    role: "dictionary",
   });
 
-  assert.equal(registry.get("run-stackchan-avatar-pack").name, "run-stackchan-avatar-pack");
+  assert.equal(
+    registry.get("run-stackchan-avatar-pack").name,
+    "run-stackchan-avatar-pack",
+  );
   assert.equal(registry.get("ref-local-test").role, "dictionary");
 });
 
@@ -70,13 +82,13 @@ test("file skill registry reads OpenClaw-style skill directories", () => {
   writeFileSync(
     join(localSkillDir, "SKILL.md"),
     `---\nname: ref-local-dir-test\ndescription: Use in local directory tests.\nkind: reference\npurpose: knowledge\nshape: atomic\nrole: dictionary\nuser-invocable: false\ndisable-model-invocation: true\n---\n\n# Local directory reference\n\nRead references only when needed.\n`,
-    "utf8"
+    "utf8",
   );
   writeFileSync(join(referencesDir, "details.md"), "details\n", "utf8");
 
   const registry = createFileSkillRegistry({
     path: null,
-    skillDirs: [skillDir]
+    skillDirs: [skillDir],
   });
   const skill = registry.get("ref-local-dir-test");
 
@@ -84,17 +96,25 @@ test("file skill registry reads OpenClaw-style skill directories", () => {
   assert.equal(skill.metadata.skillDir, localSkillDir);
   assert.equal(skill.metadata.manifestFormat, "skill-md");
   assert.deepEqual(registry.snapshot().skillDirs, [skillDir]);
-  assert.equal(createSkillContextListing({ skills: registry.list() }).some((entry) => entry.id === skill.id), false);
+  assert.equal(
+    createSkillContextListing({ skills: registry.list() }).some(
+      (entry) => entry.id === skill.id,
+    ),
+    false,
+  );
 
   const invocation = readSkillInvocationContext({ skill });
 
   assert.match(invocation.body, /Local directory reference/);
-  assert.equal(invocation.resources.some((resource) => resource.name === "references"), true);
+  assert.equal(
+    invocation.resources.some((resource) => resource.name === "references"),
+    true,
+  );
 });
 
 test("skill frontmatter parser supports Claude Code fields", () => {
   const parsed = parseSkillFrontmatter(
-    `---\nname: eval-demo\ndescription: Use when evaluating demo artifacts.\ncontext: fork\nallowed-tools:\n  - Read\n  - Grep\nuser-invocable: false\n---\n\n# Eval Demo\n`
+    `---\nname: eval-demo\ndescription: Use when evaluating demo artifacts.\ncontext: fork\nallowed-tools:\n  - Read\n  - Grep\nuser-invocable: false\n---\n\n# Eval Demo\n`,
   );
 
   assert.equal(parsed.frontmatter.name, "eval-demo");
@@ -104,7 +124,9 @@ test("skill frontmatter parser supports Claude Code fields", () => {
 });
 
 test("skill invocation context exposes fork execution metadata", () => {
-  const skill = builtInSkillManifests().find((candidate) => candidate.id === "eval-stackchan-avatar-pack");
+  const skill = builtInSkillManifests().find(
+    (candidate) => candidate.id === "eval-stackchan-avatar-pack",
+  );
   const invocation = readSkillInvocationContext({ skill });
 
   assert.equal(invocation.execution.fork, true);
@@ -112,17 +134,59 @@ test("skill invocation context exposes fork execution metadata", () => {
   assert.deepEqual(invocation.execution.allowedTools, ["Read"]);
 });
 
+test("snapshot is memoized — repeated calls return the same frozen reference", () => {
+  const dir = mkdtempSync(join(tmpdir(), "iroharness-skills-cache-"));
+  const registry = createFileSkillRegistry({
+    path: null,
+    skillDirs: [join(dir, ".iroharness", "skills")],
+  });
+
+  const first = registry.snapshot();
+  const second = registry.snapshot();
+  assert.strictEqual(first, second); // same reference => the FS was not re-scanned
+  assert.strictEqual(registry.list(), registry.list()); // list() inherits the cached snapshot
+});
+
+test("register() invalidates the cache so the new skill is visible on the same instance", () => {
+  const dir = mkdtempSync(join(tmpdir(), "iroharness-skills-bust-"));
+  const registry = createFileSkillRegistry({
+    path: null,
+    skillDirs: [join(dir, ".iroharness", "skills")],
+  });
+
+  const before = registry.snapshot();
+  registry.register({
+    id: "cache-bust",
+    kind: "instruction",
+    purpose: "x",
+    trigger: "x",
+    shape: "x",
+    role: "x",
+  });
+  const after = registry.snapshot();
+
+  assert.notStrictEqual(before, after); // cache busted -> fresh scan
+  assert.equal(
+    after.skills.some((skill) => skill.id === "cache-bust"),
+    true,
+  );
+  assert.equal(registry.get("cache-bust").id, "cache-bust"); // register-then-get sees it
+});
+
 test("StackChan avatar pack plan captures generator and evaluator phases", () => {
   const plan = createStackChanAvatarPackPlan({
     referenceImage: "./iroha.png",
     outputDir: "./out/iroha",
-    packId: "iroha"
+    packId: "iroha",
   });
 
   assert.equal(plan.skillId, "run-stackchan-avatar-pack");
   assert.equal(plan.evaluator, "eval-stackchan-avatar-pack");
   assert.equal(plan.requiredFiles.includes("mouth_open.png"), true);
-  assert.equal(plan.phases.some((phase) => phase.owner === "evaluator"), true);
+  assert.equal(
+    plan.phases.some((phase) => phase.owner === "evaluator"),
+    true,
+  );
 });
 
 test("StackChan avatar pack evaluator checks size and mouth overlay alpha", () => {
@@ -135,14 +199,19 @@ test("StackChan avatar pack evaluator checks size and mouth overlay alpha", () =
     "joy.png",
     "fun.png",
     "angry.png",
-    "sorrow.png"
-  ].forEach((file) => writeFileSync(join(avatarDir, file), pngHeader({ colorType: 2 })));
+    "sorrow.png",
+  ].forEach((file) =>
+    writeFileSync(join(avatarDir, file), pngHeader({ colorType: 2 })),
+  );
   ["mouth_half.png", "mouth_open.png"].forEach((file) =>
-    writeFileSync(join(avatarDir, file), pngHeader({ colorType: 6 }))
+    writeFileSync(join(avatarDir, file), pngHeader({ colorType: 6 })),
   );
 
   const result = evaluateStackChanAvatarPack({ packDir: dir });
 
   assert.equal(result.ok, true);
-  assert.equal(result.checks.every((check) => check.ok), true);
+  assert.equal(
+    result.checks.every((check) => check.ok),
+    true,
+  );
 });
