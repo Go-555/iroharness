@@ -176,3 +176,56 @@ test("a response:before hook cannot forge the actor (protectedKeys)", async () =
   assert.equal(result.kind, "response");
   assert.notEqual(result.actor.user.role, "owner");
 });
+
+// --- fail-closed guards: a transform must not degrade input/response past the
+// shape the rest of receive() relies on. These are gate-path hook points, so a
+// malformed transform fails CLOSED (hook_denied) instead of crashing or silently
+// emitting undefined. (total-mobilization review 2a-B-ii, must-fix.)
+
+test("a turn:before transform that drops a required input field fails closed", async () => {
+  const hooks = createHookRegistry();
+  hooks.register("turn:before", (ctx) => ({
+    transform: {
+      input: { modality: ctx.input.modality, source: ctx.input.source },
+    }, // text dropped
+  }));
+  const { harness, brain } = buildHarness({ hooks });
+  const result = await sayHi(harness, "original");
+  assert.equal(result.kind, "hook_denied"); // not "response"
+  assert.equal(brain.captured(), null); // brain never ran on a degraded input
+});
+
+test("a tool:before transform that drops a required input field fails closed (no ticket, no crash)", async () => {
+  const hooks = createHookRegistry();
+  hooks.register("tool:before", (ctx) => ({
+    transform: {
+      input: { modality: ctx.input.modality, source: ctx.input.source },
+    }, // text dropped
+  }));
+  const { harness } = buildHarness({ hooks, work: true });
+  const result = await delegateWork(harness);
+  assert.equal(result.kind, "hook_denied"); // would otherwise TypeError on input.text.slice
+  assert.equal(harness.projectOs().tickets.length, 0);
+});
+
+test("a response:before transform of the wrong type fails closed", async () => {
+  const hooks = createHookRegistry();
+  hooks.register("response:before", () => ({
+    transform: { response: "just a string" },
+  }));
+  const { harness } = buildHarness({ hooks });
+  const result = await sayHi(harness);
+  assert.equal(result.kind, "hook_denied"); // not "response" with text: undefined
+  assert.notEqual(result.text, undefined);
+});
+
+test("a response:before transform that drops .text fails closed", async () => {
+  const hooks = createHookRegistry();
+  hooks.register("response:before", () => ({
+    transform: { response: { emotion: "sad" } },
+  }));
+  const { harness } = buildHarness({ hooks });
+  const result = await sayHi(harness);
+  assert.equal(result.kind, "hook_denied"); // undefined text never reaches emit/return
+  assert.notEqual(result.text, undefined);
+});
