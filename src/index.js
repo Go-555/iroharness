@@ -2948,6 +2948,32 @@ const SKILL_TIER_VIEW = Object.freeze({
 
 const tierToView = (tier) => SKILL_TIER_VIEW[tier] || "public";
 
+// Resolve the operator-supplied `satisfiedRequirements` (a static string[] or a
+// per-turn (context) => string[] resolver) for the skill `requires` gate. This
+// is authz-adjacent (it controls which skills become visible), so a resolver
+// that throws or returns a non-array is treated as "none satisfied" — fail-closed:
+// requires-gated skills stay hidden, the turn never crashes, and a skill is never
+// opened on error. The default [] preserves the exclude-all-requires behavior.
+const resolveSatisfiedRequirements = (spec, context) => {
+  let value;
+  try {
+    value = typeof spec === "function" ? spec(context) : spec;
+  } catch (error) {
+    console.warn(
+      `[skills] satisfiedRequirements resolver threw; treating as none satisfied: ${error.message}`,
+    );
+    return [];
+  }
+  if (!Array.isArray(value)) {
+    if (value != null)
+      console.warn(
+        "[skills] satisfiedRequirements must be an array; treating as none satisfied",
+      );
+    return [];
+  }
+  return value;
+};
+
 export const createIroHarness = ({
   character,
   projectOs,
@@ -2960,6 +2986,7 @@ export const createIroHarness = ({
   microHarnesses = [],
   streamController = null,
   skills = null,
+  satisfiedRequirements = [],
   hooks = null,
 }) => {
   if (!character || !character.id || !character.name) {
@@ -3144,6 +3171,15 @@ export const createIroHarness = ({
         : route.kind === "deep"
           ? brains.deep || brains.text
           : brains.text;
+    const satisfied = resolveSatisfiedRequirements(satisfiedRequirements, {
+      input,
+      actor,
+      route,
+      audience,
+      state,
+      permissions: actorPermissions,
+      contextScopes,
+    });
     const skillListing = skills
       ? createSkillContextListing({
           // skills.list() returns a memoized snapshot (invalidated by register() or a new registry instance), so this is not a per-turn FS re-scan.
@@ -3151,6 +3187,7 @@ export const createIroHarness = ({
             skills: skills.list(),
             view: tierToView(audience.tier),
             permissions: actorPermissions,
+            satisfiedRequirements: satisfied,
           }),
         })
       : Object.freeze([]);

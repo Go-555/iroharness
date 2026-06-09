@@ -295,6 +295,17 @@ export function createRecorderDevice(id: string): Device & {
 };
 export function createConsoleDevice(id?: string): Device;
 
+// The read-only turn context passed to a satisfiedRequirements resolver.
+export interface SatisfiedRequirementsContext {
+  readonly input: TurnInput;
+  readonly actor: ResolvedActor;
+  readonly route: RouteDecision;
+  readonly audience: AudienceContext;
+  readonly state: CharacterState;
+  readonly permissions: readonly string[];
+  readonly contextScopes: readonly string[];
+}
+
 export function createIroHarness(input: {
   readonly character: CharacterProfile;
   readonly projectOs: ProjectOs;
@@ -311,6 +322,12 @@ export function createIroHarness(input: {
   readonly microHarnesses?: readonly MicroHarness[];
   readonly streamController?: JsonObject | null;
   readonly skills?: { list: () => readonly JsonValue[] } | null;
+  // Static list, or a per-turn resolver, of satisfied skill `requires` conditions
+  // (config/environment/platform flags like "stream.enabled"). A throwing or
+  // non-array resolver is treated as none satisfied (fail-closed).
+  readonly satisfiedRequirements?:
+    | readonly string[]
+    | ((context: SatisfiedRequirementsContext) => readonly string[]);
 }): IroHarness;
 
 export const constants: {
