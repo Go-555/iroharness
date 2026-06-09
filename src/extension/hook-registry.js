@@ -74,7 +74,7 @@ export const createHookRegistry = () => {
     return registry;
   };
 
-  const dispatch = (event, context = {}, { protectedKeys = [] } = {}) => {
+  const dispatch = async (event, context = {}, { protectedKeys = [] } = {}) => {
     const mode = failModeFor(event);
     const messageOf = (error) =>
       error instanceof Error ? error.message : String(error);
@@ -113,7 +113,7 @@ export const createHookRegistry = () => {
     for (const entry of entries) {
       let decision;
       try {
-        decision = entry.run(current);
+        decision = await entry.run(current);
       } catch (error) {
         const message = messageOf(error);
         if (mode === "closed") return failClosed(message, current);

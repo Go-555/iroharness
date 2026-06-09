@@ -3069,7 +3069,7 @@ export const createIroHarness = ({
     });
 
     if (hooks) {
-      const turnResult = hooks.dispatch(
+      const turnResult = await hooks.dispatch(
         "turn:before",
         { input, actor, audience, route },
         { protectedKeys: ["actor"] },
@@ -3102,7 +3102,7 @@ export const createIroHarness = ({
 
     if (route.kind === "work" && route.harnessId) {
       if (hooks) {
-        const toolResult = hooks.dispatch(
+        const toolResult = await hooks.dispatch(
           "tool:before",
           { input, actor, audience, route },
           { protectedKeys: ["actor"] },
@@ -3166,7 +3166,7 @@ export const createIroHarness = ({
     });
 
     if (hooks) {
-      const responseResult = hooks.dispatch(
+      const responseResult = await hooks.dispatch(
         "response:before",
         { input, actor, audience, route, response },
         { protectedKeys: ["actor"] },
