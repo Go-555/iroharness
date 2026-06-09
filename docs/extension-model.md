@@ -416,7 +416,8 @@ loader reuses 7a's `createCommandHook` and wraps each hook in a matcher gate.
   is the delegation target; all others discriminate on the route kind. (A future
   event that needs a different key adds a branch to the resolver.)
 
-An **absent matcher matches everything** (equivalent to `.*`). The regex is
+An **absent matcher matches everything** (equivalent to `.*`); an **empty-string
+matcher behaves the same** (an empty `RegExp` matches every key). The regex is
 compiled **once at load**; at dispatch the loader's wrapper runs the underlying
 command hook only when `re.test(keyFor(event, ctx))`, otherwise it returns
 `undefined` (pass-through). The registry stays unaware of matching:

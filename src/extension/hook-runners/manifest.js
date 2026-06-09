@@ -45,6 +45,30 @@ const validateEntry = (event, entry, index) => {
       throw new Error(`${at}: invalid matcher regex: ${e.message}`);
     }
   }
+  // Optional fields are consumed by createCommandHook/register; validate their
+  // types at the boundary (load) so a bad value fails loud here instead of
+  // coercing/throwing later at spawn — and so the .d.ts contract is honest.
+  if (
+    entry.timeout !== undefined &&
+    (typeof entry.timeout !== "number" || !Number.isFinite(entry.timeout))
+  )
+    throw new Error(`${at}: timeout must be a finite number`);
+  if (entry.cwd !== undefined && typeof entry.cwd !== "string")
+    throw new Error(`${at}: cwd must be a string`);
+  if (entry.env !== undefined) {
+    if (!isPlainObject(entry.env))
+      throw new Error(`${at}: env must be an object`);
+    for (const [key, value] of Object.entries(entry.env))
+      if (typeof value !== "string")
+        throw new Error(`${at}: env["${key}"] must be a string`);
+  }
+  // priority feeds register's numeric sort; a non-number poisons it to NaN and
+  // silently corrupts handler ordering for the whole event.
+  if (
+    entry.priority !== undefined &&
+    (typeof entry.priority !== "number" || !Number.isFinite(entry.priority))
+  )
+    throw new Error(`${at}: priority must be a finite number`);
   if (isRealtimeEvent(event))
     throw new Error(
       `${at}: command hooks are not allowed on the realtime event "${event}"`,

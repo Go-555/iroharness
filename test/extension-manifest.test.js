@@ -216,6 +216,57 @@ test("an empty-string event key throws (non-empty event required)", () => {
   assert.throws(() => load({ hooks: { "": [cmd()] } }), /non-empty/);
 });
 
+// Optional fields are type-validated at the load boundary (so a bad value fails
+// loud here, not as a coercion/throw later at spawn; honors the .d.ts contract).
+test("a non-number timeout throws", () => {
+  assert.throws(
+    () => load({ hooks: { "turn:before": [cmd({ timeout: "slow" })] } }),
+    /timeout/,
+  );
+});
+test("a non-string cwd throws", () => {
+  assert.throws(
+    () => load({ hooks: { "turn:before": [cmd({ cwd: 123 })] } }),
+    /cwd/,
+  );
+});
+test("a non-object env throws", () => {
+  assert.throws(
+    () => load({ hooks: { "turn:before": [cmd({ env: "PATH=/bin" })] } }),
+    /env/,
+  );
+});
+test("an env with a non-string value throws naming the key", () => {
+  assert.throws(
+    () => load({ hooks: { "turn:before": [cmd({ env: { PATH: 1 } })] } }),
+    /env\["PATH"\]/,
+  );
+});
+test("a non-number priority throws (would otherwise poison register's sort)", () => {
+  assert.throws(
+    () => load({ hooks: { "turn:before": [cmd({ priority: "high" })] } }),
+    /priority/,
+  );
+});
+test("a bad optional field is atomic: a valid entry before it registers zero hooks", async () => {
+  const registry = createHookRegistry();
+  assert.throws(
+    () =>
+      registerCommandManifest(
+        registry,
+        { hooks: { "turn:before": [cmd(), cmd({ priority: "high" })] } },
+        { baseDir: HOOKS_DIR },
+      ),
+    /priority/,
+  );
+  const r = await registry.dispatch("turn:before", {
+    route: { kind: "x" },
+    input: { text: "y" },
+  });
+  assert.equal(r.blocked, false);
+  assert.equal(r.context.marker, undefined); // the valid first entry was never registered
+});
+
 // ─── Task 3: resolveCommand + loadCommandManifestFile ─────────────────────────
 
 test("resolveCommand resolves a separator-bearing path against baseDir", () => {
