@@ -1,6 +1,7 @@
 import { basename, dirname, join } from "node:path";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 
+// gate.js re-imports parseSkillFrontmatter from this file; safe — used only at call time, not at module-evaluation time.
 import { createSkillContextListing, gateSkills } from "./skills/index.js";
 
 const MODES = Object.freeze({
@@ -2938,6 +2939,7 @@ export const createConsoleDevice = (id = "console") =>
     },
   });
 
+// member/public/anonymous and any unrecognized tier fall through to "public" (fail closed).
 const SKILL_TIER_VIEW = Object.freeze({
   owner: "owner",
   trusted: "trusted",
@@ -3078,6 +3080,7 @@ export const createIroHarness = ({
           : brains.text;
     const skillListing = skills
       ? createSkillContextListing({
+          // skills.list() re-scans the skill directory each turn; acceptable for local FS at this scale.
           skills: gateSkills({
             skills: skills.list(),
             view: tierToView(audience.tier),

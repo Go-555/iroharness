@@ -9,6 +9,7 @@ import {
   createInMemoryProjectOs,
   createInMemoryUserRegistry,
   createIroHarness,
+  createStubMicroHarness,
 } from "../src/index.js";
 
 const createCapturingBrain = (id) => {
@@ -40,6 +41,7 @@ const buildHarness = ({
   skills = null,
   role = null,
   permissionsFor = null,
+  microHarnesses = [],
 } = {}) => {
   const userRegistry = createInMemoryUserRegistry();
   if (role) {
@@ -57,11 +59,13 @@ const buildHarness = ({
     userRegistry,
     brains: { voice: brain, text: brain },
     skills,
+    microHarnesses,
     ...(permissionsFor
       ? {
           permissionPolicy: {
             evaluate: () => ({ allowed: true }),
             permissionsFor,
+            createContextScopes: () => Object.freeze([]),
           },
         }
       : {}),
@@ -145,4 +149,27 @@ test("capability gates within a view; requires-gated skills are excluded this ph
   });
   await receiveAs(mod.harness, "moderator");
   assert.deepEqual(skillIds(mod.brain), ["pub"]);
+});
+
+test("the work (micro-harness) path does not run skill gating", async () => {
+  // A work route returns via runMicroHarness before brain.respond, so the
+  // capturing brain is never called and no skill listing is computed.
+  // (Stream routes are excluded for the same reason — both early-return
+  // before the brain path where gateSkills runs.)
+  const { harness, brain } = buildHarness({
+    skills: buildSkills([["pub", "view: public\n"]]),
+    role: "developer",
+    permissionsFor: () => ["delegate_work"],
+    microHarnesses: [createStubMicroHarness("codex", ["code"])],
+  });
+  const result = await harness.receive({
+    source: "web",
+    modality: "text",
+    text: "Codexでこのコードをレビューして",
+    actor: { platform: "web", platformUserId: "DEVELOPER" },
+  });
+
+  assert.equal(result.kind, "delegation");
+  assert.equal(result.route.kind, "work");
+  assert.equal(brain.captured(), null);
 });
