@@ -356,10 +356,13 @@ const skillListing = skills
 // ... brain.respond({ ..., skills: skillListing })
 ```
 
-Discovery is captured once by the registry; only the per-actor **filter** runs
-each turn. The eligible listing is passed to `brain.respond` as a new `skills`
-field. Existing brains ignore unknown context fields, so the addition is
-non-breaking; a brain that wants to use skills reads `context.skills`.
+`createFileSkillRegistry.list()` re-scans the skill directory on each call, so
+discovery is **fresh per turn** (hot-reloadable) rather than cached — acceptable
+at local-FS scale; a future optimization could cache the snapshot. The per-actor
+**filter** (`gateSkills`) is what actually varies by actor. The eligible listing
+is passed to `brain.respond` as a new `skills` field. Existing brains ignore
+unknown context fields, so the addition is non-breaking; a brain that wants to
+use skills reads `context.skills`.
 
 **`requires` is fail-closed this phase.** `gateSkills` also accepts
 `satisfiedRequirements` (the set of currently-met `requires` conditions). This

@@ -1,7 +1,7 @@
 import { basename, dirname, join } from "node:path";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 
-// gate.js re-imports parseSkillFrontmatter from this file; safe — used only at call time, not at module-evaluation time.
+// Plain one-way import of the skills subsystem (no cycle back into this file).
 import { createSkillContextListing, gateSkills } from "./skills/index.js";
 
 const MODES = Object.freeze({

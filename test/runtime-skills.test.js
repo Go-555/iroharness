@@ -116,6 +116,10 @@ test("tier maps to view: developer/moderator see trusted, fan and anonymous see 
   await receiveAs(mod.harness, "moderator");
   assert.deepEqual(skillIds(mod.brain), ["pub", "trust"]);
 
+  const member = buildHarness({ skills: buildSkills(entries), role: "member" });
+  await receiveAs(member.harness, "member");
+  assert.deepEqual(skillIds(member.brain), ["pub"]); // member -> public (not operator)
+
   const fan = buildHarness({ skills: buildSkills(entries), role: "fan" });
   await receiveAs(fan.harness, "fan");
   assert.deepEqual(skillIds(fan.brain), ["pub"]);
@@ -129,7 +133,10 @@ test("capability gates within a view; requires-gated skills are excluded this ph
   const entries = [
     ["pub", "view: public\n"],
     ["trust-cap", "view: trusted\ncapability: delegate_work\n"],
-    ["needs-req", "view: public\nrequires: stream.enabled\n"],
+    // requires on a TRUSTED skill: a developer clears the trusted view AND has
+    // delegate_work, yet this is still excluded — proving `requires` gates
+    // independently of the view/capability gates (no satisfiedRequirements).
+    ["needs-req", "view: trusted\nrequires: stream.enabled\n"],
   ];
   const permissionsFor = (user) =>
     user.role === "developer" ? ["delegate_work"] : [];
@@ -140,6 +147,7 @@ test("capability gates within a view; requires-gated skills are excluded this ph
     permissionsFor,
   });
   await receiveAs(dev.harness, "developer");
+  // needs-req excluded despite clearing trusted view (requires fail-closed).
   assert.deepEqual(skillIds(dev.brain), ["pub", "trust-cap"]);
 
   const mod = buildHarness({
