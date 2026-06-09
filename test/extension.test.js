@@ -280,7 +280,10 @@ test("a handler cannot escalate by mutating a nested authz object in place", () 
   // The mutation throws on the deep-frozen context -> fail-closed block.
   assert.equal(result.blocked, true);
   // The forged value never reaches the result.
-  assert.deepEqual(result.context.actor, { role: "fan", canDelegateWork: false });
+  assert.deepEqual(result.context.actor, {
+    role: "fan",
+    canDelegateWork: false,
+  });
   // The caller's original object is untouched (clone isolation).
   assert.deepEqual(callerActor, { role: "fan", canDelegateWork: false });
 });
@@ -365,4 +368,11 @@ test("a non-cloneable transform on a background event is dropped (fail-open)", (
   assert.equal(result.blocked, false); // fail-open
   assert.deepEqual(ran, ["later"]); // later handler still ran
   assert.equal(result.context.text, "hi"); // pre-transform context kept
+});
+
+test("dispatch with no handlers does not clone the context (hot path)", () => {
+  const registry = createHookRegistry();
+  const result = registry.dispatch("turn:before", { fn: () => {} });
+  assert.equal(result.blocked, false);
+  assert.equal(typeof result.context.fn, "function");
 });

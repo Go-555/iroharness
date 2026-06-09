@@ -88,6 +88,14 @@ export const createHookRegistry = () => {
     const passthrough = (ctx) =>
       freezeCopy({ event, blocked: false, reason: null, context: ctx });
 
+    // Hot path: when an event has no handlers there is nothing to isolate the
+    // context from, so skip the (potentially throwing) structural clone entirely
+    // and pass the context straight through.
+    const entries = handlers.get(event) || [];
+    if (entries.length === 0) {
+      return passthrough(freezeCopy(context));
+    }
+
     // Freezing the context (a deep-frozen structural clone) can itself fail — a
     // non-cloneable value in the context or a transform would otherwise throw a
     // DataCloneError straight out of dispatch and crash the fail-closed control.
@@ -102,7 +110,7 @@ export const createHookRegistry = () => {
       return passthrough(freezeCopy({}));
     }
 
-    for (const entry of handlers.get(event) || []) {
+    for (const entry of entries) {
       let decision;
       try {
         decision = entry.run(current);
