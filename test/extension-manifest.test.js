@@ -1,11 +1,15 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
-import { dirname } from "node:path";
+import { dirname, join } from "node:path";
+import { writeFileSync, mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { createHookRegistry } from "../src/extension/hook-registry.js";
 import {
   registerCommandManifest,
   keyFor,
+  resolveCommand,
+  loadCommandManifestFile,
 } from "../src/extension/hook-runners/manifest.js";
 
 const HOOKS_DIR = dirname(
@@ -210,4 +214,39 @@ test("bad args is atomic: valid entry before non-string args registers zero hook
 
 test("an empty-string event key throws (non-empty event required)", () => {
   assert.throws(() => load({ hooks: { "": [cmd()] } }), /non-empty/);
+});
+
+// ─── Task 3: resolveCommand + loadCommandManifestFile ─────────────────────────
+
+test("resolveCommand resolves a separator-bearing path against baseDir", () => {
+  assert.equal(resolveCommand("./x.sh", "/base"), "/base/x.sh");
+  assert.equal(resolveCommand("../hooks/x", "/base/sub"), "/base/hooks/x");
+  assert.equal(resolveCommand("/abs/x", "/base"), "/abs/x");
+});
+
+test("resolveCommand leaves a bare name for PATH lookup", () => {
+  assert.equal(resolveCommand("node", "/base"), "node");
+  assert.equal(resolveCommand("bash", "/base"), "bash");
+});
+
+test("loadCommandManifestFile reads, parses, resolves, and the hook runs", async () => {
+  const MANIFEST = fileURLToPath(
+    new URL("./fixtures/manifests/basic.json", import.meta.url),
+  );
+  const registry = createHookRegistry();
+  loadCommandManifestFile(registry, MANIFEST);
+  const r = await registry.dispatch("turn:before", {
+    route: { kind: "x" },
+    input: { text: "y" },
+  });
+  assert.equal(r.blocked, false);
+  assert.equal(r.context.marker, "ran");
+});
+
+test("a malformed JSON manifest file throws", () => {
+  const dir = mkdtempSync(join(tmpdir(), "iroha-manifest-"));
+  const bad = join(dir, "bad.json");
+  writeFileSync(bad, "{ not json");
+  const registry = createHookRegistry();
+  assert.throws(() => loadCommandManifestFile(registry, bad), /parse|JSON/i);
 });

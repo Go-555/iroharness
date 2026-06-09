@@ -1,6 +1,13 @@
-import { isAbsolute, resolve } from "node:path";
+import { readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
 import { createCommandHook } from "./command.js";
 import { isRealtimeEvent } from "../hook-registry.js";
+
+// execvp convention: a command containing a path separator is a path (resolved
+// against baseDir); a bare name is left for PATH lookup. On POSIX an absolute
+// path always contains "/", so the separator test subsumes isAbsolute.
+export const resolveCommand = (command, baseDir) =>
+  command.includes("/") ? resolve(baseDir, command) : command;
 
 export const keyFor = (event, ctx) =>
   event === "tool:before"
@@ -45,9 +52,7 @@ const validateEntry = (event, entry, index) => {
 };
 
 const buildGatedHook = (event, entry, index, baseDir) => {
-  const command = isAbsolute(entry.command)
-    ? entry.command
-    : resolve(baseDir, entry.command);
+  const command = resolveCommand(entry.command, baseDir);
   const hook = createCommandHook({
     command,
     args: entry.args,
@@ -97,4 +102,18 @@ export const registerCommandManifest = (
     });
   }
   return registry;
+};
+
+export const loadCommandManifestFile = (registry, path) => {
+  let manifest;
+  try {
+    manifest = JSON.parse(readFileSync(path, "utf8"));
+  } catch (error) {
+    throw new Error(
+      `failed to read/parse manifest "${path}": ${error.message}`,
+    );
+  }
+  return registerCommandManifest(registry, manifest, {
+    baseDir: dirname(path),
+  });
 };
