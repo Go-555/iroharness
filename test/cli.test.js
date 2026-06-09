@@ -1336,3 +1336,84 @@ test("CLI view export lists a colliding skill id only once (app-local shadows bu
   const hits = manifest.files.filter((f) => f === join("skills", collidingId));
   assert.equal(hits.length, 1); // no duplicate entry across roots
 });
+
+test("CLI view export drops dotfiles/dot-dirs (.git/.env) from a skill copy", () => {
+  const dir = mkdtempSync(join(tmpdir(), "iroharness-view-skills-dotfiles-"));
+  const appDir = join(dir, "companion");
+  runCli(["init", appDir, "--character", "Iroha"]);
+  const skillRoot = join(appDir, ".iroharness", "skills", "pub");
+  mkdirSync(join(skillRoot, ".git"), { recursive: true });
+  writeFileSync(
+    join(skillRoot, "SKILL.md"),
+    "---\nname: pub\ndescription: public.\nview: public\n---\n\n# pub\n",
+    "utf8",
+  );
+  writeFileSync(join(skillRoot, ".env"), "SECRET=leak\n", "utf8");
+  writeFileSync(join(skillRoot, ".git", "config"), "[core]\n", "utf8");
+  writeFileSync(join(skillRoot, "notes.md"), "visible resource\n", "utf8"); // legit resource kept
+  // Nested: a hidden file inside a visible subdir must also be dropped.
+  mkdirSync(join(skillRoot, "references"), { recursive: true });
+  writeFileSync(join(skillRoot, "references", "keep.md"), "ok\n", "utf8");
+  writeFileSync(
+    join(skillRoot, "references", ".hidden"),
+    "nested secret\n",
+    "utf8",
+  );
+
+  const out = join(dir, "public-view");
+  const result = runCli([
+    "view",
+    "export",
+    appDir,
+    "--zone",
+    "public",
+    "--out",
+    out,
+    "--force",
+  ]);
+  assert.equal(result.status, 0, result.stderr);
+  const exported = join(out, "current", "skills", "pub");
+  assert.equal(existsSync(join(exported, "SKILL.md")), true);
+  assert.equal(existsSync(join(exported, "notes.md")), true); // visible resource copied
+  assert.equal(existsSync(join(exported, "references", "keep.md")), true); // nested visible kept
+  assert.equal(existsSync(join(exported, ".env")), false); // dotfile dropped
+  assert.equal(existsSync(join(exported, ".git")), false); // dot-dir dropped
+  assert.equal(existsSync(join(exported, "references", ".hidden")), false); // nested dotfile dropped
+});
+
+test("CLI view export normalizes an upper-case view through the export path", () => {
+  const dir = mkdtempSync(join(tmpdir(), "iroharness-view-skills-case-"));
+  const appDir = join(dir, "companion");
+  runCli(["init", appDir, "--character", "Iroha"]);
+  const skillsRoot = join(appDir, ".iroharness", "skills");
+  mkdirSync(join(skillsRoot, "shouty"), { recursive: true });
+  writeFileSync(
+    join(skillsRoot, "shouty", "SKILL.md"),
+    "---\nname: shouty\ndescription: public but shouty.\nview: PUBLIC\n---\n\n# shouty\n",
+    "utf8",
+  );
+  // Upper-case TRUSTED must normalize to trusted: visible in trusted, hidden in public.
+  mkdirSync(join(skillsRoot, "loud-trust"), { recursive: true });
+  writeFileSync(
+    join(skillsRoot, "loud-trust", "SKILL.md"),
+    "---\nname: loud-trust\ndescription: trusted but loud.\nview: TRUSTED\n---\n\n# loud-trust\n",
+    "utf8",
+  );
+
+  const exportZone = (zone) => {
+    const out = join(dir, `${zone}-view`);
+    runCli(["view", "export", appDir, "--zone", zone, "--out", out, "--force"]);
+    return join(out, "current", "skills");
+  };
+
+  const pub = exportZone("public");
+  // PUBLIC normalizes to public -> visible in public; would fall back to owner
+  // (excluded) if case-folding were broken.
+  assert.equal(existsSync(join(pub, "shouty", "SKILL.md")), true);
+  // TRUSTED normalizes to trusted -> hidden from public.
+  assert.equal(existsSync(join(pub, "loud-trust")), false);
+
+  const trusted = exportZone("trusted");
+  // TRUSTED -> trusted -> visible in trusted; would be excluded if not case-folded.
+  assert.equal(existsSync(join(trusted, "loud-trust", "SKILL.md")), true);
+});
