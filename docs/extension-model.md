@@ -655,33 +655,39 @@ skill listing; the gating code sits immediately before `brain.respond`, after
 those early returns:
 
 ```js
+const satisfied = resolveSatisfiedRequirements(satisfiedRequirements, {
+  input, actor, route, audience, state, permissions: actorPermissions, contextScopes,
+});
 const skillListing = skills
   ? createSkillContextListing({
       skills: gateSkills({
         skills: skills.list(),
         view: tierToView(audience.tier),
         permissions: actorPermissions,
-        // satisfiedRequirements intentionally omitted (see note below)
+        satisfiedRequirements: satisfied,
       }),
     })
   : Object.freeze([]);
 // ... brain.respond({ ..., skills: skillListing })
 ```
 
-`createFileSkillRegistry.list()` re-scans the skill directory on each call, so
-discovery is **fresh per turn** (hot-reloadable) rather than cached — acceptable
-at local-FS scale; a future optimization could cache the snapshot. The per-actor
-**filter** (`gateSkills`) is what actually varies by actor. The eligible listing
-is passed to `brain.respond` as a new `skills` field. Existing brains ignore
-unknown context fields, so the addition is non-breaking; a brain that wants to
-use skills reads `context.skills`.
+`createFileSkillRegistry.list()` returns a **memoized snapshot** (computed once,
+invalidated by `register()` or a new registry instance), so the per-turn call is
+not an FS re-scan. The per-actor **filter** (`gateSkills`) is what varies by
+actor. The eligible listing is passed to `brain.respond` as a new `skills` field.
+Existing brains ignore unknown context fields, so the addition is non-breaking; a
+brain that wants to use skills reads `context.skills`.
 
-**`requires` is fail-closed this phase.** `gateSkills` also accepts
-`satisfiedRequirements` (the set of currently-met `requires` conditions). This
-phase does **not** pass it (there is no runtime requirement evaluator yet), so it
-defaults to `[]` and any skill that declares a `requires` condition is excluded
-(fail-closed) until a requirement evaluator is wired in (follow-on). Skills
-without a `requires` key are unaffected.
+**`requires` is evaluated at runtime via `satisfiedRequirements`.** `createIroHarness`
+accepts a `satisfiedRequirements` option — either a static `string[]` or a
+per-turn `(context) => string[]` resolver — of the currently-met `requires`
+conditions (config/environment/platform flags like `stream.enabled`). `receive()`
+resolves it and passes it to `gateSkills`. Because this controls skill
+visibility, resolution is **fail-closed**: a resolver that throws or returns a
+non-array is treated as **none satisfied** (a `requires`-gated skill stays hidden,
+the turn never crashes, a skill is never opened on error). The default `[]`
+keeps the prior behavior (every `requires`-gated skill excluded). Skills without
+a `requires` key are unaffected.
 
 **Tier-to-view mapping.** The actor's audience `tier` maps to the view layer the
 gate filters by:
