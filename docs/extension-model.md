@@ -164,6 +164,59 @@ priority order and their `block`/`transform` decisions are applied before the
 emitting code proceeds. Event points with no registered hooks behave exactly as
 today (observe only).
 
+### 3.7 Runtime Hook Integration (`receive`): `turn:before`
+
+The hardened `dispatch` (§6) is wired into the macro runtime so in-process hooks
+actually run. `createIroHarness` accepts an optional `hooks` parameter — a
+registry from `createHookRegistry`. When omitted it defaults to none, so existing
+harnesses are unchanged. This phase wires the **first and most important** point,
+`turn:before`; `tool:before` and `response:before` follow.
+
+Inside `receive(input)`, **after the actor and audience are resolved** (the
+route is already chosen by this point) and **before the `permissionPolicy.evaluate`
+check**, the gate runs:
+
+```js
+if (hooks) {
+  const result = hooks.dispatch(
+    "turn:before",
+    { input, actor, audience, route },
+    { protectedKeys: ["actor"] },
+  );
+  if (result.blocked) {
+    return rejectByHook(input, route, actor, audience, result.reason);
+  }
+  input = result.context.input ?? input; // apply a transform of the input
+}
+```
+
+- **`block` → reject.** A blocking hook stops the turn before permission, routing,
+  delegation, or the brain. A new `rejectByHook` helper returns a denial result
+  (mirroring `rejectByPermission`) carrying the hook's `reason`; it sets speaking
+  state and emits a speech event like the permission-denial path.
+- **`transform` → apply to `input` only.** A transform may rewrite `input` (e.g.
+  moderation/normalization); the rewritten value flows downstream to
+  `permissionPolicy.evaluate` and `brain.respond` (`input` is the `receive`
+  parameter and is simply reassigned). Note the `input.text`/`modality`/`source`
+  validation at the top of `receive` ran on the **original** input, so a
+  transform-rewritten input is not re-validated — acceptable, since `transform`
+  is moderation/normalization territory and the authz field (`actor`) is
+  protected. `actor` is passed under `protectedKeys: ["actor"]`, so a hook
+  **cannot forge the actor** to escalate (the §6 deep-freeze + protected-keys
+  guard). `route` is **not** re-derived from a transform this phase (it is
+  already chosen; re-routing mid-turn is deferred).
+- **No hooks → unchanged.** With no `hooks` registry the dispatch is skipped
+  entirely and `receive` behaves exactly as today.
+
+**Hot-path optimization (a new `dispatch` change).** Add a no-handler
+early-return to `dispatch` **before** the `freezeContext` call: when
+`handlers.get(event)` is empty, return a cheap passthrough without the
+`structuredClone`/deep-freeze. Since `receive` calls `dispatch` every turn, a
+deployment with no `turn:before` hook then pays nothing.
+
+`tool:before` (around micro-harness delegation) and `response:before` (after the
+brain, before the speech emit) are wired the same way in the follow-on (2a-B-ii).
+
 ## 4. Skills
 
 **This section builds on the existing `src/skills/` subsystem.** IroHarness
@@ -518,9 +571,11 @@ Each unit has one purpose and a defined interface:
    `failModeFor` per-event fail-closed/fail-open classification, and the
    `transform` `protectedKeys` guard, to `hook-registry.js` `dispatch`. **Done.**
 6. Hook dispatch integration (2a-B): wire in-process `dispatch` into `receive()`
-   (`turn:before`/`tool:before`/`response:before`) — block→reject, transform→
-   apply, passing `protectedKeys: ["actor"]` — `dispatch`'s first real loop
-   consumer.
+   (§3.7) — `dispatch`'s first real loop consumer, passing
+   `protectedKeys: ["actor"]`. **2a-B (this phase): `turn:before`** (block→reject
+   via `rejectByHook`, transform→apply to `input`) + the no-handler hot-path
+   optimization in `dispatch`. **2a-B-ii (follow-on): `tool:before` /
+   `response:before`.**
 7. Command runner (text-path child-process hook gates).
 8. Agent runner (response review).
 
