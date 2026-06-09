@@ -142,6 +142,7 @@ test("the ./extension subpath export resolves the registry", async () => {
   const mod = await import("iroharness/extension");
   assert.equal(typeof mod.createHookRegistry, "function");
   assert.ok(mod.REALTIME_HOOK_EVENTS.has("bargein:detect"));
+  assert.equal(typeof mod.createCommandHook, "function");
 });
 
 test("equal-priority handlers run in registration order", async () => {

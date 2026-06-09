@@ -23,9 +23,21 @@ export interface HookRegistry {
     event: string,
     context?: Record<string, unknown>,
     options?: { protectedKeys?: readonly string[] },
-  ): HookDispatchResult;
+  ): Promise<HookDispatchResult>;
 }
 
 export function createHookRegistry(): HookRegistry;
 
 export const REALTIME_HOOK_EVENTS: ReadonlySet<string>;
+
+export interface CommandHookSpec {
+  command: string;
+  args?: string[];
+  timeout?: number;
+  cwd?: string;
+  env?: Record<string, string>;
+}
+
+export function createCommandHook(
+  spec: CommandHookSpec,
+): (ctx: Record<string, unknown>) => Promise<HookDecision>;

@@ -749,7 +749,7 @@ Each unit has one purpose and a defined interface:
      `await`) and add the `createCommandHook` factory — spawn a child under the
      §3.4 JSON contract, `shell: false`, minimal env, timeout + output cap,
      fail-closed-on-doubt — registered directly via `register(..., { style:
-     "command" })`.
+     "command" })`). **Done.**
    - **7b:** the JSON manifest loader (`{ hooks: { event: [{ type, command,
      matcher, timeout }] } }`) and `matcher` (regex against an event-specific
      key) that registers command hooks in bulk.
