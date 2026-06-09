@@ -382,6 +382,100 @@ the path; it is out of scope, not overlooked.
 7a adds **no manifest loader and no `matcher`** (7b). A command hook is
 registered directly: `register(event, createCommandHook(spec), { style: "command" })`.
 
+### 3.10 Command Manifest (7b): JSON loader + `matcher`
+
+Phase 7b adds the **declarative** front door for command hooks: a JSON manifest
+(§3.4) whose entries are loaded and registered in bulk, each gated by a
+`matcher`. It is purely additive — `dispatch` and `register` are unchanged; the
+loader reuses 7a's `createCommandHook` and wraps each hook in a matcher gate.
+
+**Manifest shape** (§3.4), command entries only in 7b:
+
+```json
+{
+  "hooks": {
+    "tool:before": [
+      { "type": "command", "matcher": "codex", "command": "./hooks/audit.sh", "timeout": 5000 }
+    ],
+    "turn:before": [
+      { "type": "command", "matcher": "stream|voice", "command": "./hooks/route.sh" }
+    ]
+  }
+}
+```
+
+**`matcher` is a regex tested against a route-derived, per-event key.** The
+`route` object is `{ kind, harnessId, reason }` (kind ∈ `stream`/`voice`/`deep`/
+`text`/`work`; `harnessId` is the delegation target for a `work` route). The key:
+
+- **`tool:before`** → `route.harnessId ?? ""` — the micro-harness being delegated
+  to (the "tool name"; e.g. `codex`).
+- **every other event** (`turn:before`, `response:before`, `turn:after`,
+  `memory:write`, and any future text-path event) → `route.kind ?? ""`. This is a
+  deliberate catch-all default: `tool:before` is the only event whose natural key
+  is the delegation target; all others discriminate on the route kind. (A future
+  event that needs a different key adds a branch to the resolver.)
+
+An **absent matcher matches everything** (equivalent to `.*`); an **empty-string
+matcher behaves the same** (an empty `RegExp` matches every key). The regex is
+compiled **once at load**; at dispatch the loader's wrapper runs the underlying
+command hook only when `re.test(keyFor(event, ctx))`, otherwise it returns
+`undefined` (pass-through). The registry stays unaware of matching:
+
+```js
+const re = matcher ? new RegExp(matcher) : null;            // compiled at load
+const gated = (ctx) =>
+  !re || re.test(keyFor(event, ctx)) ? commandHook(ctx) : undefined;
+registry.register(event, gated, { style: "command", priority });
+```
+
+Because registration uses `style: "command"`, the **realtime invariant (§3.5)
+still rejects a manifest entry on a `bargein:`/`speech:`/`device:` event** at
+load time.
+
+**API.** `registerCommandManifest(registry, manifest, { baseDir = process.cwd() })`
+takes a **parsed manifest object** (testable without the filesystem), validates
+it, and registers every command hook, returning the registry. `command`
+resolution follows `execvp` convention: a `command` that **contains a path
+separator** (e.g. `./hook.sh`, `../hooks/x`, `/abs/x`) is a path and is resolved
+against `baseDir`; a **bare name** (no separator, e.g. `node`, `bash`) is left
+untouched for `PATH` lookup by `spawn`. A path that traverses out of `baseDir`
+via `../` is within the operator's own filesystem trust domain (same posture as
+§3.9's TOCTOU note) — 7b does not canonicalize or reject it. A thin
+`loadCommandManifestFile(registry, path)` reads + `JSON.parse`s the file and
+calls the core with `baseDir = dirname(path)`. Both are exported from `./extension`.
+
+`priority` (if present on an entry) is passed to `register` as
+`{ style: "command", priority }` — it is a registry ordering option, **not** a
+`createCommandHook` spec field (§3.9's spec is `{command,args,timeout,cwd,env}`).
+
+**Load-time validation (boundary check — fail loud, never a silent drop, §6).**
+The manifest is operator-authored but is still external input (a JSON file), so
+it is validated at load:
+
+- An **absent `hooks` key is treated as `{}`** (zero hooks registered; not an
+  error). If present, `manifest.hooks` must be an object and each event value
+  must be an array; each array element must be a **non-null object** (a string/
+  number/null element throws a load-time error naming the event and index).
+- Each entry: `type` is required and must be `"command"`; `command` is a required
+  non-empty string; `matcher` (if present) must be a **string** that compiles as a
+  valid `RegExp` (a non-string or an uncompilable pattern throws); `timeout`/
+  `args`/`cwd`/`env` are optional and validated by 7a's `createCommandHook`
+  (args = string array, etc.); `priority` (optional) is a `register` option (see
+  above).
+- **`type: "agent"` is a clear load-time error** ("agent hooks are not supported
+  until Phase 8") — not a silent skip.
+- An invalid regex, an unknown/missing `type`, or any malformed entry throws a
+  load-time error **naming the event and the entry index**, consistent with §6's
+  "never a silent drop." A command hook on a realtime event surfaces the §3.5
+  rejection. (Duplicate event keys within a single JSON object resolve by the
+  parser's last-wins behavior, which is acceptable — the manifest is a single
+  authored document.)
+
+This keeps 7b's security surface at the boundary (the manifest file and the
+child it names), reusing 7a's already-hardened spawn (shell-false, minimal env,
+timeout, output cap, fail-closed). No agent runner (Phase 8).
+
 ## 4. Skills
 
 **This section builds on the existing `src/skills/` subsystem.** IroHarness
@@ -750,9 +844,13 @@ Each unit has one purpose and a defined interface:
      §3.4 JSON contract, `shell: false`, minimal env, timeout + output cap,
      fail-closed-on-doubt — registered directly via `register(..., { style:
      "command" })`). **Done.**
-   - **7b:** the JSON manifest loader (`{ hooks: { event: [{ type, command,
-     matcher, timeout }] } }`) and `matcher` (regex against an event-specific
-     key) that registers command hooks in bulk.
+   - **7b (this phase):** the JSON manifest loader
+     (`registerCommandManifest` + `loadCommandManifestFile`, §3.10) and `matcher`
+     (regex against a route-derived per-event key — `route.harnessId` for
+     `tool:before`, `route.kind` otherwise) that registers command hooks in bulk,
+     with fail-loud load-time validation (no silent drop; `type:"agent"` errors
+     until Phase 8). Reuses 7a's `createCommandHook`; `dispatch`/`register`
+     unchanged. **Done.**
 8. Agent runner (response review).
 
 Note: the realtime invariant's coverage (device:emit, prefix/Set drift) is

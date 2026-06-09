@@ -143,6 +143,8 @@ test("the ./extension subpath export resolves the registry", async () => {
   assert.equal(typeof mod.createHookRegistry, "function");
   assert.ok(mod.REALTIME_HOOK_EVENTS.has("bargein:detect"));
   assert.equal(typeof mod.createCommandHook, "function");
+  assert.equal(typeof mod.registerCommandManifest, "function");
+  assert.equal(typeof mod.loadCommandManifestFile, "function");
 });
 
 test("equal-priority handlers run in registration order", async () => {

@@ -45,3 +45,29 @@ export interface CommandHookSpec {
 }
 
 export function createCommandHook(spec: CommandHookSpec): HookHandler;
+
+export interface CommandManifestEntry {
+  type: "command";
+  command: string;
+  matcher?: string;
+  args?: string[];
+  timeout?: number;
+  cwd?: string;
+  env?: Record<string, string>;
+  priority?: number;
+}
+
+export interface CommandManifest {
+  hooks?: Record<string, CommandManifestEntry[]>;
+}
+
+export function registerCommandManifest(
+  registry: HookRegistry,
+  manifest: CommandManifest,
+  options?: { baseDir?: string },
+): HookRegistry;
+
+export function loadCommandManifestFile(
+  registry: HookRegistry,
+  path: string,
+): HookRegistry;

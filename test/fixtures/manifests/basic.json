@@ -1,0 +1,5 @@
+{
+  "hooks": {
+    "turn:before": [{ "type": "command", "command": "../hooks/allow.mjs" }]
+  }
+}

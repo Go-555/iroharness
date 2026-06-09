@@ -29,7 +29,7 @@ const REALTIME_HOOK_PREFIXES = Object.freeze([
   "device:",
 ]);
 
-const isRealtimeEvent = (event) =>
+export const isRealtimeEvent = (event) =>
   REALTIME_HOOK_PREFIXES.some((prefix) => event.startsWith(prefix));
 
 // Background events fail open; gate events (and anything unrecognized) fail closed.
