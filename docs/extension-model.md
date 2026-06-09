@@ -441,9 +441,27 @@ Each unit has one purpose and a defined interface:
   (deny on error); background points default to fail-open.
 - **Agent hook failure**: model error or timeout follows the same fail policy as
   command hooks.
-- **In-process handler throw**: caught by the registry; the throwing handler is
-  treated as a fail-closed `block` on gate points and skipped on background
-  points, with the error logged. A throwing handler never crashes the loop.
+- **In-process handler throw**: `dispatch` wraps each handler call in a
+  try/catch, so a throwing handler never crashes the loop. The fail mode is
+  decided by `failModeFor(event)`:
+  - **fail-closed** (throw → `block`) for **gate** events (`turn:before`,
+    `tool:before`, `memory:write`, `response:before`) and **any unrecognized
+    event** (default-closed for safety). The synthesized result uses the **same
+    shape as a normal block decision** —
+    `freezeCopy({ event, blocked: true, reason: "hook error (fail-closed): <message>", context: current })` —
+    so callers read `result.blocked`/`result.reason` uniformly.
+  - **fail-open** (throw → log a warning and skip that handler, continue) for
+    **background** events (`tool:after`, `turn:after`) and all **realtime**
+    events (`bargein:*`/`speech:*`/`device:*` — the realtime loop must never
+    stall on a broken expression/barge-in hook).
+- **`transform` cannot overwrite protected keys**: `dispatch` gains a third
+  options argument defaulting to a no-op —
+  `dispatch(event, context = {}, { protectedKeys = [] } = {})` — so existing
+  two-argument callers are unaffected. When `protectedKeys` is non-empty,
+  `dispatch` drops any key a handler's `transform` tries to set that is listed in
+  it (logging a warning), so a hook cannot forge authorization-bearing context
+  fields (e.g. `actor`) to escalate privilege. The runtime wiring (2a-B) passes
+  `protectedKeys: ["actor"]` for events whose context carries the resolved actor.
 - **Skill parse failure**: a malformed `SKILL.md` is skipped with a logged
   warning and excluded from the eligible set; it never aborts session start.
 
@@ -464,12 +482,16 @@ Each unit has one purpose and a defined interface:
   skill's `SKILL.md` via the exported `parseSkillFrontmatter` and the manifest's
   `manifestPath`; a skill without the keys parses and defaults open. Upstream
   manifest/parse code is unchanged (no private functions touched).
-- **error handling**: the hook fail policy — fail-closed vs fail-open per event
-  point, and the throwing-in-process-handler catch that keeps the loop alive —
-  lands with the command runner in **Phase 3** (it needs the gate/background
-  event-point taxonomy), so it is not a Phase 1 test (see §8). The
-  malformed-`SKILL.md` skip is covered here in Phase 2 (skill-gate, the
-  `gateSkills excludes a malformed skill` test).
+- **error handling (2a-A, §8 step 5 — this phase for dispatch)**: the
+  in-process throwing-handler catch + `failModeFor` per-event fail-closed/
+  fail-open classification, and the `transform` `protectedKeys` guard, are tested
+  on `dispatch` directly: a throwing handler on a gate event blocks (fail-closed,
+  block-shaped result); on a background/realtime event it is skipped and the loop
+  continues (fail-open); a `transform` targeting a protected key is dropped while
+  other keys apply; and two-argument callers are unaffected. The
+  malformed-`SKILL.md` skip is covered in Phase 2 (skill-gate, the
+  `gateSkills excludes a malformed skill` test). Command/agent runner fail
+  policies (child-process/LLM) land with those runners (later phases).
 
 ## 8. Phasing
 
@@ -481,15 +503,17 @@ Each unit has one purpose and a defined interface:
    `gate.js`'s normalizer. **Done.**
 4. Runtime skill integration (§4.5): wire `gateSkills` into
    `createIroHarness.receive()` (per-turn, tier-to-view), passing the eligible
-   listing to `brain.respond`. The skill gate's first real consumer. **This
-   phase (2b).**
-5. Hook dispatch integration (2a): wire in-process `dispatch` into `receive()`
-   (`turn:before`/`tool:before`/`response:before`) — **and** the hook fail policy
-   (§6): the throwing-in-process-handler catch + per-event fail-closed/fail-open
-   classification, plus the `transform`×authz guard, land here with `dispatch`'s
-   first real loop consumer.
-6. Command runner (text-path child-process hook gates).
-7. Agent runner (response review).
+   listing to `brain.respond`. The skill gate's first real consumer. **Done (2b).**
+5. Dispatch hardening (2a-A, §6): add the throwing-in-process-handler catch +
+   `failModeFor` per-event fail-closed/fail-open classification, and the
+   `transform` `protectedKeys` guard, to `hook-registry.js` `dispatch`. **This
+   phase.**
+6. Hook dispatch integration (2a-B): wire in-process `dispatch` into `receive()`
+   (`turn:before`/`tool:before`/`response:before`) — block→reject, transform→
+   apply, passing `protectedKeys: ["actor"]` — `dispatch`'s first real loop
+   consumer.
+7. Command runner (text-path child-process hook gates).
+8. Agent runner (response review).
 
 Note: the realtime invariant's coverage (device:emit, prefix/Set drift) is
 hardened with tests as part of Phase 3, independent of the deferred fail policy.
