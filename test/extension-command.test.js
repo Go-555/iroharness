@@ -131,3 +131,62 @@ test("the same failure fails OPEN on a background event", async () => {
   const r = await registry.dispatch("turn:after", { input: { text: "x" } });
   assert.equal(r.blocked, false); // background -> fail-open -> pass-through
 });
+
+// --- security ---
+
+test("args with shell metacharacters reach the child as literal argv (no shell)", async () => {
+  const registry = createHookRegistry();
+  const evil = "; rm -rf / #";
+  registry.register(
+    "turn:before",
+    createCommandHook({
+      command: process.execPath,
+      args: [
+        fileURLToPath(
+          new URL("./fixtures/hooks/echo-argv.mjs", import.meta.url),
+        ),
+        evil,
+      ],
+    }),
+    { style: "command" },
+  );
+  const r = await registry.dispatch("turn:before", { input: { text: "x" } });
+  assert.deepEqual(r.context.argv, [evil]); // passed verbatim, never interpreted
+});
+
+test("the child does not inherit the parent's secrets by default", async () => {
+  process.env.IROHA_SECRET = "top-secret-token";
+  try {
+    const registry = createHookRegistry();
+    registry.register(
+      "turn:before",
+      createCommandHook({
+        command: process.execPath,
+        args: [
+          fileURLToPath(
+            new URL("./fixtures/hooks/echo-env.mjs", import.meta.url),
+          ),
+        ],
+      }),
+      { style: "command" },
+    );
+    const r = await registry.dispatch("turn:before", { input: { text: "x" } });
+    assert.equal(r.context.sawSecret, null); // secret not handed to the hook program
+    assert.ok(!r.context.envKeys.includes("IROHA_SECRET"));
+  } finally {
+    delete process.env.IROHA_SECRET;
+  }
+});
+
+test("registering a command hook on a realtime event is rejected", () => {
+  const registry = createHookRegistry();
+  assert.throws(
+    () =>
+      registry.register(
+        "bargein:detect",
+        createCommandHook({ command: process.execPath, args: [] }),
+        { style: "command" },
+      ),
+    /realtime/,
+  );
+});
