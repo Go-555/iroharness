@@ -178,15 +178,41 @@ test("the child does not inherit the parent's secrets by default", async () => {
   }
 });
 
+test("an explicit spec.env value IS forwarded to the child (allow-list works)", async () => {
+  const registry = createHookRegistry();
+  registry.register(
+    "turn:before",
+    createCommandHook({
+      command: process.execPath,
+      args: [
+        fileURLToPath(
+          new URL("./fixtures/hooks/echo-env.mjs", import.meta.url),
+        ),
+      ],
+      env: { HOOK_FORWARDED: "expected-value" },
+    }),
+    { style: "command" },
+  );
+  const r = await registry.dispatch("turn:before", { input: { text: "x" } });
+  // The allow-list is additive: a key the operator explicitly lists reaches the
+  // child. (Without this, dropping `...spec.env` would pass the isolation test
+  // yet silently break legitimate forwarding.)
+  assert.equal(r.context.forwarded, "expected-value");
+  assert.ok(r.context.envKeys.includes("HOOK_FORWARDED"));
+});
+
 test("registering a command hook on a realtime event is rejected", () => {
   const registry = createHookRegistry();
-  assert.throws(
-    () =>
-      registry.register(
-        "bargein:detect",
-        createCommandHook({ command: process.execPath, args: [] }),
-        { style: "command" },
-      ),
-    /realtime/,
-  );
+  for (const event of ["bargein:detect", "speech:before", "device:emit"]) {
+    assert.throws(
+      () =>
+        registry.register(
+          event,
+          createCommandHook({ command: process.execPath, args: [] }),
+          { style: "command" },
+        ),
+      /realtime/,
+      `expected ${event} to reject a command-style hook`,
+    );
+  }
 });
