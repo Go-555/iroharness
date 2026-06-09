@@ -309,10 +309,15 @@ ignored at export. (Do **not** use `gateSkills` with empty `permissions` for thi
 plus their referenced resource files (the non-`SKILL.md` contents of
 `skill.metadata.skillDir`, e.g. `references/`) are copied into
 `current/skills/<id>/` via `cpSync(..., { recursive: true })` and added to the
-view manifest. **Symbolic links are dropped during the copy** (a `filter` that
-rejects every `isSymbolicLink()` entry): a link inside an eligible lower-zone
-skill could otherwise dereference to higher-zone content and smuggle it across
-the zone boundary, so the copy fails closed and materializes no links.
+view manifest. **Symbolic links and dotfiles/dot-dirs are dropped during the
+copy** (a `filter` that rejects every `isSymbolicLink()` entry and every entry
+whose basename starts with `.`, while always allowing the skill dir root): a
+link inside an eligible lower-zone skill could otherwise dereference to
+higher-zone content and smuggle it across the zone boundary, and dotfiles like
+`.git`/`.env`/`.DS_Store` are repo metadata or stray secrets rather than skill
+resources — so the copy fails closed and materializes neither. (Arbitrary
+non-dotfile contents remain the skill author's responsibility; a strict resource
+allowlist is a separate, larger design.)
 Discovery lists app-local skills before built-ins and tracks seen ids, so a
 skill id present in both roots is copied and listed exactly once (app-local
 wins). The whole per-skill body is guarded, so a malformed `SKILL.md`, a
