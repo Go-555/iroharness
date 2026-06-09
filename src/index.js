@@ -1,13 +1,15 @@
 import { basename, dirname, join } from "node:path";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 
+import { createSkillContextListing, gateSkills } from "./skills/index.js";
+
 const MODES = Object.freeze({
   idle: "idle",
   listening: "listening",
   thinking: "thinking",
   speaking: "speaking",
   working: "working",
-  error: "error"
+  error: "error",
 });
 
 const DEFAULT_EMOTION = "neutral";
@@ -36,7 +38,7 @@ const fromDbUser = (row) =>
         relationship: row.relationship,
         metadata: freezeCopy(row.metadata || {}),
         createdAt: row.created_at ?? row.createdAt,
-        updatedAt: row.updated_at ?? row.updatedAt
+        updatedAt: row.updated_at ?? row.updatedAt,
       })
     : null;
 
@@ -50,7 +52,7 @@ const fromDbIdentity = (row) =>
         displayName: row.display_name ?? row.displayName ?? null,
         metadata: freezeCopy(row.metadata || {}),
         createdAt: row.created_at ?? row.createdAt,
-        updatedAt: row.updated_at ?? row.updatedAt
+        updatedAt: row.updated_at ?? row.updatedAt,
       })
     : null;
 
@@ -66,7 +68,7 @@ const fromDbPermissionOverride = (row) =>
         expiresAt: row.expires_at ?? row.expiresAt ?? null,
         metadata: freezeCopy(row.metadata || {}),
         createdAt: row.created_at ?? row.createdAt,
-        updatedAt: row.updated_at ?? row.updatedAt
+        updatedAt: row.updated_at ?? row.updatedAt,
       })
     : null;
 
@@ -75,7 +77,9 @@ const fromDbStreamSession = (row) =>
     ? freezeCopy({
         id: row.id,
         platform: row.platform,
-        platformChannelId: String(row.platform_channel_id ?? row.platformChannelId),
+        platformChannelId: String(
+          row.platform_channel_id ?? row.platformChannelId,
+        ),
         title: row.title ?? null,
         hostUserId: row.host_user_id ?? row.hostUserId ?? null,
         status: row.status,
@@ -83,7 +87,7 @@ const fromDbStreamSession = (row) =>
         startedAt: row.started_at ?? row.startedAt,
         endedAt: row.ended_at ?? row.endedAt ?? null,
         createdAt: row.created_at ?? row.createdAt,
-        updatedAt: row.updated_at ?? row.updatedAt
+        updatedAt: row.updated_at ?? row.updatedAt,
       })
     : null;
 
@@ -96,19 +100,23 @@ const fromDbAuditRecord = (row) =>
         resourceId: row.resource_id ?? row.resourceId,
         userId: row.user_id ?? row.userId ?? null,
         metadata: freezeCopy(row.metadata || {}),
-        createdAt: row.created_at ?? row.createdAt
+        createdAt: row.created_at ?? row.createdAt,
       })
     : null;
 
-const hydrateUserWithRows = ({ user, identities = [], permissionOverrides = [] }) =>
+const hydrateUserWithRows = ({
+  user,
+  identities = [],
+  permissionOverrides = [],
+}) =>
   freezeCopy({
     ...user,
     identities: createIdentitiesObject(identities, user.id),
     permissions: freezeArray(user.permissions || []),
     metadata: freezeCopy(user.metadata || {}),
     permissionOverrides: freezeArray(
-      permissionOverrides.filter((override) => override.userId === user.id)
-    )
+      permissionOverrides.filter((override) => override.userId === user.id),
+    ),
   });
 
 const createProjectOsStore = (initialState = {}, persist = () => {}) => {
@@ -119,7 +127,7 @@ const createProjectOsStore = (initialState = {}, persist = () => {}) => {
   const rawSnapshot = () => ({
     tickets: [...tickets],
     runs: [...runs],
-    artifacts: [...artifacts]
+    artifacts: [...artifacts],
   });
 
   const save = () => persist(rawSnapshot());
@@ -130,7 +138,7 @@ const createProjectOsStore = (initialState = {}, persist = () => {}) => {
     acceptance = [],
     ownerCharacterId,
     executorHarnessId = null,
-    metadata = {}
+    metadata = {},
   }) => {
     const ticket = freezeCopy({
       id: createId("ticket"),
@@ -142,7 +150,7 @@ const createProjectOsStore = (initialState = {}, persist = () => {}) => {
       status: "open",
       createdAt: nowIso(),
       updatedAt: nowIso(),
-      metadata: freezeCopy(metadata)
+      metadata: freezeCopy(metadata),
     });
     tickets = Object.freeze([...tickets, ticket]);
     save();
@@ -159,10 +167,10 @@ const createProjectOsStore = (initialState = {}, persist = () => {}) => {
         nextTicket = freezeCopy({
           ...ticket,
           ...patch,
-          updatedAt: nowIso()
+          updatedAt: nowIso(),
         });
         return nextTicket;
-      })
+      }),
     );
     if (!nextTicket) {
       throw new Error(`Ticket not found: ${ticketId}`);
@@ -180,7 +188,7 @@ const createProjectOsStore = (initialState = {}, persist = () => {}) => {
       input,
       output: null,
       createdAt: nowIso(),
-      updatedAt: nowIso()
+      updatedAt: nowIso(),
     });
     runs = Object.freeze([...runs, run]);
     save();
@@ -198,10 +206,10 @@ const createProjectOsStore = (initialState = {}, persist = () => {}) => {
           ...run,
           status,
           output,
-          updatedAt: nowIso()
+          updatedAt: nowIso(),
         });
         return nextRun;
-      })
+      }),
     );
     if (!nextRun) {
       throw new Error(`Run not found: ${runId}`);
@@ -218,7 +226,7 @@ const createProjectOsStore = (initialState = {}, persist = () => {}) => {
       kind,
       uri,
       title,
-      createdAt: nowIso()
+      createdAt: nowIso(),
     });
     artifacts = Object.freeze([...artifacts, artifact]);
     save();
@@ -229,7 +237,7 @@ const createProjectOsStore = (initialState = {}, persist = () => {}) => {
     freezeCopy({
       tickets: Object.freeze([...tickets]),
       runs: Object.freeze([...runs]),
-      artifacts: Object.freeze([...artifacts])
+      artifacts: Object.freeze([...artifacts]),
     });
 
   return Object.freeze({
@@ -238,7 +246,7 @@ const createProjectOsStore = (initialState = {}, persist = () => {}) => {
     createRun,
     completeRun,
     addArtifact,
-    snapshot
+    snapshot,
   });
 };
 
@@ -253,9 +261,9 @@ const createIdentityRows = (userId, identities = {}, createdAt = nowIso()) =>
         displayName: null,
         metadata: freezeCopy({}),
         createdAt,
-        updatedAt: createdAt
-      })
-    )
+        updatedAt: createdAt,
+      }),
+    ),
   );
 
 const createIdentitiesObject = (identityRows, userId) =>
@@ -265,10 +273,10 @@ const createIdentitiesObject = (identityRows, userId) =>
       .reduce(
         (identities, identity) => ({
           ...identities,
-          [identity.platform]: identity.platformUserId
+          [identity.platform]: identity.platformUserId,
         }),
-        {}
-      )
+        {},
+      ),
   );
 
 const createUserRegistryStore = (initialState = {}, persist = () => {}) => {
@@ -276,9 +284,13 @@ const createUserRegistryStore = (initialState = {}, persist = () => {}) => {
   let userIdentities = Object.freeze(
     initialState.userIdentities
       ? [...initialState.userIdentities]
-      : users.flatMap((user) => createIdentityRows(user.id, user.identities || {}))
+      : users.flatMap((user) =>
+          createIdentityRows(user.id, user.identities || {}),
+        ),
   );
-  let permissionOverrides = Object.freeze([...(initialState.permissionOverrides || [])]);
+  let permissionOverrides = Object.freeze([
+    ...(initialState.permissionOverrides || []),
+  ]);
   let streamSessions = Object.freeze([...(initialState.streamSessions || [])]);
   let auditLog = Object.freeze([...(initialState.auditLog || [])]);
 
@@ -289,8 +301,8 @@ const createUserRegistryStore = (initialState = {}, persist = () => {}) => {
       permissions: Object.freeze([...(user.permissions || [])]),
       metadata: freezeCopy(user.metadata || {}),
       permissionOverrides: Object.freeze(
-        permissionOverrides.filter((override) => override.userId === user.id)
-      )
+        permissionOverrides.filter((override) => override.userId === user.id),
+      ),
     });
 
   const save = () =>
@@ -299,10 +311,16 @@ const createUserRegistryStore = (initialState = {}, persist = () => {}) => {
       userIdentities: [...userIdentities],
       permissionOverrides: [...permissionOverrides],
       streamSessions: [...streamSessions],
-      auditLog: [...auditLog]
+      auditLog: [...auditLog],
     });
 
-  const appendAuditLog = ({ action, resourceType, resourceId, userId = null, metadata = {} }) => {
+  const appendAuditLog = ({
+    action,
+    resourceType,
+    resourceId,
+    userId = null,
+    metadata = {},
+  }) => {
     const timestamp = nowIso();
     auditLog = Object.freeze([
       ...auditLog,
@@ -313,8 +331,8 @@ const createUserRegistryStore = (initialState = {}, persist = () => {}) => {
         resourceId,
         userId,
         metadata: freezeCopy(metadata),
-        createdAt: timestamp
-      })
+        createdAt: timestamp,
+      }),
     ]);
   };
 
@@ -325,7 +343,7 @@ const createUserRegistryStore = (initialState = {}, persist = () => {}) => {
     identities = {},
     permissions = [],
     relationship = "public",
-    metadata = {}
+    metadata = {},
   }) => {
     const timestamp = nowIso();
     const user = freezeCopy({
@@ -337,19 +355,22 @@ const createUserRegistryStore = (initialState = {}, persist = () => {}) => {
       relationship,
       metadata: freezeCopy(metadata),
       createdAt: timestamp,
-      updatedAt: timestamp
+      updatedAt: timestamp,
     });
-    users = Object.freeze([...users.filter((candidate) => candidate.id !== id), user]);
+    users = Object.freeze([
+      ...users.filter((candidate) => candidate.id !== id),
+      user,
+    ]);
     userIdentities = Object.freeze([
       ...userIdentities.filter((identity) => identity.userId !== id),
-      ...createIdentityRows(id, identities, timestamp)
+      ...createIdentityRows(id, identities, timestamp),
     ]);
     appendAuditLog({
       action: "audience.user.register",
       resourceType: "user",
       resourceId: id,
       userId: id,
-      metadata: { role, relationship }
+      metadata: { role, relationship },
     });
     save();
     return hydrateUser(user);
@@ -365,12 +386,14 @@ const createUserRegistryStore = (initialState = {}, persist = () => {}) => {
         nextUser = freezeCopy({
           ...user,
           ...patch,
-          permissions: Object.freeze([...(patch.permissions || user.permissions)]),
+          permissions: Object.freeze([
+            ...(patch.permissions || user.permissions),
+          ]),
           metadata: freezeCopy(patch.metadata || user.metadata),
-          updatedAt: nowIso()
+          updatedAt: nowIso(),
         });
         return nextUser;
-      })
+      }),
     );
     if (!nextUser) {
       throw new Error(`User not found: ${userId}`);
@@ -378,7 +401,7 @@ const createUserRegistryStore = (initialState = {}, persist = () => {}) => {
     if (patch.identities) {
       userIdentities = Object.freeze([
         ...userIdentities.filter((identity) => identity.userId !== userId),
-        ...createIdentityRows(userId, patch.identities)
+        ...createIdentityRows(userId, patch.identities),
       ]);
     }
     appendAuditLog({
@@ -386,7 +409,7 @@ const createUserRegistryStore = (initialState = {}, persist = () => {}) => {
       resourceType: "user",
       resourceId: userId,
       userId,
-      metadata: { fields: Object.keys(patch || {}) }
+      metadata: { fields: Object.keys(patch || {}) },
     });
     save();
     return hydrateUser(nextUser);
@@ -397,10 +420,12 @@ const createUserRegistryStore = (initialState = {}, persist = () => {}) => {
     platform,
     platformUserId,
     displayName = null,
-    metadata = {}
+    metadata = {},
   }) => {
     if (!userId || !platform || !platformUserId) {
-      throw new Error("linkIdentity requires userId, platform, and platformUserId");
+      throw new Error(
+        "linkIdentity requires userId, platform, and platformUserId",
+      );
     }
     if (!users.some((user) => user.id === userId)) {
       throw new Error(`User not found: ${userId}`);
@@ -414,7 +439,7 @@ const createUserRegistryStore = (initialState = {}, persist = () => {}) => {
       displayName,
       metadata: freezeCopy(metadata),
       createdAt: timestamp,
-      updatedAt: timestamp
+      updatedAt: timestamp,
     });
     userIdentities = Object.freeze([
       ...userIdentities.filter(
@@ -422,16 +447,16 @@ const createUserRegistryStore = (initialState = {}, persist = () => {}) => {
           !(
             candidate.platform === platform &&
             String(candidate.platformUserId) === String(platformUserId)
-          )
+          ),
       ),
-      identity
+      identity,
     ]);
     appendAuditLog({
       action: "audience.identity.link",
       resourceType: "identity",
       resourceId: identity.id,
       userId,
-      metadata: { platform, platformUserId: String(platformUserId) }
+      metadata: { platform, platformUserId: String(platformUserId) },
     });
     save();
     return identity;
@@ -444,7 +469,7 @@ const createUserRegistryStore = (initialState = {}, persist = () => {}) => {
     scope = "global",
     reason = null,
     expiresAt = null,
-    metadata = {}
+    metadata = {},
   }) => {
     if (!userId || !permission) {
       throw new Error("setPermissionOverride requires userId and permission");
@@ -466,7 +491,7 @@ const createUserRegistryStore = (initialState = {}, persist = () => {}) => {
       expiresAt,
       metadata: freezeCopy(metadata),
       createdAt: timestamp,
-      updatedAt: timestamp
+      updatedAt: timestamp,
     });
     permissionOverrides = Object.freeze([
       ...permissionOverrides.filter(
@@ -475,45 +500,59 @@ const createUserRegistryStore = (initialState = {}, persist = () => {}) => {
             candidate.userId === userId &&
             candidate.permission === permission &&
             candidate.scope === scope
-          )
+          ),
       ),
-      override
+      override,
     ]);
     appendAuditLog({
       action: "audience.permission.set",
       resourceType: "permissionOverride",
       resourceId: override.id,
       userId,
-      metadata: { permission, effect, scope, expiresAt }
+      metadata: { permission, effect, scope, expiresAt },
     });
     save();
     return override;
   };
 
-  const deletePermissionOverride = ({ userId, permission, scope = "global" }) => {
+  const deletePermissionOverride = ({
+    userId,
+    permission,
+    scope = "global",
+  }) => {
     if (!userId || !permission) {
-      throw new Error("deletePermissionOverride requires userId and permission");
+      throw new Error(
+        "deletePermissionOverride requires userId and permission",
+      );
     }
     const before = permissionOverrides.length;
     permissionOverrides = Object.freeze(
       permissionOverrides.filter(
         (candidate) =>
-          !(candidate.userId === userId && candidate.permission === permission && candidate.scope === scope)
-      )
+          !(
+            candidate.userId === userId &&
+            candidate.permission === permission &&
+            candidate.scope === scope
+          ),
+      ),
     );
     appendAuditLog({
       action: "audience.permission.delete",
       resourceType: "permissionOverride",
       resourceId: `${userId}:${permission}:${scope}`,
       userId,
-      metadata: { permission, scope, deleted: before !== permissionOverrides.length }
+      metadata: {
+        permission,
+        scope,
+        deleted: before !== permissionOverrides.length,
+      },
     });
     save();
     return freezeCopy({
       userId,
       permission,
       scope,
-      deleted: before !== permissionOverrides.length
+      deleted: before !== permissionOverrides.length,
     });
   };
 
@@ -524,10 +563,12 @@ const createUserRegistryStore = (initialState = {}, persist = () => {}) => {
     title = null,
     hostUserId = null,
     status = "live",
-    metadata = {}
+    metadata = {},
   }) => {
     if (!platform || !platformChannelId) {
-      throw new Error("createStreamSession requires platform and platformChannelId");
+      throw new Error(
+        "createStreamSession requires platform and platformChannelId",
+      );
     }
     const timestamp = nowIso();
     const session = freezeCopy({
@@ -541,18 +582,22 @@ const createUserRegistryStore = (initialState = {}, persist = () => {}) => {
       startedAt: timestamp,
       endedAt: null,
       createdAt: timestamp,
-      updatedAt: timestamp
+      updatedAt: timestamp,
     });
     streamSessions = Object.freeze([
       ...streamSessions.filter((candidate) => candidate.id !== id),
-      session
+      session,
     ]);
     appendAuditLog({
       action: "audience.stream.create",
       resourceType: "streamSession",
       resourceId: session.id,
       userId: hostUserId,
-      metadata: { platform, platformChannelId: String(platformChannelId), status }
+      metadata: {
+        platform,
+        platformChannelId: String(platformChannelId),
+        status,
+      },
     });
     save();
     return session;
@@ -569,10 +614,10 @@ const createUserRegistryStore = (initialState = {}, persist = () => {}) => {
           ...session,
           ...patch,
           metadata: freezeCopy(patch.metadata || session.metadata),
-          updatedAt: nowIso()
+          updatedAt: nowIso(),
         });
         return nextSession;
-      })
+      }),
     );
     if (!nextSession) {
       throw new Error(`Stream session not found: ${sessionId}`);
@@ -582,7 +627,7 @@ const createUserRegistryStore = (initialState = {}, persist = () => {}) => {
       resourceType: "streamSession",
       resourceId: sessionId,
       userId: nextSession.hostUserId || null,
-      metadata: { fields: Object.keys(patch || {}) }
+      metadata: { fields: Object.keys(patch || {}) },
     });
     save();
     return nextSession;
@@ -595,7 +640,7 @@ const createUserRegistryStore = (initialState = {}, persist = () => {}) => {
     const identity = userIdentities.find(
       (candidate) =>
         candidate.platform === platform &&
-        String(candidate.platformUserId) === String(platformUserId)
+        String(candidate.platformUserId) === String(platformUserId),
     );
     if (!identity) {
       return null;
@@ -610,16 +655,17 @@ const createUserRegistryStore = (initialState = {}, persist = () => {}) => {
       const identity = userIdentities.find(
         (candidate) =>
           candidate.platform === actor.platform &&
-          String(candidate.platformUserId) === String(actor.platformUserId)
+          String(candidate.platformUserId) === String(actor.platformUserId),
       );
       return freezeCopy({
         user,
         identity: freezeCopy({
           platform: actor.platform,
           platformUserId: actor.platformUserId,
-          displayName: actor.displayName || identity?.displayName || user.displayName
+          displayName:
+            actor.displayName || identity?.displayName || user.displayName,
         }),
-        known: true
+        known: true,
       });
     }
     return freezeCopy({
@@ -630,18 +676,18 @@ const createUserRegistryStore = (initialState = {}, persist = () => {}) => {
         identities: freezeCopy(
           actor.platform && actor.platformUserId
             ? { [actor.platform]: actor.platformUserId }
-            : {}
+            : {},
         ),
         permissions: Object.freeze(["chat_public"]),
         relationship: "public",
-        metadata: freezeCopy({})
+        metadata: freezeCopy({}),
       }),
       identity: freezeCopy({
         platform: actor.platform || "unknown",
         platformUserId: actor.platformUserId || "unknown",
-        displayName: actor.displayName || "Anonymous"
+        displayName: actor.displayName || "Anonymous",
       }),
-      known: false
+      known: false,
     });
   };
 
@@ -651,7 +697,7 @@ const createUserRegistryStore = (initialState = {}, persist = () => {}) => {
       userIdentities: Object.freeze([...userIdentities]),
       permissionOverrides: Object.freeze([...permissionOverrides]),
       streamSessions: Object.freeze([...streamSessions]),
-      auditLog: Object.freeze([...auditLog])
+      auditLog: Object.freeze([...auditLog]),
     });
 
   return Object.freeze({
@@ -664,7 +710,7 @@ const createUserRegistryStore = (initialState = {}, persist = () => {}) => {
     updateStreamSession,
     findByIdentity,
     resolveActor,
-    snapshot
+    snapshot,
   });
 };
 
@@ -677,7 +723,7 @@ export const createCharacterState = ({
   mouth = "closed",
   gaze = "user",
   motion = mode,
-  metadata = {}
+  metadata = {},
 }) =>
   freezeCopy({
     characterId,
@@ -688,7 +734,7 @@ export const createCharacterState = ({
     mouth,
     gaze,
     motion,
-    metadata: freezeCopy(metadata)
+    metadata: freezeCopy(metadata),
   });
 
 const readOptionalMarkdown = (path) => {
@@ -707,7 +753,7 @@ export const createFileCharacterProfile = ({
   identityFile = "IDENTITY.md",
   memoryFile = "MEMORY.md",
   voiceFile = "VOICE.md",
-  metadata = {}
+  metadata = {},
 } = {}) => {
   const characterId = id || basename(dir) || "character";
   const characterName = name || characterId;
@@ -715,7 +761,7 @@ export const createFileCharacterProfile = ({
     soul: join(dir, soulFile),
     identity: join(dir, identityFile),
     memory: join(dir, memoryFile),
-    voice: join(dir, voiceFile)
+    voice: join(dir, voiceFile),
   });
   const soul = readOptionalMarkdown(paths.soul);
   const identity = readOptionalMarkdown(paths.identity);
@@ -725,14 +771,17 @@ export const createFileCharacterProfile = ({
   return freezeCopy({
     id: characterId,
     name: characterName,
-    soul: soul || identity || `${characterName} owns identity inside the macro harness.`,
+    soul:
+      soul ||
+      identity ||
+      `${characterName} owns identity inside the macro harness.`,
     voiceStyle: voice || "natural, responsive",
     identity,
     memory,
     metadata: freezeCopy({
       ...metadata,
-      sourceFiles: paths
-    })
+      sourceFiles: paths,
+    }),
   });
 };
 
@@ -797,28 +846,36 @@ export const createPostgresUserRegistry = ({ query }) => {
     resourceType,
     resourceId,
     userId = null,
-    metadata = {}
+    metadata = {},
   }) =>
     run(
       [
         "insert into iroharness_audit_log",
         "(id, action, resource_type, resource_id, user_id, metadata)",
         "values ($1, $2, $3, $4, $5, $6)",
-        "returning *"
+        "returning *",
       ].join(" "),
-      [createId("audit"), action, resourceType, String(resourceId), userId, metadata]
+      [
+        createId("audit"),
+        action,
+        resourceType,
+        String(resourceId),
+        userId,
+        metadata,
+      ],
     );
 
   const loadUserContext = async (userId) => {
     const [userResult, identityResult, overrideResult] = await Promise.all([
       run("select * from iroharness_users where id = $1", [userId]),
-      run("select * from iroharness_user_identities where user_id = $1 order by created_at asc", [
-        userId
-      ]),
+      run(
+        "select * from iroharness_user_identities where user_id = $1 order by created_at asc",
+        [userId],
+      ),
       run(
         "select * from iroharness_permission_overrides where user_id = $1 order by created_at asc",
-        [userId]
-      )
+        [userId],
+      ),
     ]);
     const user = fromDbUser(dbOne(userResult));
     if (!user) {
@@ -827,7 +884,9 @@ export const createPostgresUserRegistry = ({ query }) => {
     return hydrateUserWithRows({
       user,
       identities: dbRows(identityResult).map(fromDbIdentity).filter(Boolean),
-      permissionOverrides: dbRows(overrideResult).map(fromDbPermissionOverride).filter(Boolean)
+      permissionOverrides: dbRows(overrideResult)
+        .map(fromDbPermissionOverride)
+        .filter(Boolean),
     });
   };
 
@@ -838,7 +897,7 @@ export const createPostgresUserRegistry = ({ query }) => {
     identities = {},
     permissions = [],
     relationship = "public",
-    metadata = {}
+    metadata = {},
   }) => {
     const userResult = await run(
       [
@@ -851,11 +910,13 @@ export const createPostgresUserRegistry = ({ query }) => {
         "relationship = excluded.relationship,",
         "permissions = excluded.permissions,",
         "metadata = excluded.metadata",
-        "returning *"
+        "returning *",
       ].join(" "),
-      [id, displayName || id, role, relationship, permissions, metadata]
+      [id, displayName || id, role, relationship, permissions, metadata],
     );
-    await run("delete from iroharness_user_identities where user_id = $1", [id]);
+    await run("delete from iroharness_user_identities where user_id = $1", [
+      id,
+    ]);
     const identityRows = [];
     for (const [platform, platformUserId] of Object.entries(identities)) {
       const identity = await run(
@@ -867,9 +928,9 @@ export const createPostgresUserRegistry = ({ query }) => {
           "user_id = excluded.user_id,",
           "display_name = excluded.display_name,",
           "metadata = excluded.metadata",
-          "returning *"
+          "returning *",
         ].join(" "),
-        [createId("identity"), id, platform, String(platformUserId), null, {}]
+        [createId("identity"), id, platform, String(platformUserId), null, {}],
       );
       identityRows.push(fromDbIdentity(dbOne(identity)));
     }
@@ -878,11 +939,11 @@ export const createPostgresUserRegistry = ({ query }) => {
       resourceType: "user",
       resourceId: id,
       userId: id,
-      metadata: { role, relationship }
+      metadata: { role, relationship },
     });
     return hydrateUserWithRows({
       user: fromDbUser(dbOne(userResult)),
-      identities: identityRows.filter(Boolean)
+      identities: identityRows.filter(Boolean),
     });
   };
 
@@ -896,23 +957,34 @@ export const createPostgresUserRegistry = ({ query }) => {
       role: patch.role ?? current.role,
       relationship: patch.relationship ?? current.relationship,
       permissions: patch.permissions || current.permissions,
-      metadata: patch.metadata || current.metadata
+      metadata: patch.metadata || current.metadata,
     };
     const result = await run(
       [
         "update iroharness_users set",
         "display_name = $2, role = $3, relationship = $4, permissions = $5, metadata = $6",
-        "where id = $1 returning *"
+        "where id = $1 returning *",
       ].join(" "),
-      [userId, next.displayName, next.role, next.relationship, next.permissions, next.metadata]
+      [
+        userId,
+        next.displayName,
+        next.role,
+        next.relationship,
+        next.permissions,
+        next.metadata,
+      ],
     );
     if (patch.identities) {
-      await run("delete from iroharness_user_identities where user_id = $1", [userId]);
-      for (const [platform, platformUserId] of Object.entries(patch.identities)) {
+      await run("delete from iroharness_user_identities where user_id = $1", [
+        userId,
+      ]);
+      for (const [platform, platformUserId] of Object.entries(
+        patch.identities,
+      )) {
         await linkIdentity({
           userId,
           platform,
-          platformUserId
+          platformUserId,
         });
       }
     }
@@ -922,7 +994,7 @@ export const createPostgresUserRegistry = ({ query }) => {
       resourceType: "user",
       resourceId: userId,
       userId,
-      metadata: { fields: Object.keys(patch || {}) }
+      metadata: { fields: Object.keys(patch || {}) },
     });
     return loadUserContext(user.id);
   };
@@ -932,10 +1004,12 @@ export const createPostgresUserRegistry = ({ query }) => {
     platform,
     platformUserId,
     displayName = null,
-    metadata = {}
+    metadata = {},
   }) => {
     if (!userId || !platform || !platformUserId) {
-      throw new Error("linkIdentity requires userId, platform, and platformUserId");
+      throw new Error(
+        "linkIdentity requires userId, platform, and platformUserId",
+      );
     }
     const user = await loadUserContext(userId);
     if (!user) {
@@ -950,9 +1024,16 @@ export const createPostgresUserRegistry = ({ query }) => {
         "user_id = excluded.user_id,",
         "display_name = excluded.display_name,",
         "metadata = excluded.metadata",
-        "returning *"
+        "returning *",
       ].join(" "),
-      [createId("identity"), userId, platform, String(platformUserId), displayName, metadata]
+      [
+        createId("identity"),
+        userId,
+        platform,
+        String(platformUserId),
+        displayName,
+        metadata,
+      ],
     );
     const identity = fromDbIdentity(dbOne(result));
     await appendAuditLog({
@@ -960,7 +1041,7 @@ export const createPostgresUserRegistry = ({ query }) => {
       resourceType: "identity",
       resourceId: identity.id,
       userId,
-      metadata: { platform, platformUserId: String(platformUserId) }
+      metadata: { platform, platformUserId: String(platformUserId) },
     });
     return identity;
   };
@@ -972,7 +1053,7 @@ export const createPostgresUserRegistry = ({ query }) => {
     scope = "global",
     reason = null,
     expiresAt = null,
-    metadata = {}
+    metadata = {},
   }) => {
     if (!userId || !permission) {
       throw new Error("setPermissionOverride requires userId and permission");
@@ -994,9 +1075,18 @@ export const createPostgresUserRegistry = ({ query }) => {
         "reason = excluded.reason,",
         "expires_at = excluded.expires_at,",
         "metadata = excluded.metadata",
-        "returning *"
+        "returning *",
       ].join(" "),
-      [createId("permission"), userId, permission, effect, scope, reason, expiresAt, metadata]
+      [
+        createId("permission"),
+        userId,
+        permission,
+        effect,
+        scope,
+        reason,
+        expiresAt,
+        metadata,
+      ],
     );
     const override = fromDbPermissionOverride(dbOne(result));
     await appendAuditLog({
@@ -1004,22 +1094,28 @@ export const createPostgresUserRegistry = ({ query }) => {
       resourceType: "permissionOverride",
       resourceId: override.id,
       userId,
-      metadata: { permission, effect, scope, expiresAt }
+      metadata: { permission, effect, scope, expiresAt },
     });
     return override;
   };
 
-  const deletePermissionOverride = async ({ userId, permission, scope = "global" }) => {
+  const deletePermissionOverride = async ({
+    userId,
+    permission,
+    scope = "global",
+  }) => {
     if (!userId || !permission) {
-      throw new Error("deletePermissionOverride requires userId and permission");
+      throw new Error(
+        "deletePermissionOverride requires userId and permission",
+      );
     }
     const result = await run(
       [
         "delete from iroharness_permission_overrides",
         "where user_id = $1 and permission = $2 and scope = $3",
-        "returning *"
+        "returning *",
       ].join(" "),
-      [userId, permission, scope]
+      [userId, permission, scope],
     );
     const deleted = dbRows(result).length > 0;
     await appendAuditLog({
@@ -1027,13 +1123,13 @@ export const createPostgresUserRegistry = ({ query }) => {
       resourceType: "permissionOverride",
       resourceId: `${userId}:${permission}:${scope}`,
       userId,
-      metadata: { permission, scope, deleted }
+      metadata: { permission, scope, deleted },
     });
     return freezeCopy({
       userId,
       permission,
       scope,
-      deleted
+      deleted,
     });
   };
 
@@ -1044,10 +1140,12 @@ export const createPostgresUserRegistry = ({ query }) => {
     title = null,
     hostUserId = null,
     status = "live",
-    metadata = {}
+    metadata = {},
   }) => {
     if (!platform || !platformChannelId) {
-      throw new Error("createStreamSession requires platform and platformChannelId");
+      throw new Error(
+        "createStreamSession requires platform and platformChannelId",
+      );
     }
     const result = await run(
       [
@@ -1061,9 +1159,17 @@ export const createPostgresUserRegistry = ({ query }) => {
         "host_user_id = excluded.host_user_id,",
         "status = excluded.status,",
         "metadata = excluded.metadata",
-        "returning *"
+        "returning *",
       ].join(" "),
-      [id, platform, String(platformChannelId), title, hostUserId, status, metadata]
+      [
+        id,
+        platform,
+        String(platformChannelId),
+        title,
+        hostUserId,
+        status,
+        metadata,
+      ],
     );
     const session = fromDbStreamSession(dbOne(result));
     await appendAuditLog({
@@ -1071,14 +1177,22 @@ export const createPostgresUserRegistry = ({ query }) => {
       resourceType: "streamSession",
       resourceId: session.id,
       userId: hostUserId,
-      metadata: { platform, platformChannelId: String(platformChannelId), status }
+      metadata: {
+        platform,
+        platformChannelId: String(platformChannelId),
+        status,
+      },
     });
     return session;
   };
 
   const updateStreamSession = async (sessionId, patch) => {
     const current = fromDbStreamSession(
-      dbOne(await run("select * from iroharness_stream_sessions where id = $1", [sessionId]))
+      dbOne(
+        await run("select * from iroharness_stream_sessions where id = $1", [
+          sessionId,
+        ]),
+      ),
     );
     if (!current) {
       throw new Error(`Stream session not found: ${sessionId}`);
@@ -1088,15 +1202,22 @@ export const createPostgresUserRegistry = ({ query }) => {
       hostUserId: patch.hostUserId ?? current.hostUserId,
       status: patch.status ?? current.status,
       metadata: patch.metadata || current.metadata,
-      endedAt: patch.endedAt ?? current.endedAt
+      endedAt: patch.endedAt ?? current.endedAt,
     };
     const result = await run(
       [
         "update iroharness_stream_sessions set",
         "title = $2, host_user_id = $3, status = $4, metadata = $5, ended_at = $6",
-        "where id = $1 returning *"
+        "where id = $1 returning *",
       ].join(" "),
-      [sessionId, next.title, next.hostUserId, next.status, next.metadata, next.endedAt]
+      [
+        sessionId,
+        next.title,
+        next.hostUserId,
+        next.status,
+        next.metadata,
+        next.endedAt,
+      ],
     );
     const session = fromDbStreamSession(dbOne(result));
     await appendAuditLog({
@@ -1104,7 +1225,7 @@ export const createPostgresUserRegistry = ({ query }) => {
       resourceType: "streamSession",
       resourceId: sessionId,
       userId: session.hostUserId,
-      metadata: { fields: Object.keys(patch || {}) }
+      metadata: { fields: Object.keys(patch || {}) },
     });
     return session;
   };
@@ -1117,9 +1238,9 @@ export const createPostgresUserRegistry = ({ query }) => {
       dbOne(
         await run(
           "select * from iroharness_user_identities where platform = $1 and platform_user_id = $2",
-          [platform, String(platformUserId)]
-        )
-      )
+          [platform, String(platformUserId)],
+        ),
+      ),
     );
     return identity ? loadUserContext(identity.userId) : null;
   };
@@ -1129,7 +1250,7 @@ export const createPostgresUserRegistry = ({ query }) => {
     if (user) {
       const identityResult = await run(
         "select * from iroharness_user_identities where platform = $1 and platform_user_id = $2",
-        [actor.platform, String(actor.platformUserId)]
+        [actor.platform, String(actor.platformUserId)],
       );
       const identity = fromDbIdentity(dbOne(identityResult));
       return freezeCopy({
@@ -1137,9 +1258,10 @@ export const createPostgresUserRegistry = ({ query }) => {
         identity: freezeCopy({
           platform: actor.platform,
           platformUserId: actor.platformUserId,
-          displayName: actor.displayName || identity?.displayName || user.displayName
+          displayName:
+            actor.displayName || identity?.displayName || user.displayName,
         }),
-        known: true
+        known: true,
       });
     }
     return freezeCopy({
@@ -1150,32 +1272,41 @@ export const createPostgresUserRegistry = ({ query }) => {
         identities: freezeCopy(
           actor.platform && actor.platformUserId
             ? { [actor.platform]: actor.platformUserId }
-            : {}
+            : {},
         ),
         permissions: Object.freeze(["chat_public"]),
         relationship: "public",
-        metadata: freezeCopy({})
+        metadata: freezeCopy({}),
       }),
       identity: freezeCopy({
         platform: actor.platform || "unknown",
         platformUserId: actor.platformUserId || "unknown",
-        displayName: actor.displayName || "Anonymous"
+        displayName: actor.displayName || "Anonymous",
       }),
-      known: false
+      known: false,
     });
   };
 
   const snapshot = async () => {
-    const [usersResult, identitiesResult, overridesResult, streamsResult, auditResult] =
-      await Promise.all([
-        run("select * from iroharness_users order by created_at asc"),
-        run("select * from iroharness_user_identities order by created_at asc"),
-        run("select * from iroharness_permission_overrides order by created_at asc"),
-        run("select * from iroharness_stream_sessions order by created_at asc"),
-        run("select * from iroharness_audit_log order by created_at asc")
-      ]);
+    const [
+      usersResult,
+      identitiesResult,
+      overridesResult,
+      streamsResult,
+      auditResult,
+    ] = await Promise.all([
+      run("select * from iroharness_users order by created_at asc"),
+      run("select * from iroharness_user_identities order by created_at asc"),
+      run(
+        "select * from iroharness_permission_overrides order by created_at asc",
+      ),
+      run("select * from iroharness_stream_sessions order by created_at asc"),
+      run("select * from iroharness_audit_log order by created_at asc"),
+    ]);
     const users = dbRows(usersResult).map(fromDbUser).filter(Boolean);
-    const userIdentities = dbRows(identitiesResult).map(fromDbIdentity).filter(Boolean);
+    const userIdentities = dbRows(identitiesResult)
+      .map(fromDbIdentity)
+      .filter(Boolean);
     const permissionOverrides = dbRows(overridesResult)
       .map(fromDbPermissionOverride)
       .filter(Boolean);
@@ -1185,14 +1316,18 @@ export const createPostgresUserRegistry = ({ query }) => {
           hydrateUserWithRows({
             user,
             identities: userIdentities,
-            permissionOverrides
-          })
-        )
+            permissionOverrides,
+          }),
+        ),
       ),
       userIdentities: freezeArray(userIdentities),
       permissionOverrides: freezeArray(permissionOverrides),
-      streamSessions: freezeArray(dbRows(streamsResult).map(fromDbStreamSession).filter(Boolean)),
-      auditLog: freezeArray(dbRows(auditResult).map(fromDbAuditRecord).filter(Boolean))
+      streamSessions: freezeArray(
+        dbRows(streamsResult).map(fromDbStreamSession).filter(Boolean),
+      ),
+      auditLog: freezeArray(
+        dbRows(auditResult).map(fromDbAuditRecord).filter(Boolean),
+      ),
     });
   };
 
@@ -1206,31 +1341,37 @@ export const createPostgresUserRegistry = ({ query }) => {
     updateStreamSession,
     findByIdentity,
     resolveActor,
-    snapshot
+    snapshot,
   });
 };
 
 export const createPermissionPolicy = ({
   rolePermissions = {},
-  requiredPermissions = {}
+  requiredPermissions = {},
 } = {}) => {
   const defaultRolePermissions = {
-    owner: ["chat_public", "deep_discussion", "delegate_work", "manage_stream", "manage_users"],
+    owner: [
+      "chat_public",
+      "deep_discussion",
+      "delegate_work",
+      "manage_stream",
+      "manage_users",
+    ],
     developer: ["chat_public", "deep_discussion", "delegate_work"],
     moderator: ["chat_public", "deep_discussion", "manage_stream"],
     member: ["chat_public", "deep_discussion"],
     fan: ["chat_public"],
-    anonymous: ["chat_public"]
+    anonymous: ["chat_public"],
   };
   const permissionsByRole = freezeCopy({
     ...defaultRolePermissions,
-    ...rolePermissions
+    ...rolePermissions,
   });
   const requirements = freezeCopy({
     work: "delegate_work",
     deepDiscussion: "deep_discussion",
     manageStream: "manage_stream",
-    ...requiredPermissions
+    ...requiredPermissions,
   });
   const createContextScopes = (input = {}) => {
     const platform = input.actor?.platform || input.source || null;
@@ -1239,20 +1380,24 @@ export const createPermissionPolicy = ({
       input.source ? `source:${input.source}` : null,
       platform ? `platform:${platform}` : null,
       input.source ? `stream:${input.source}` : null,
-      input.metadata?.streamSessionId ? `streamSession:${input.metadata.streamSessionId}` : null
+      input.metadata?.streamSessionId
+        ? `streamSession:${input.metadata.streamSessionId}`
+        : null,
     ];
     return Object.freeze(scopes.filter(Boolean));
   };
   const permissionsFor = (user, contextScopes = Object.freeze(["global"])) => {
     const basePermissions = [
       ...(permissionsByRole[user.role] || []),
-      ...(Array.isArray(user.permissions) ? user.permissions : [])
+      ...(Array.isArray(user.permissions) ? user.permissions : []),
     ];
     const activeOverrides = Array.isArray(user.permissionOverrides)
       ? user.permissionOverrides.filter(
           (override) =>
-            (!override.expiresAt || new Date(override.expiresAt).getTime() > Date.now()) &&
-            (override.scope === "global" || contextScopes.includes(override.scope))
+            (!override.expiresAt ||
+              new Date(override.expiresAt).getTime() > Date.now()) &&
+            (override.scope === "global" ||
+              contextScopes.includes(override.scope)),
         )
       : [];
     const denied = activeOverrides
@@ -1263,8 +1408,8 @@ export const createPermissionPolicy = ({
       .map((override) => override.permission);
     return Object.freeze(
       [...new Set([...basePermissions, ...allowed])].filter(
-        (permission) => !denied.includes(permission)
-      )
+        (permission) => !denied.includes(permission),
+      ),
     );
   };
   const can = (user, permission, contextScopes) =>
@@ -1281,27 +1426,33 @@ export const createPermissionPolicy = ({
       return freezeCopy({
         allowed: false,
         permission: requirements.work,
-        reason: "delegate_work permission is required"
+        reason: "delegate_work permission is required",
       });
     }
-    if (route.kind === "stream" && !can(user, requirements.manageStream, contextScopes)) {
+    if (
+      route.kind === "stream" &&
+      !can(user, requirements.manageStream, contextScopes)
+    ) {
       return freezeCopy({
         allowed: false,
         permission: requirements.manageStream,
-        reason: "manage_stream permission is required"
+        reason: "manage_stream permission is required",
       });
     }
-    if (asksDeepDiscussion && !can(user, requirements.deepDiscussion, contextScopes)) {
+    if (
+      asksDeepDiscussion &&
+      !can(user, requirements.deepDiscussion, contextScopes)
+    ) {
       return freezeCopy({
         allowed: false,
         permission: requirements.deepDiscussion,
-        reason: "deep_discussion permission is required"
+        reason: "deep_discussion permission is required",
       });
     }
     return freezeCopy({
       allowed: true,
       permission: null,
-      reason: "allowed"
+      reason: "allowed",
     });
   };
 
@@ -1309,19 +1460,20 @@ export const createPermissionPolicy = ({
     can,
     createContextScopes,
     evaluate,
-    permissionsFor
+    permissionsFor,
   });
 };
 
 export const createAudienceContextPolicy = ({
   trustedRoles = ["owner", "developer"],
   memberRoles = ["member", "moderator"],
-  operatorRoles = ["owner", "moderator"]
+  operatorRoles = ["owner", "moderator"],
 } = {}) => {
   const trusted = new Set(trustedRoles);
   const members = new Set(memberRoles);
   const operators = new Set(operatorRoles);
-  const hasPermission = (permissions, permission) => permissions.includes(permission);
+  const hasPermission = (permissions, permission) =>
+    permissions.includes(permission);
   const tierFor = (role) => {
     if (role === "owner") {
       return "owner";
@@ -1341,7 +1493,10 @@ export const createAudienceContextPolicy = ({
     if (route.kind === "voice") {
       return "brief";
     }
-    if (route.kind === "deep" && hasPermission(permissions, "deep_discussion")) {
+    if (
+      route.kind === "deep" &&
+      hasPermission(permissions, "deep_discussion")
+    ) {
       return "deep";
     }
     if (hasPermission(permissions, "deep_discussion")) {
@@ -1350,7 +1505,13 @@ export const createAudienceContextPolicy = ({
     return "public";
   };
 
-  const resolve = ({ actor, route, input, permissions = [], contextScopes = [] }) => {
+  const resolve = ({
+    actor,
+    route,
+    input,
+    permissions = [],
+    contextScopes = [],
+  }) => {
     const role = actor?.user?.role || "anonymous";
     return freezeCopy({
       role,
@@ -1366,7 +1527,7 @@ export const createAudienceContextPolicy = ({
       canDeepDiscuss: hasPermission(permissions, "deep_discussion"),
       canDelegateWork: hasPermission(permissions, "delegate_work"),
       canManageStream: hasPermission(permissions, "manage_stream"),
-      identityStable: true
+      identityStable: true,
     });
   };
 
@@ -1376,13 +1537,14 @@ export const createAudienceContextPolicy = ({
 export const createProjectOsMarkdown = (snapshot) => {
   const ticketLines = snapshot.tickets.map(
     (ticket) =>
-      `- [${ticket.status}] ${ticket.id}: ${ticket.title} -> ${ticket.executorHarnessId || "unassigned"}`
+      `- [${ticket.status}] ${ticket.id}: ${ticket.title} -> ${ticket.executorHarnessId || "unassigned"}`,
   );
   const runLines = snapshot.runs.map(
-    (run) => `- [${run.status}] ${run.id}: ${run.harnessId} for ${run.ticketId}`
+    (run) =>
+      `- [${run.status}] ${run.id}: ${run.harnessId} for ${run.ticketId}`,
   );
   const artifactLines = snapshot.artifacts.map(
-    (artifact) => `- ${artifact.kind}: [${artifact.title}](${artifact.uri})`
+    (artifact) => `- ${artifact.kind}: [${artifact.title}](${artifact.uri})`,
   );
 
   return [
@@ -1396,7 +1558,7 @@ export const createProjectOsMarkdown = (snapshot) => {
     "",
     "## Artifacts",
     artifactLines.length ? artifactLines.join("\n") : "- none",
-    ""
+    "",
   ].join("\n");
 };
 
@@ -1410,7 +1572,7 @@ export const createHeuristicRouter = () => {
     "シーン",
     "オーバーレイ",
     "ミュート",
-    "mute"
+    "mute",
   ];
   const workSignals = [
     "codex",
@@ -1421,7 +1583,7 @@ export const createHeuristicRouter = () => {
     "ファイル",
     "コード",
     "openclaw",
-    "hermes"
+    "hermes",
   ];
   const deepSignals = [
     "深い議論",
@@ -1430,31 +1592,39 @@ export const createHeuristicRouter = () => {
     "アーキテクチャ",
     "方針",
     "思想",
-    "戦略"
+    "戦略",
   ];
 
   const choose = ({ input, microHarnesses }) => {
     const text = input.text.toLowerCase();
-    const isStream = streamSignals.some((signal) => text.includes(signal.toLowerCase()));
-    const isWork = workSignals.some((signal) => text.includes(signal.toLowerCase()));
-    const isDeep = deepSignals.some((signal) => text.includes(signal.toLowerCase()));
+    const isStream = streamSignals.some((signal) =>
+      text.includes(signal.toLowerCase()),
+    );
+    const isWork = workSignals.some((signal) =>
+      text.includes(signal.toLowerCase()),
+    );
+    const isDeep = deepSignals.some((signal) =>
+      text.includes(signal.toLowerCase()),
+    );
     if (isStream) {
       return freezeCopy({
         kind: "stream",
         harnessId: null,
-        reason: "Stream operation signal detected"
+        reason: "Stream operation signal detected",
       });
     }
     if (!isWork) {
       return freezeCopy({
         kind: input.modality === "voice" ? "voice" : isDeep ? "deep" : "text",
         harnessId: null,
-        reason: isDeep ? "Deep discussion signal detected" : "No work signal detected"
+        reason: isDeep
+          ? "Deep discussion signal detected"
+          : "No work signal detected",
       });
     }
 
     const mentionedHarness = microHarnesses.find((harness) =>
-      text.includes(harness.id.toLowerCase())
+      text.includes(harness.id.toLowerCase()),
     );
     const selectedHarness = mentionedHarness || microHarnesses[0] || null;
 
@@ -1463,7 +1633,7 @@ export const createHeuristicRouter = () => {
         return freezeCopy({
           kind: "deep",
           harnessId: null,
-          reason: "Deep discussion signal detected"
+          reason: "Deep discussion signal detected",
         });
       }
     }
@@ -1473,7 +1643,7 @@ export const createHeuristicRouter = () => {
       harnessId: selectedHarness ? selectedHarness.id : null,
       reason: selectedHarness
         ? `Delegating to ${selectedHarness.id}`
-        : "Work requested but no micro harness is registered"
+        : "Work requested but no micro harness is registered",
     });
   };
 
@@ -1491,9 +1661,9 @@ export const createEchoBrain = (id) =>
           : `${prefix}${character.name}として受け取ったよ。`;
       return freezeCopy({
         text,
-        emotion: "attentive"
+        emotion: "attentive",
       });
-    }
+    },
   });
 
 export const createHttpBrain = ({
@@ -1501,7 +1671,7 @@ export const createHttpBrain = ({
   endpoint,
   model = null,
   headers = {},
-  fetchImpl = globalThis.fetch
+  fetchImpl = globalThis.fetch,
 }) => {
   if (!id || !endpoint) {
     throw new Error("createHttpBrain requires id and endpoint");
@@ -1516,7 +1686,7 @@ export const createHttpBrain = ({
         method: "POST",
         headers: {
           "content-type": "application/json",
-          ...headers
+          ...headers,
         },
         body: JSON.stringify({
           model,
@@ -1526,31 +1696,35 @@ export const createHttpBrain = ({
           input: context.input,
           route: context.route,
           state: context.state,
-          projectOs: context.projectOs
-        })
+          projectOs: context.projectOs,
+        }),
       });
       const responseText = await response.text();
       if (!response.ok) {
-        throw new Error(`HTTP brain ${id} failed: ${response.status} ${responseText}`);
+        throw new Error(
+          `HTTP brain ${id} failed: ${response.status} ${responseText}`,
+        );
       }
       const payload = responseText.trim() ? JSON.parse(responseText) : {};
       return freezeCopy({
         text: payload.text || payload.message || "",
         emotion: payload.emotion || "attentive",
-        raw: payload
+        raw: payload,
       });
-    }
+    },
   });
 };
 
-export const createRealtimeLatencyTracker = ({ clock = () => Date.now() } = {}) => {
+export const createRealtimeLatencyTracker = ({
+  clock = () => Date.now(),
+} = {}) => {
   let marks = Object.freeze({});
   let measures = Object.freeze([]);
 
   const mark = (name, at = clock()) => {
     marks = freezeCopy({
       ...marks,
-      [name]: at
+      [name]: at,
     });
     return freezeCopy({ name, at });
   };
@@ -1559,7 +1733,9 @@ export const createRealtimeLatencyTracker = ({ clock = () => Date.now() } = {}) 
     const start = marks[startMark];
     const end = marks[endMark];
     if (typeof start !== "number" || typeof end !== "number") {
-      throw new Error(`latency measure ${name} requires marks: ${startMark}, ${endMark}`);
+      throw new Error(
+        `latency measure ${name} requires marks: ${startMark}, ${endMark}`,
+      );
     }
     const metric = freezeCopy({
       name,
@@ -1567,7 +1743,7 @@ export const createRealtimeLatencyTracker = ({ clock = () => Date.now() } = {}) 
       endMark,
       start,
       end,
-      durationMs: end - start
+      durationMs: end - start,
     });
     measures = Object.freeze([...measures, metric]);
     return metric;
@@ -1576,23 +1752,25 @@ export const createRealtimeLatencyTracker = ({ clock = () => Date.now() } = {}) 
   const snapshot = () =>
     freezeCopy({
       marks: freezeCopy(marks),
-      measures: Object.freeze([...measures])
+      measures: Object.freeze([...measures]),
     });
 
   return Object.freeze({
     mark,
     measure,
-    snapshot
+    snapshot,
   });
 };
 
 export const createRealtimeEventBus = ({
   id = "realtime-event-bus",
   capacity = 256,
-  clock = nowIso
+  clock = nowIso,
 } = {}) => {
   if (!Number.isInteger(capacity) || capacity < 1) {
-    throw new Error("createRealtimeEventBus requires a positive integer capacity");
+    throw new Error(
+      "createRealtimeEventBus requires a positive integer capacity",
+    );
   }
   let events = Object.freeze([]);
 
@@ -1600,7 +1778,7 @@ export const createRealtimeEventBus = ({
     const nextEvent = freezeCopy({
       ...event,
       busId: id,
-      timestamp: event?.timestamp || clock()
+      timestamp: event?.timestamp || clock(),
     });
     events = Object.freeze([...events, nextEvent].slice(-capacity));
     return nextEvent;
@@ -1610,7 +1788,7 @@ export const createRealtimeEventBus = ({
     freezeCopy({
       id,
       capacity,
-      events: Object.freeze([...events])
+      events: Object.freeze([...events]),
     });
 
   const drain = () => {
@@ -1626,7 +1804,7 @@ export const createRealtimeEventBus = ({
     publish,
     push: publish,
     snapshot,
-    drain
+    drain,
   });
 };
 
@@ -1654,12 +1832,14 @@ export const createRealtimeBargeInGate = () => {
   };
 
   const observeSttEvent = (event) =>
-    event?.type === "stt.partial" ? observeSttPartial(event.delta || event.text || "") : false;
+    event?.type === "stt.partial"
+      ? observeSttPartial(event.delta || event.text || "")
+      : false;
 
   const state = () =>
     freezeCopy({
       speaking,
-      interrupted
+      interrupted,
     });
 
   return Object.freeze({
@@ -1667,7 +1847,7 @@ export const createRealtimeBargeInGate = () => {
     finishSpeaking,
     observeSttEvent,
     observeSttPartial,
-    state
+    state,
   });
 };
 
@@ -1675,12 +1855,12 @@ export const createJavascriptRealtimeCore = ({
   id = "javascript-realtime-core",
   eventCapacity = 256,
   clock = () => Date.now(),
-  timestamp = nowIso
+  timestamp = nowIso,
 } = {}) => {
   const eventBus = createRealtimeEventBus({
     id: `${id}:events`,
     capacity: eventCapacity,
-    clock: timestamp
+    clock: timestamp,
   });
   const latency = createRealtimeLatencyTracker({ clock });
   const bargeIn = createRealtimeBargeInGate();
@@ -1689,7 +1869,12 @@ export const createJavascriptRealtimeCore = ({
     id,
     kind: "realtime-core",
     implementation: "javascript",
-    capabilities: Object.freeze(["event-bus", "latency", "barge-in", "device-command-contract"]),
+    capabilities: Object.freeze([
+      "event-bus",
+      "latency",
+      "barge-in",
+      "device-command-contract",
+    ]),
     publish: eventBus.publish,
     push: eventBus.publish,
     drain: eventBus.drain,
@@ -1704,9 +1889,9 @@ export const createJavascriptRealtimeCore = ({
         implementation: "javascript",
         events: eventBus.snapshot().events,
         latency: latency.snapshot(),
-        bargeIn: bargeIn.state()
+        bargeIn: bargeIn.state(),
       });
-    }
+    },
   });
 };
 
@@ -1758,15 +1943,19 @@ export const createRustRealtimeCoreCabiAdapter = ({
   eventCapacity = 256,
   implementation = "rust-cabi",
   clock = () => Date.now(),
-  timestamp = nowIso
+  timestamp = nowIso,
 } = {}) => {
   const nativeExports = rustRealtimeCoreCabiExports(exports);
   if (!isRustRealtimeCoreCabi(nativeExports)) {
-    throw new Error("createRustRealtimeCoreCabiAdapter requires iroharness realtime core C ABI exports");
+    throw new Error(
+      "createRustRealtimeCoreCabiAdapter requires iroharness realtime core C ABI exports",
+    );
   }
 
   const nativeHandle =
-    handle === null ? nativeExports.iroharness_realtime_core_new(eventCapacity) : handle;
+    handle === null
+      ? nativeExports.iroharness_realtime_core_new(eventCapacity)
+      : handle;
   const latency = createRealtimeLatencyTracker({ clock });
   let events = Object.freeze([]);
   let closed = false;
@@ -1779,20 +1968,22 @@ export const createRustRealtimeCoreCabiAdapter = ({
 
   const interrupted = () =>
     typeof nativeExports.iroharness_realtime_core_interrupted === "function"
-      ? Boolean(nativeExports.iroharness_realtime_core_interrupted(nativeHandle))
+      ? Boolean(
+          nativeExports.iroharness_realtime_core_interrupted(nativeHandle),
+        )
       : false;
 
   const publish = (event) => {
     assertOpen();
     const nativeSequence = nativeExports.iroharness_realtime_core_publish(
       nativeHandle,
-      rustRealtimeCoreEventKindCode(event)
+      rustRealtimeCoreEventKindCode(event),
     );
     const nextEvent = freezeCopy({
       ...event,
       busId: id,
       timestamp: event?.timestamp || timestamp(),
-      nativeSequence: Number(nativeSequence)
+      nativeSequence: Number(nativeSequence),
     });
     events = Object.freeze([...events, nextEvent].slice(-eventCapacity));
     return nextEvent;
@@ -1802,7 +1993,13 @@ export const createRustRealtimeCoreCabiAdapter = ({
     id,
     kind: "realtime-core",
     implementation,
-    capabilities: Object.freeze(["event-bus", "barge-in", "latency", "native-cabi", "wasm-cabi"]),
+    capabilities: Object.freeze([
+      "event-bus",
+      "barge-in",
+      "latency",
+      "native-cabi",
+      "wasm-cabi",
+    ]),
     publish,
     push: publish,
     drain() {
@@ -1815,14 +2012,20 @@ export const createRustRealtimeCoreCabiAdapter = ({
     measure: latency.measure,
     startSpeaking() {
       assertOpen();
-      if (typeof nativeExports.iroharness_realtime_core_start_speaking === "function") {
+      if (
+        typeof nativeExports.iroharness_realtime_core_start_speaking ===
+        "function"
+      ) {
         nativeExports.iroharness_realtime_core_start_speaking(nativeHandle);
       }
       return freezeCopy({ speaking: true, interrupted: false });
     },
     finishSpeaking() {
       assertOpen();
-      if (typeof nativeExports.iroharness_realtime_core_finish_speaking === "function") {
+      if (
+        typeof nativeExports.iroharness_realtime_core_finish_speaking ===
+        "function"
+      ) {
         nativeExports.iroharness_realtime_core_finish_speaking(nativeHandle);
       }
       return freezeCopy({ speaking: false, interrupted: interrupted() });
@@ -1832,15 +2035,18 @@ export const createRustRealtimeCoreCabiAdapter = ({
       if (event?.type !== "stt.partial") {
         return false;
       }
-      if (typeof nativeExports.iroharness_realtime_core_observe_stt_partial_len !== "function") {
+      if (
+        typeof nativeExports.iroharness_realtime_core_observe_stt_partial_len !==
+        "function"
+      ) {
         return false;
       }
       const text = String(event.delta || event.text || "");
       return Boolean(
         nativeExports.iroharness_realtime_core_observe_stt_partial_len(
           nativeHandle,
-          text.trim().length
-        )
+          text.trim().length,
+        ),
       );
     },
     snapshot() {
@@ -1849,14 +2055,16 @@ export const createRustRealtimeCoreCabiAdapter = ({
         id,
         implementation,
         native: freezeCopy({
-          eventsLen: Number(nativeExports.iroharness_realtime_core_events_len(nativeHandle)),
-          interrupted: interrupted()
+          eventsLen: Number(
+            nativeExports.iroharness_realtime_core_events_len(nativeHandle),
+          ),
+          interrupted: interrupted(),
         }),
         events: Object.freeze([...events]),
         latency: latency.snapshot(),
         bargeIn: freezeCopy({
-          interrupted: interrupted()
-        })
+          interrupted: interrupted(),
+        }),
       });
     },
     close() {
@@ -1869,7 +2077,7 @@ export const createRustRealtimeCoreCabiAdapter = ({
       }
       closed = true;
       return freezeCopy({ id, closed });
-    }
+    },
   });
 };
 
@@ -1898,19 +2106,27 @@ const createNativeRealtimeCoreFacade = ({ core, id, implementation }) =>
       return event;
     },
     drain() {
-      return typeof core.drain === "function" ? core.drain() : Object.freeze([]);
+      return typeof core.drain === "function"
+        ? core.drain()
+        : Object.freeze([]);
     },
     mark(name, at) {
       return typeof core.mark === "function" ? core.mark(name, at) : null;
     },
     measure(name, startMark, endMark) {
-      return typeof core.measure === "function" ? core.measure(name, startMark, endMark) : null;
+      return typeof core.measure === "function"
+        ? core.measure(name, startMark, endMark)
+        : null;
     },
     startSpeaking() {
-      return typeof core.startSpeaking === "function" ? core.startSpeaking() : null;
+      return typeof core.startSpeaking === "function"
+        ? core.startSpeaking()
+        : null;
     },
     finishSpeaking() {
-      return typeof core.finishSpeaking === "function" ? core.finishSpeaking() : null;
+      return typeof core.finishSpeaking === "function"
+        ? core.finishSpeaking()
+        : null;
     },
     shouldInterrupt(event) {
       if (typeof core.shouldInterrupt === "function") {
@@ -1919,7 +2135,10 @@ const createNativeRealtimeCoreFacade = ({ core, id, implementation }) =>
       if (typeof core.observeSttEvent === "function") {
         return core.observeSttEvent(event);
       }
-      if (event?.type === "stt.partial" && typeof core.observeSttPartial === "function") {
+      if (
+        event?.type === "stt.partial" &&
+        typeof core.observeSttPartial === "function"
+      ) {
         return core.observeSttPartial(event.delta || event.text || "");
       }
       return false;
@@ -1929,9 +2148,9 @@ const createNativeRealtimeCoreFacade = ({ core, id, implementation }) =>
         ? core.snapshot()
         : freezeCopy({
             id: core.id || id,
-            implementation: core.implementation || implementation
+            implementation: core.implementation || implementation,
           });
-    }
+    },
   });
 
 export const createRustRealtimeCoreBinding = ({
@@ -1939,7 +2158,7 @@ export const createRustRealtimeCoreBinding = ({
   native = null,
   loadNative = null,
   fallback = true,
-  fallbackCore = null
+  fallbackCore = null,
 } = {}) => {
   let resolved = null;
 
@@ -1947,12 +2166,13 @@ export const createRustRealtimeCoreBinding = ({
     if (resolved) {
       return resolved;
     }
-    const loaded = native || (typeof loadNative === "function" ? loadNative() : null);
+    const loaded =
+      native || (typeof loadNative === "function" ? loadNative() : null);
     const core = isRustRealtimeCoreCabi(loaded)
       ? createRustRealtimeCoreCabiAdapter({
           id,
           exports: loaded,
-          implementation: loaded?.implementation || "rust-cabi"
+          implementation: loaded?.implementation || "rust-cabi",
         })
       : typeof loaded?.createRealtimeCore === "function"
         ? loaded.createRealtimeCore({ id })
@@ -1961,7 +2181,7 @@ export const createRustRealtimeCoreBinding = ({
       resolved = createNativeRealtimeCoreFacade({
         core,
         id,
-        implementation: "rust"
+        implementation: "rust",
       });
       return resolved;
     }
@@ -1971,7 +2191,7 @@ export const createRustRealtimeCoreBinding = ({
     resolved =
       fallbackCore ||
       createJavascriptRealtimeCore({
-        id: `${id}:javascript-fallback`
+        id: `${id}:javascript-fallback`,
       });
     return resolved;
   };
@@ -2007,7 +2227,7 @@ export const createRustRealtimeCoreBinding = ({
     },
     snapshot() {
       return resolve().snapshot();
-    }
+    },
   });
 };
 
@@ -2015,7 +2235,11 @@ export const createTextStreamingStt = ({ id = "text-streaming-stt" } = {}) =>
   Object.freeze({
     id,
     kind: "stt",
-    capabilities: Object.freeze(["streaming-stt", "partial-transcript", "final-transcript"]),
+    capabilities: Object.freeze([
+      "streaming-stt",
+      "partial-transcript",
+      "final-transcript",
+    ]),
     start({ onEvent = () => {} } = {}) {
       let text = "";
       let sequence = 0;
@@ -2026,7 +2250,7 @@ export const createTextStreamingStt = ({ id = "text-streaming-stt" } = {}) =>
           ...event,
           adapterId: id,
           sequence,
-          timestamp: nowIso()
+          timestamp: nowIso(),
         });
         sequence += 1;
         onEvent(nextEvent);
@@ -2039,13 +2263,15 @@ export const createTextStreamingStt = ({ id = "text-streaming-stt" } = {}) =>
             throw new Error(`${id} STT session is closed`);
           }
           const nextText =
-            typeof chunk === "string" ? chunk : chunk?.text || chunk?.transcript || "";
+            typeof chunk === "string"
+              ? chunk
+              : chunk?.text || chunk?.transcript || "";
           text = `${text}${nextText}`;
           return emit({
             type: chunk?.final ? "stt.final" : "stt.partial",
             text,
             delta: nextText,
-            final: Boolean(chunk?.final)
+            final: Boolean(chunk?.final),
           });
         },
         end() {
@@ -2057,7 +2283,7 @@ export const createTextStreamingStt = ({ id = "text-streaming-stt" } = {}) =>
             type: "stt.final",
             text,
             delta: "",
-            final: true
+            final: true,
           });
         },
         cancel(reason = "cancelled") {
@@ -2069,11 +2295,11 @@ export const createTextStreamingStt = ({ id = "text-streaming-stt" } = {}) =>
             type: "stt.cancelled",
             text,
             reason,
-            final: false
+            final: false,
           });
-        }
+        },
       });
-    }
+    },
   });
 
 const createRealtimeAdapterEvent = ({ id, sequence, event, extra = {} }) =>
@@ -2082,7 +2308,7 @@ const createRealtimeAdapterEvent = ({ id, sequence, event, extra = {} }) =>
     ...extra,
     adapterId: id,
     sequence,
-    timestamp: nowIso()
+    timestamp: nowIso(),
   });
 
 const parseHttpRealtimePayload = async ({ response, label }) => {
@@ -2097,7 +2323,7 @@ export const createHttpStreamingStt = ({
   id = "http-streaming-stt",
   endpoint,
   headers = {},
-  fetchImpl = globalThis.fetch
+  fetchImpl = globalThis.fetch,
 } = {}) => {
   if (!endpoint) {
     throw new Error("createHttpStreamingStt requires endpoint");
@@ -2108,7 +2334,12 @@ export const createHttpStreamingStt = ({
   return Object.freeze({
     id,
     kind: "stt",
-    capabilities: Object.freeze(["streaming-stt", "partial-transcript", "final-transcript", "http-provider"]),
+    capabilities: Object.freeze([
+      "streaming-stt",
+      "partial-transcript",
+      "final-transcript",
+      "http-provider",
+    ]),
     start({ onEvent = () => {} } = {}) {
       let sequence = 0;
       let closed = false;
@@ -2123,11 +2354,14 @@ export const createHttpStreamingStt = ({
           method: "POST",
           headers: {
             "content-type": "application/json",
-            ...headers
+            ...headers,
           },
-          body: JSON.stringify(payload)
+          body: JSON.stringify(payload),
         });
-        const body = await parseHttpRealtimePayload({ response, label: `HTTP STT ${id}` });
+        const body = await parseHttpRealtimePayload({
+          response,
+          label: `HTTP STT ${id}`,
+        });
         const events = Array.isArray(body.events)
           ? body.events
           : [
@@ -2135,8 +2369,8 @@ export const createHttpStreamingStt = ({
                 type: body.final ? "stt.final" : "stt.partial",
                 text: body.text || body.transcript || "",
                 delta: body.delta || body.text || body.transcript || "",
-                final: Boolean(body.final)
-              }
+                final: Boolean(body.final),
+              },
             ];
         return Object.freeze(events.map((event) => emit(event)));
       };
@@ -2149,7 +2383,7 @@ export const createHttpStreamingStt = ({
             type: "audio",
             audio: chunk?.audio || chunk?.data || null,
             text: typeof chunk === "string" ? chunk : chunk?.text || null,
-            final: Boolean(chunk?.final)
+            final: Boolean(chunk?.final),
           });
         },
         async end() {
@@ -2168,23 +2402,32 @@ export const createHttpStreamingStt = ({
             type: "stt.cancelled",
             text: "",
             reason,
-            final: false
+            final: false,
           });
-        }
+        },
       });
-    }
+    },
   });
 };
 
 export const createTextStreamingTts = ({
   id = "text-streaming-tts",
-  chunkSize = 24
+  chunkSize = 24,
 } = {}) =>
   Object.freeze({
     id,
     kind: "tts",
-    capabilities: Object.freeze(["streaming-tts", "audio-chunks", "interruptible"]),
-    async stream({ text, voice = null, onEvent = () => {}, signal = null } = {}) {
+    capabilities: Object.freeze([
+      "streaming-tts",
+      "audio-chunks",
+      "interruptible",
+    ]),
+    async stream({
+      text,
+      voice = null,
+      onEvent = () => {},
+      signal = null,
+    } = {}) {
       const chunks = [];
       const source = String(text || "");
       let sequence = 0;
@@ -2195,7 +2438,7 @@ export const createTextStreamingTts = ({
           adapterId: id,
           voice,
           sequence,
-          timestamp: nowIso()
+          timestamp: nowIso(),
         });
         sequence += 1;
         onEvent(nextEvent);
@@ -2208,7 +2451,7 @@ export const createTextStreamingTts = ({
           emit({
             type: "tts.interrupted",
             text: source.slice(0, index),
-            reason: signal.reason || "aborted"
+            reason: signal.reason || "aborted",
           });
           return Object.freeze(chunks);
         }
@@ -2217,7 +2460,7 @@ export const createTextStreamingTts = ({
           type: "tts.audio",
           text: chunkText,
           audio: chunkText,
-          final: false
+          final: false,
         });
       }
 
@@ -2225,17 +2468,17 @@ export const createTextStreamingTts = ({
         type: "tts.completed",
         text: source,
         audio: "",
-        final: true
+        final: true,
       });
       return Object.freeze(chunks);
-    }
+    },
   });
 
 export const createHttpStreamingTts = ({
   id = "http-streaming-tts",
   endpoint,
   headers = {},
-  fetchImpl = globalThis.fetch
+  fetchImpl = globalThis.fetch,
 } = {}) => {
   if (!endpoint) {
     throw new Error("createHttpStreamingTts requires endpoint");
@@ -2246,8 +2489,18 @@ export const createHttpStreamingTts = ({
   return Object.freeze({
     id,
     kind: "tts",
-    capabilities: Object.freeze(["streaming-tts", "audio-chunks", "interruptible", "http-provider"]),
-    async stream({ text, voice = null, onEvent = () => {}, signal = null } = {}) {
+    capabilities: Object.freeze([
+      "streaming-tts",
+      "audio-chunks",
+      "interruptible",
+      "http-provider",
+    ]),
+    async stream({
+      text,
+      voice = null,
+      onEvent = () => {},
+      signal = null,
+    } = {}) {
       const chunks = [];
       let sequence = 0;
       const emit = (event) => {
@@ -2255,7 +2508,7 @@ export const createHttpStreamingTts = ({
           id,
           sequence,
           event,
-          extra: { voice }
+          extra: { voice },
         });
         sequence += 1;
         onEvent(nextEvent);
@@ -2266,7 +2519,7 @@ export const createHttpStreamingTts = ({
         emit({
           type: "tts.interrupted",
           text: String(text || ""),
-          reason: signal.reason || "aborted"
+          reason: signal.reason || "aborted",
         });
         return Object.freeze(chunks);
       }
@@ -2274,15 +2527,18 @@ export const createHttpStreamingTts = ({
         method: "POST",
         headers: {
           "content-type": "application/json",
-          ...headers
+          ...headers,
         },
         body: JSON.stringify({
           text: String(text || ""),
-          voice
+          voice,
         }),
-        signal
+        signal,
       });
-      const body = await parseHttpRealtimePayload({ response, label: `HTTP TTS ${id}` });
+      const body = await parseHttpRealtimePayload({
+        response,
+        label: `HTTP TTS ${id}`,
+      });
       const events = Array.isArray(body.events)
         ? body.events
         : Array.isArray(body.chunks)
@@ -2290,21 +2546,21 @@ export const createHttpStreamingTts = ({
               type: "tts.audio",
               text: chunk.text || "",
               audio: chunk.audio || chunk.data || chunk,
-              final: false
+              final: false,
             }))
           : [
               {
                 type: "tts.audio",
                 text: String(text || ""),
                 audio: body.audio || body.data || "",
-                final: false
+                final: false,
               },
               {
                 type: "tts.completed",
                 text: String(text || ""),
                 audio: "",
-                final: true
-              }
+                final: true,
+              },
             ];
       events.forEach((event) => {
         if (!signal?.aborted) {
@@ -2315,7 +2571,7 @@ export const createHttpStreamingTts = ({
         emit({
           type: "tts.interrupted",
           text: String(text || ""),
-          reason: signal.reason || "aborted"
+          reason: signal.reason || "aborted",
         });
       }
       if (!signal?.aborted && chunks.at(-1)?.type !== "tts.completed") {
@@ -2323,18 +2579,18 @@ export const createHttpStreamingTts = ({
           type: "tts.completed",
           text: String(text || ""),
           audio: "",
-          final: true
+          final: true,
         });
       }
       return Object.freeze(chunks);
-    }
+    },
   });
 };
 
 export const createSpeechPlaybackQueue = ({
   id = "speech-playback-queue",
   maxSize = 32,
-  onEvent = () => {}
+  onEvent = () => {},
 } = {}) => {
   const pending = [];
   const history = [];
@@ -2347,7 +2603,7 @@ export const createSpeechPlaybackQueue = ({
       ...event,
       queueId: id,
       sequence,
-      timestamp: nowIso()
+      timestamp: nowIso(),
     });
     sequence += 1;
     history.push(nextEvent);
@@ -2363,7 +2619,7 @@ export const createSpeechPlaybackQueue = ({
       voice: item?.voice || null,
       source: item?.source || "macro-harness",
       priority: Number.isFinite(item?.priority) ? item.priority : 0,
-      metadata: freezeCopy(item?.metadata || {})
+      metadata: freezeCopy(item?.metadata || {}),
     });
 
   const startNext = () => {
@@ -2374,7 +2630,7 @@ export const createSpeechPlaybackQueue = ({
     emit({
       type: "speech.started",
       item: current,
-      pendingCount: pending.length
+      pendingCount: pending.length,
     });
     return current;
   };
@@ -2391,7 +2647,9 @@ export const createSpeechPlaybackQueue = ({
       }
       const nextItem = normalizeItem(item);
       itemSequence += 1;
-      const insertAt = pending.findIndex((entry) => entry.priority < nextItem.priority);
+      const insertAt = pending.findIndex(
+        (entry) => entry.priority < nextItem.priority,
+      );
       if (insertAt === -1) {
         pending.push(nextItem);
       } else {
@@ -2400,7 +2658,7 @@ export const createSpeechPlaybackQueue = ({
       emit({
         type: "speech.queued",
         item: nextItem,
-        pendingCount: pending.length
+        pendingCount: pending.length,
       });
       if (autoplay) {
         startNext();
@@ -2417,7 +2675,7 @@ export const createSpeechPlaybackQueue = ({
       const event = emit({
         type: "speech.completed",
         item: completed,
-        pendingCount: pending.length
+        pendingCount: pending.length,
       });
       startNext();
       return event;
@@ -2435,7 +2693,7 @@ export const createSpeechPlaybackQueue = ({
         type: "speech.interrupted",
         item: interrupted,
         reason,
-        pendingCount: pending.length
+        pendingCount: pending.length,
       });
     },
     clear(reason = "cleared") {
@@ -2446,7 +2704,7 @@ export const createSpeechPlaybackQueue = ({
         type: "speech.cleared",
         reason,
         clearedCount,
-        pendingCount: 0
+        pendingCount: 0,
       });
     },
     snapshot() {
@@ -2455,9 +2713,9 @@ export const createSpeechPlaybackQueue = ({
         kind: "speech-playback-queue",
         current,
         pending,
-        events: history
+        events: history,
       });
-    }
+    },
   });
 };
 
@@ -2467,7 +2725,7 @@ export const createRealtimeVoiceSession = ({
   tts = createTextStreamingTts(),
   latency = createRealtimeLatencyTracker(),
   realtimeCore = null,
-  onEvent = () => {}
+  onEvent = () => {},
 } = {}) => {
   let activeTts = null;
   let speaking = false;
@@ -2478,7 +2736,7 @@ export const createRealtimeVoiceSession = ({
     const nextEvent = freezeCopy({
       ...event,
       sessionId: id,
-      timestamp: nowIso()
+      timestamp: nowIso(),
     });
     realtimeCore?.publish?.(nextEvent);
     onEvent(nextEvent);
@@ -2500,7 +2758,7 @@ export const createRealtimeVoiceSession = ({
     return emit({
       type: "realtime.barge_in",
       reason,
-      interruptedCount
+      interruptedCount,
     });
   };
 
@@ -2509,7 +2767,8 @@ export const createRealtimeVoiceSession = ({
     if (
       speaking &&
       (realtimeCore?.shouldInterrupt?.(event) ||
-        (event.type === "stt.partial" && String(event.delta || event.text || "").trim()))
+        (event.type === "stt.partial" &&
+          String(event.delta || event.text || "").trim()))
     ) {
       interrupt("barge-in");
     }
@@ -2522,11 +2781,11 @@ export const createRealtimeVoiceSession = ({
   const listen = () => {
     markLatency("audio.received");
     sttSession = stt.start({
-      onEvent: handleSttEvent
+      onEvent: handleSttEvent,
     });
     emit({
       type: "realtime.listening",
-      sttId: stt.id
+      sttId: stt.id,
     });
     return sttSession;
   };
@@ -2543,18 +2802,21 @@ export const createRealtimeVoiceSession = ({
     emit({
       type: "realtime.speaking",
       ttsId: tts.id,
-      voice
+      voice,
     });
     const chunks = await tts.stream({
       text,
       voice,
       signal: controller.signal,
       onEvent(event) {
-        if (event.type === "tts.audio" && !latency.snapshot().marks["tts.first_audio"]) {
+        if (
+          event.type === "tts.audio" &&
+          !latency.snapshot().marks["tts.first_audio"]
+        ) {
           markLatency("tts.first_audio");
         }
         emit(event);
-      }
+      },
     });
     speaking = false;
     realtimeCore?.finishSpeaking?.();
@@ -2562,9 +2824,12 @@ export const createRealtimeVoiceSession = ({
       activeTts = null;
     }
     emit({
-      type: chunks.at(-1)?.type === "tts.interrupted" ? "realtime.interrupted" : "realtime.spoken",
+      type:
+        chunks.at(-1)?.type === "tts.interrupted"
+          ? "realtime.interrupted"
+          : "realtime.spoken",
       ttsId: tts.id,
-      chunkCount: chunks.length
+      chunkCount: chunks.length,
     });
     return Object.freeze(chunks);
   };
@@ -2576,7 +2841,7 @@ export const createRealtimeVoiceSession = ({
     speaking = false;
     emit({
       type: "realtime.closed",
-      reason
+      reason,
     });
   };
 
@@ -2591,10 +2856,10 @@ export const createRealtimeVoiceSession = ({
       return freezeCopy({
         speaking,
         listening: Boolean(sttSession),
-        interruptedCount
+        interruptedCount,
       });
     },
-    close
+    close,
   });
 };
 
@@ -2606,9 +2871,9 @@ export const createStubMicroHarness = (id, capabilities = []) =>
       return freezeCopy({
         status: "completed",
         summary: `${id} accepted: ${task.title}`,
-        artifacts: Object.freeze([])
+        artifacts: Object.freeze([]),
       });
-    }
+    },
   });
 
 export const createRecorderStreamController = (id = "stream-controller") => {
@@ -2624,19 +2889,19 @@ export const createRecorderStreamController = (id = "stream-controller") => {
         route,
         actorUserId: actor.user.id,
         streamSessionId: input.metadata?.streamSessionId || null,
-        createdAt: nowIso()
+        createdAt: nowIso(),
       });
       actions = Object.freeze([...actions, action]);
       return freezeCopy({
         status: "completed",
         summary: `${id} accepted stream action: ${input.text.slice(0, 80)}`,
         action,
-        artifacts: Object.freeze([])
+        artifacts: Object.freeze([]),
       });
     },
     actions() {
       return Object.freeze([...actions]);
-    }
+    },
   });
 };
 
@@ -2651,7 +2916,7 @@ export const createRecorderDevice = (id) => {
     },
     events() {
       return Object.freeze([...events]);
-    }
+    },
   });
 };
 
@@ -2670,8 +2935,16 @@ export const createConsoleDevice = (id = "console") =>
       if (event.type === "task") {
         console.log(`[${id}] ${event.status} ${event.ticketId}`);
       }
-    }
+    },
   });
+
+const SKILL_TIER_VIEW = Object.freeze({
+  owner: "owner",
+  trusted: "trusted",
+  operator: "trusted",
+});
+
+const tierToView = (tier) => SKILL_TIER_VIEW[tier] || "public";
 
 export const createIroHarness = ({
   character,
@@ -2683,7 +2956,8 @@ export const createIroHarness = ({
   brains,
   devices = [],
   microHarnesses = [],
-  streamController = null
+  streamController = null,
+  skills = null,
 }) => {
   if (!character || !character.id || !character.name) {
     throw new Error("character.id and character.name are required");
@@ -2699,21 +2973,21 @@ export const createIroHarness = ({
       [
         ["voice", brains.voice],
         ["text", brains.text],
-        ["deep", brains.deep]
+        ["deep", brains.deep],
       ]
         .filter(([, brain]) => Boolean(brain))
         .map(([slot, brain]) =>
           freezeCopy({
             slot,
-            id: brain.id || slot
-          })
-        )
+            id: brain.id || slot,
+          }),
+        ),
     );
 
   let state = createCharacterState({
     characterId: character.id,
     mode: MODES.idle,
-    emotion: DEFAULT_EMOTION
+    emotion: DEFAULT_EMOTION,
   });
 
   const emit = (event) => {
@@ -2723,19 +2997,21 @@ export const createIroHarness = ({
   const setState = (nextState) => {
     state = createCharacterState({
       characterId: character.id,
-      ...nextState
+      ...nextState,
     });
     emit({
       type: "state",
       state,
-      timestamp: nowIso()
+      timestamp: nowIso(),
     });
     return state;
   };
 
   const receive = async (input) => {
     if (!input || !input.text || !input.modality || !input.source) {
-      throw new Error("input.source, input.modality, and input.text are required");
+      throw new Error(
+        "input.source, input.modality, and input.text are required",
+      );
     }
     const actor = await userRegistry.resolveActor(input.actor || {});
 
@@ -2744,14 +3020,14 @@ export const createIroHarness = ({
       emotion: "focused",
       speechText: null,
       mouth: "closed",
-      motion: MODES.thinking
+      motion: MODES.thinking,
     });
 
     const route = router.choose({
       input,
       character,
       actor,
-      microHarnesses
+      microHarnesses,
     });
     const contextScopes =
       typeof permissionPolicy.createContextScopes === "function"
@@ -2766,20 +3042,28 @@ export const createIroHarness = ({
       route,
       input,
       permissions: actorPermissions,
-      contextScopes
+      contextScopes,
     });
 
     const permission = permissionPolicy.evaluate({
       user: actor.user,
       route,
-      input
+      input,
     });
     if (!permission.allowed) {
       return rejectByPermission(input, route, actor, permission, audience);
     }
 
     if (route.kind === "work" && route.harnessId) {
-      return runMicroHarness(input, route, actor, audience, permission, actorPermissions, contextScopes);
+      return runMicroHarness(
+        input,
+        route,
+        actor,
+        audience,
+        permission,
+        actorPermissions,
+        contextScopes,
+      );
     }
 
     if (route.kind === "stream") {
@@ -2792,6 +3076,15 @@ export const createIroHarness = ({
         : route.kind === "deep"
           ? brains.deep || brains.text
           : brains.text;
+    const skillListing = skills
+      ? createSkillContextListing({
+          skills: gateSkills({
+            skills: skills.list(),
+            view: tierToView(audience.tier),
+            permissions: actorPermissions,
+          }),
+        })
+      : Object.freeze([]);
     const response = await brain.respond({
       character,
       input,
@@ -2799,7 +3092,8 @@ export const createIroHarness = ({
       audience,
       route,
       state,
-      projectOs: projectOs.snapshot()
+      projectOs: projectOs.snapshot(),
+      skills: skillListing,
     });
 
     setState({
@@ -2807,21 +3101,21 @@ export const createIroHarness = ({
       emotion: response.emotion || "attentive",
       speechText: response.text,
       mouth: "talking",
-      motion: MODES.speaking
+      motion: MODES.speaking,
     });
     emit({
       type: "speech",
       text: response.text,
       modality: input.modality,
       brainId: brain.id,
-      timestamp: nowIso()
+      timestamp: nowIso(),
     });
     setState({
       mode: MODES.idle,
       emotion: response.emotion || "attentive",
       speechText: null,
       mouth: "closed",
-      motion: MODES.idle
+      motion: MODES.idle,
     });
 
     return freezeCopy({
@@ -2830,11 +3124,17 @@ export const createIroHarness = ({
       actor,
       audience,
       text: response.text,
-      brainId: brain.id
+      brainId: brain.id,
     });
   };
 
-  const rejectByPermission = async (input, route, actor, permission, audience) => {
+  const rejectByPermission = async (
+    input,
+    route,
+    actor,
+    permission,
+    audience,
+  ) => {
     const text =
       actor.user.role === "anonymous"
         ? "そこは権限が必要だよ。まず本人確認できる場所から話してね。"
@@ -2847,15 +3147,15 @@ export const createIroHarness = ({
       motion: MODES.speaking,
       metadata: {
         permission: permission.permission,
-        actorUserId: actor.user.id
-      }
+        actorUserId: actor.user.id,
+      },
     });
     emit({
       type: "speech",
       text,
       modality: input.modality,
       brainId: "permission-policy",
-      timestamp: nowIso()
+      timestamp: nowIso(),
     });
     setState({
       mode: MODES.idle,
@@ -2865,8 +3165,8 @@ export const createIroHarness = ({
       motion: MODES.idle,
       metadata: {
         permission: permission.permission,
-        actorUserId: actor.user.id
-      }
+        actorUserId: actor.user.id,
+      },
     });
     return freezeCopy({
       kind: "permission_denied",
@@ -2874,7 +3174,7 @@ export const createIroHarness = ({
       actor,
       audience,
       permission,
-      text
+      text,
     });
   };
 
@@ -2885,9 +3185,11 @@ export const createIroHarness = ({
     audience,
     permission,
     actorPermissions,
-    contextScopes
+    contextScopes,
   ) => {
-    const microHarness = microHarnesses.find((candidate) => candidate.id === route.harnessId);
+    const microHarness = microHarnesses.find(
+      (candidate) => candidate.id === route.harnessId,
+    );
     if (!microHarness) {
       throw new Error(`Micro harness not found: ${route.harnessId}`);
     }
@@ -2896,7 +3198,7 @@ export const createIroHarness = ({
       permission: permission.permission || "delegate_work",
       reason: permission.reason,
       actorPermissions,
-      contextScopes
+      contextScopes,
     });
 
     const ticket = projectOs.createTicket({
@@ -2912,8 +3214,8 @@ export const createIroHarness = ({
         actorRole: actor.user.role,
         actorPlatform: actor.identity.platform,
         actorPlatformUserId: actor.identity.platformUserId,
-        permissionCheck
-      }
+        permissionCheck,
+      },
     });
 
     setState({
@@ -2922,21 +3224,21 @@ export const createIroHarness = ({
       speechText: "見てみるね。",
       taskRef: ticket.id,
       mouth: "talking",
-      motion: MODES.working
+      motion: MODES.working,
     });
     emit({
       type: "speech",
       text: "見てみるね。",
       modality: input.modality,
       brainId: "macro-reflex",
-      timestamp: nowIso()
+      timestamp: nowIso(),
     });
     emit({
       type: "task",
       status: "started",
       ticketId: ticket.id,
       harnessId: microHarness.id,
-      timestamp: nowIso()
+      timestamp: nowIso(),
     });
 
     const run = projectOs.createRun({
@@ -2944,15 +3246,15 @@ export const createIroHarness = ({
       harnessId: microHarness.id,
       input: {
         ...input,
-        permissionCheck
-      }
+        permissionCheck,
+      },
     });
     const output = await microHarness.run(ticket, {
       character,
       actor,
       audience,
       input,
-      projectOs: projectOs.snapshot()
+      projectOs: projectOs.snapshot(),
     });
     const completedRun = projectOs.completeRun(run.id, output, output.status);
     const artifacts = Array.isArray(output.artifacts)
@@ -2962,12 +3264,12 @@ export const createIroHarness = ({
             runId: run.id,
             kind: artifact.kind || "generic",
             uri: artifact.uri || "",
-            title: artifact.title || artifact.uri || "artifact"
-          })
+            title: artifact.title || artifact.uri || "artifact",
+          }),
         )
       : [];
     projectOs.updateTicket(ticket.id, {
-      status: output.status === "completed" ? "done" : "needs_attention"
+      status: output.status === "completed" ? "done" : "needs_attention",
     });
 
     emit({
@@ -2977,7 +3279,7 @@ export const createIroHarness = ({
       runId: run.id,
       harnessId: microHarness.id,
       summary: output.summary,
-      timestamp: nowIso()
+      timestamp: nowIso(),
     });
     setState({
       mode: MODES.idle,
@@ -2985,7 +3287,7 @@ export const createIroHarness = ({
       speechText: null,
       taskRef: ticket.id,
       mouth: "closed",
-      motion: MODES.idle
+      motion: MODES.idle,
     });
 
     return freezeCopy({
@@ -2996,7 +3298,7 @@ export const createIroHarness = ({
       ticket,
       run: completedRun,
       output,
-      artifacts: Object.freeze(artifacts)
+      artifacts: Object.freeze(artifacts),
     });
   };
 
@@ -3008,28 +3310,28 @@ export const createIroHarness = ({
         emotion: "careful",
         speechText: text,
         mouth: "talking",
-        motion: MODES.speaking
+        motion: MODES.speaking,
       });
       emit({
         type: "speech",
         text,
         modality: input.modality,
         brainId: "stream-controller",
-        timestamp: nowIso()
+        timestamp: nowIso(),
       });
       setState({
         mode: MODES.idle,
         emotion: "careful",
         speechText: null,
         mouth: "closed",
-        motion: MODES.idle
+        motion: MODES.idle,
       });
       return freezeCopy({
         kind: "stream_unavailable",
         route,
         actor,
         audience,
-        text
+        text,
       });
     }
 
@@ -3041,15 +3343,15 @@ export const createIroHarness = ({
       motion: MODES.working,
       metadata: {
         actorUserId: actor.user.id,
-        streamSessionId: input.metadata?.streamSessionId || null
-      }
+        streamSessionId: input.metadata?.streamSessionId || null,
+      },
     });
     emit({
       type: "speech",
       text: "配信まわりを確認するね。",
       modality: input.modality,
       brainId: "macro-stream-reflex",
-      timestamp: nowIso()
+      timestamp: nowIso(),
     });
     emit({
       type: "stream",
@@ -3057,7 +3359,7 @@ export const createIroHarness = ({
       controllerId: streamController.id || "stream-controller",
       actorUserId: actor.user.id,
       streamSessionId: input.metadata?.streamSessionId || null,
-      timestamp: nowIso()
+      timestamp: nowIso(),
     });
 
     const output = await streamController.execute({
@@ -3066,7 +3368,7 @@ export const createIroHarness = ({
       route,
       actor,
       audience,
-      projectOs: projectOs.snapshot()
+      projectOs: projectOs.snapshot(),
     });
 
     emit({
@@ -3076,14 +3378,14 @@ export const createIroHarness = ({
       actorUserId: actor.user.id,
       streamSessionId: input.metadata?.streamSessionId || null,
       summary: output.summary,
-      timestamp: nowIso()
+      timestamp: nowIso(),
     });
     setState({
       mode: MODES.idle,
       emotion: output.status === "failed" ? "careful" : "relieved",
       speechText: null,
       mouth: "closed",
-      motion: MODES.idle
+      motion: MODES.idle,
     });
 
     return freezeCopy({
@@ -3091,7 +3393,7 @@ export const createIroHarness = ({
       route,
       actor,
       audience,
-      output
+      output,
     });
   };
 
@@ -3101,10 +3403,10 @@ export const createIroHarness = ({
     state: () => state,
     brains: brainSummary,
     projectOs: () => projectOs.snapshot(),
-    users: () => userRegistry.snapshot()
+    users: () => userRegistry.snapshot(),
   });
 };
 
 export const constants = Object.freeze({
-  MODES
+  MODES,
 });
