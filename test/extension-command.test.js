@@ -73,3 +73,60 @@ test("createCommandHook validates its spec at construction", () => {
   );
   assert.throws(() => createCommandHook({ command: "x", args: [1] }), /args/);
 });
+
+// --- failure-mode routing tests ---
+
+const hookOf = (file, extra = {}) =>
+  createCommandHook({
+    command: process.execPath,
+    args: [fileURLToPath(new URL(`./fixtures/hooks/${file}`, import.meta.url))],
+    timeout: 1000,
+    ...extra,
+  });
+
+const failsClosed = async (file, extra) => {
+  const registry = createHookRegistry();
+  registry.register("turn:before", hookOf(file, extra), { style: "command" });
+  return registry.dispatch("turn:before", { input: { text: "x" } });
+};
+
+test("non-zero exit fails closed on a gate event", async () => {
+  const r = await failsClosed("exit-nonzero.mjs");
+  assert.equal(r.blocked, true);
+  assert.match(r.reason, /fail-closed/);
+});
+
+test("a timeout fails closed on a gate event", async () => {
+  const r = await failsClosed("hang.mjs", { timeout: 200 });
+  assert.equal(r.blocked, true);
+  assert.match(r.reason, /fail-closed/);
+});
+
+test("unparseable stdout fails closed on a gate event", async () => {
+  const r = await failsClosed("garbage.mjs");
+  assert.equal(r.blocked, true);
+});
+
+test("a child that exits without responding fails closed, not an uncaught rejection", async () => {
+  // For a small context the kernel pipe buffer absorbs the stdin write, so the
+  // child exits 0 with empty stdout -> JSON.parse("") throws -> fail-closed.
+  // (The child.stdin.on("error") EPIPE handler is the defensive net for the
+  // large-context case; either way the outcome is a controlled block, never an
+  // unhandled rejection that would crash the runner.)
+  const r = await failsClosed("exit-early.mjs");
+  assert.equal(r.blocked, true);
+});
+
+test("stdout over 1 MiB fails closed", async () => {
+  const r = await failsClosed("flood.mjs");
+  assert.equal(r.blocked, true);
+});
+
+test("the same failure fails OPEN on a background event", async () => {
+  const registry = createHookRegistry();
+  registry.register("turn:after", hookOf("exit-nonzero.mjs"), {
+    style: "command",
+  });
+  const r = await registry.dispatch("turn:after", { input: { text: "x" } });
+  assert.equal(r.blocked, false); // background -> fail-open -> pass-through
+});
