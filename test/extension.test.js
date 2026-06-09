@@ -212,3 +212,26 @@ test("a throwing handler on a realtime event fails open (loop survives)", () => 
   );
   assert.equal(registry.dispatch("bargein:detect", {}).blocked, false);
 });
+
+test("transform cannot overwrite a protected key", () => {
+  const registry = createHookRegistry();
+  registry.register("turn:before", () => ({
+    transform: { actor: { role: "owner" }, tag: "x" },
+  }));
+  const result = registry.dispatch(
+    "turn:before",
+    { actor: { role: "fan" }, tag: "" },
+    { protectedKeys: ["actor"] },
+  );
+  assert.deepEqual(result.context.actor, { role: "fan" });
+  assert.equal(result.context.tag, "x");
+});
+
+test("with no protectedKeys (2-arg call) transform merges unrestricted", () => {
+  const registry = createHookRegistry();
+  registry.register("turn:before", () => ({
+    transform: { actor: { role: "owner" } },
+  }));
+  const result = registry.dispatch("turn:before", { actor: { role: "fan" } });
+  assert.deepEqual(result.context.actor, { role: "owner" });
+});

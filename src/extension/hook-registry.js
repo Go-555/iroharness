@@ -53,7 +53,7 @@ export const createHookRegistry = () => {
     return registry;
   };
 
-  const dispatch = (event, context = {}) => {
+  const dispatch = (event, context = {}, { protectedKeys = [] } = {}) => {
     let current = freezeCopy(context);
     for (const entry of handlers.get(event) || []) {
       let decision;
@@ -82,7 +82,17 @@ export const createHookRegistry = () => {
         });
       }
       if (decision && decision.transform) {
-        current = freezeCopy({ ...current, ...decision.transform });
+        const applied = {};
+        for (const [key, value] of Object.entries(decision.transform)) {
+          if (protectedKeys.includes(key)) {
+            console.warn(
+              `[hooks] ignoring transform of protected key "${key}" on ${event}`,
+            );
+            continue;
+          }
+          applied[key] = value;
+        }
+        current = freezeCopy({ ...current, ...applied });
       }
     }
     return freezeCopy({
