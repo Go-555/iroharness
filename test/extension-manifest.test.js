@@ -156,3 +156,28 @@ test("a command hook on a realtime event is rejected (realtime invariant)", () =
     /realtime/,
   );
 });
+
+test("a malformed manifest registers ZERO hooks (atomic load)", async () => {
+  const registry = createHookRegistry();
+  // A valid entry precedes an invalid one in the same event array.
+  assert.throws(
+    () =>
+      registerCommandManifest(
+        registry,
+        {
+          hooks: {
+            "turn:before": [cmd(), { type: "command", command: "" }],
+          },
+        },
+        { baseDir: HOOKS_DIR },
+      ),
+    /command/,
+  );
+  // The valid first hook must NOT have been registered (pass 1 threw first).
+  const r = await registry.dispatch("turn:before", {
+    route: { kind: "x" },
+    input: { text: "x" },
+  });
+  assert.equal(r.blocked, false);
+  assert.equal(r.context.marker, undefined);
+});
