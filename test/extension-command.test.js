@@ -105,6 +105,7 @@ test("a timeout fails closed on a gate event", async () => {
 test("unparseable stdout fails closed on a gate event", async () => {
   const r = await failsClosed("garbage.mjs");
   assert.equal(r.blocked, true);
+  assert.match(r.reason, /fail-closed/);
 });
 
 test("a child that exits without responding fails closed, not an uncaught rejection", async () => {
