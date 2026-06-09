@@ -42,6 +42,7 @@ const buildHarness = ({
   role = null,
   permissionsFor = null,
   microHarnesses = [],
+  satisfiedRequirements = undefined,
 } = {}) => {
   const userRegistry = createInMemoryUserRegistry();
   if (role) {
@@ -60,6 +61,7 @@ const buildHarness = ({
     brains: { voice: brain, text: brain },
     skills,
     microHarnesses,
+    ...(satisfiedRequirements !== undefined ? { satisfiedRequirements } : {}),
     ...(permissionsFor
       ? {
           permissionPolicy: {
@@ -129,13 +131,13 @@ test("tier maps to view: developer/moderator see trusted, fan and anonymous see 
   assert.deepEqual(skillIds(anon.brain), ["pub"]);
 });
 
-test("capability gates within a view; requires-gated skills are excluded this phase", async () => {
+test("capability gates within a view; requires-gated skills are excluded by default (no satisfiedRequirements)", async () => {
   const entries = [
     ["pub", "view: public\n"],
     ["trust-cap", "view: trusted\ncapability: delegate_work\n"],
     // requires on a TRUSTED skill: a developer clears the trusted view AND has
     // delegate_work, yet this is still excluded — proving `requires` gates
-    // independently of the view/capability gates (no satisfiedRequirements).
+    // independently of the view/capability gates when nothing is satisfied.
     ["needs-req", "view: trusted\nrequires: stream.enabled\n"],
   ];
   const permissionsFor = (user) =>
@@ -157,6 +159,90 @@ test("capability gates within a view; requires-gated skills are excluded this ph
   });
   await receiveAs(mod.harness, "moderator");
   assert.deepEqual(skillIds(mod.brain), ["pub"]);
+});
+
+// ─── requires gating: satisfiedRequirements (static array + resolver) ─────────
+
+const reqEntries = [
+  ["pub", "view: public\n"],
+  ["needs-req", "view: trusted\nrequires: stream.enabled\n"],
+];
+
+test("a requires-gated skill is excluded when its requirement is not satisfied", async () => {
+  const { harness, brain } = buildHarness({
+    skills: buildSkills(reqEntries),
+    role: "developer",
+  });
+  await receiveAs(harness, "developer");
+  assert.deepEqual(skillIds(brain), ["pub"]); // needs-req excluded (default: none satisfied)
+});
+
+test("a requires-gated skill is included when satisfiedRequirements (static array) lists it", async () => {
+  const { harness, brain } = buildHarness({
+    skills: buildSkills(reqEntries),
+    role: "developer",
+    satisfiedRequirements: ["stream.enabled"],
+  });
+  await receiveAs(harness, "developer");
+  assert.deepEqual(skillIds(brain), ["needs-req", "pub"]);
+});
+
+test("satisfiedRequirements may be a resolver — included when the resolver returns the requirement", async () => {
+  const { harness, brain } = buildHarness({
+    skills: buildSkills(reqEntries),
+    role: "developer",
+    satisfiedRequirements: () => ["stream.enabled"],
+  });
+  await receiveAs(harness, "developer");
+  assert.deepEqual(skillIds(brain), ["needs-req", "pub"]);
+});
+
+test("the resolver receives the turn context (input/actor/route/audience/state/permissions/contextScopes)", async () => {
+  let seen = null;
+  const { harness } = buildHarness({
+    skills: buildSkills(reqEntries),
+    role: "developer",
+    satisfiedRequirements: (ctx) => {
+      seen = ctx;
+      return [];
+    },
+  });
+  await receiveAs(harness, "developer");
+  assert.ok(seen);
+  assert.deepEqual(Object.keys(seen).sort(), [
+    "actor",
+    "audience",
+    "contextScopes",
+    "input",
+    "permissions",
+    "route",
+    "state",
+  ]);
+  assert.equal(seen.input.text, "hi");
+  assert.equal(seen.route.kind, "text");
+});
+
+test("a resolver that throws fails closed (skill excluded, turn still responds)", async () => {
+  const { harness, brain } = buildHarness({
+    skills: buildSkills(reqEntries),
+    role: "developer",
+    satisfiedRequirements: () => {
+      throw new Error("boom");
+    },
+  });
+  const result = await receiveAs(harness, "developer");
+  assert.equal(result.kind, "response"); // the turn survives
+  assert.deepEqual(skillIds(brain), ["pub"]); // needs-req excluded (fail-closed)
+});
+
+test("a resolver that returns a non-array fails closed (skill excluded)", async () => {
+  const { harness, brain } = buildHarness({
+    skills: buildSkills(reqEntries),
+    role: "developer",
+    satisfiedRequirements: () => "stream.enabled", // a string, not an array
+  });
+  await receiveAs(harness, "developer");
+  assert.deepEqual(skillIds(brain), ["pub"]); // treated as none satisfied
 });
 
 test("the work (micro-harness) path does not run skill gating", async () => {
