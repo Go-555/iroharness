@@ -43,7 +43,7 @@
     }
   },
   "scripts": {
-    "test": "node --test",
+    "test": "node --test \"test/*.test.js\"",
     "verify": "npm run check && npm test",
     "package:dry-run": "npm pack --dry-run",
     "prepublishOnly": "npm run verify",

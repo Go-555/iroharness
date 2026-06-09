@@ -7,13 +7,10 @@ import { createCommandHook } from "../src/extension/hook-runners/command.js";
 const DECIDE = fileURLToPath(
   new URL("./fixtures/hooks/decide.mjs", import.meta.url),
 );
-// `--hook` activates the fixture's stdin/stdout behavior; without it the
-// node:test default glob (which discovers DECIDE under test/**) would run it as
-// a test that hangs on stdin. See test/fixtures/hooks/decide.mjs.
 const nodeHook = (extra = {}) =>
   createCommandHook({
     command: process.execPath,
-    args: [DECIDE, "--hook"],
+    args: [DECIDE],
     timeout: 5000,
     ...extra,
   });
