@@ -6,26 +6,26 @@ import {
   REALTIME_HOOK_EVENTS,
 } from "../src/extension/hook-registry.js";
 
-test("dispatch with no handlers passes the context through unblocked", () => {
+test("dispatch with no handlers passes the context through unblocked", async () => {
   const registry = createHookRegistry();
-  const result = registry.dispatch("turn:before", { text: "hi" });
+  const result = await registry.dispatch("turn:before", { text: "hi" });
   assert.equal(result.blocked, false);
   assert.equal(result.context.text, "hi");
 });
 
-test("a single in-process handler runs and can pass through", () => {
+test("a single in-process handler runs and can pass through", async () => {
   const registry = createHookRegistry();
   const seen = [];
   registry.register("turn:before", (ctx) => {
     seen.push(ctx.text);
     return undefined;
   });
-  const result = registry.dispatch("turn:before", { text: "hi" });
+  const result = await registry.dispatch("turn:before", { text: "hi" });
   assert.deepEqual(seen, ["hi"]);
   assert.equal(result.blocked, false);
 });
 
-test("a handler returning block stops dispatch and skips later handlers", () => {
+test("a handler returning block stops dispatch and skips later handlers", async () => {
   const registry = createHookRegistry();
   const ran = [];
   registry.register("tool:before", () => {
@@ -36,13 +36,13 @@ test("a handler returning block stops dispatch and skips later handlers", () => 
     ran.push("second");
     return undefined;
   });
-  const result = registry.dispatch("tool:before", { tool: "codex" });
+  const result = await registry.dispatch("tool:before", { tool: "codex" });
   assert.equal(result.blocked, true);
   assert.equal(result.reason, "denied");
   assert.deepEqual(ran, ["first"]);
 });
 
-test("handlers run in priority order and transform merges into the context", () => {
+test("handlers run in priority order and transform merges into the context", async () => {
   const registry = createHookRegistry();
   const order = [];
   registry.register(
@@ -61,7 +61,7 @@ test("handlers run in priority order and transform merges into the context", () 
     },
     { priority: 10 },
   );
-  const result = registry.dispatch("turn:before", { tag: "" });
+  const result = await registry.dispatch("turn:before", { tag: "" });
   assert.deepEqual(order, ["high", "low"]);
   assert.equal(result.context.tag, "high-low");
 });
@@ -142,9 +142,10 @@ test("the ./extension subpath export resolves the registry", async () => {
   const mod = await import("iroharness/extension");
   assert.equal(typeof mod.createHookRegistry, "function");
   assert.ok(mod.REALTIME_HOOK_EVENTS.has("bargein:detect"));
+  assert.equal(typeof mod.createCommandHook, "function");
 });
 
-test("equal-priority handlers run in registration order", () => {
+test("equal-priority handlers run in registration order", async () => {
   const registry = createHookRegistry();
   const order = [];
   registry.register(
@@ -163,30 +164,30 @@ test("equal-priority handlers run in registration order", () => {
     },
     { priority: 5 },
   );
-  registry.dispatch("turn:before", {});
+  await registry.dispatch("turn:before", {});
   assert.deepEqual(order, ["a", "b"]);
 });
 
-test("a throwing handler on a gate event fails closed (block)", () => {
+test("a throwing handler on a gate event fails closed (block)", async () => {
   const registry = createHookRegistry();
   registry.register("turn:before", () => {
     throw new Error("boom");
   });
-  const result = registry.dispatch("turn:before", { text: "hi" });
+  const result = await registry.dispatch("turn:before", { text: "hi" });
   assert.equal(result.blocked, true);
   assert.match(result.reason, /hook error \(fail-closed\)/);
   assert.equal(result.context.text, "hi");
 });
 
-test("an unrecognized event fails closed on a handler throw (default-closed)", () => {
+test("an unrecognized event fails closed on a handler throw (default-closed)", async () => {
   const registry = createHookRegistry();
   registry.register("mystery:event", () => {
     throw new Error("boom");
   });
-  assert.equal(registry.dispatch("mystery:event", {}).blocked, true);
+  assert.equal((await registry.dispatch("mystery:event", {})).blocked, true);
 });
 
-test("a throwing handler on a background event fails open (skip, continue)", () => {
+test("a throwing handler on a background event fails open (skip, continue)", async () => {
   const registry = createHookRegistry();
   const ran = [];
   registry.register("turn:after", () => {
@@ -196,12 +197,12 @@ test("a throwing handler on a background event fails open (skip, continue)", () 
     ran.push(ctx.text);
     return undefined;
   });
-  const result = registry.dispatch("turn:after", { text: "hi" });
+  const result = await registry.dispatch("turn:after", { text: "hi" });
   assert.equal(result.blocked, false);
   assert.deepEqual(ran, ["hi"]);
 });
 
-test("a throwing handler on a realtime event fails open (loop survives)", () => {
+test("a throwing handler on a realtime event fails open (loop survives)", async () => {
   const registry = createHookRegistry();
   registry.register(
     "bargein:detect",
@@ -210,15 +211,15 @@ test("a throwing handler on a realtime event fails open (loop survives)", () => 
     },
     { style: "inprocess" },
   );
-  assert.equal(registry.dispatch("bargein:detect", {}).blocked, false);
+  assert.equal((await registry.dispatch("bargein:detect", {})).blocked, false);
 });
 
-test("transform cannot overwrite a protected key", () => {
+test("transform cannot overwrite a protected key", async () => {
   const registry = createHookRegistry();
   registry.register("turn:before", () => ({
     transform: { actor: { role: "owner" }, tag: "x" },
   }));
-  const result = registry.dispatch(
+  const result = await registry.dispatch(
     "turn:before",
     { actor: { role: "fan" }, tag: "" },
     { protectedKeys: ["actor"] },
@@ -227,16 +228,18 @@ test("transform cannot overwrite a protected key", () => {
   assert.equal(result.context.tag, "x");
 });
 
-test("with no protectedKeys (2-arg call) transform merges unrestricted", () => {
+test("with no protectedKeys (2-arg call) transform merges unrestricted", async () => {
   const registry = createHookRegistry();
   registry.register("turn:before", () => ({
     transform: { actor: { role: "owner" } },
   }));
-  const result = registry.dispatch("turn:before", { actor: { role: "fan" } });
+  const result = await registry.dispatch("turn:before", {
+    actor: { role: "fan" },
+  });
   assert.deepEqual(result.context.actor, { role: "owner" });
 });
 
-test("fail-closed throw preserves a prior handler's transform in the result context", () => {
+test("fail-closed throw preserves a prior handler's transform in the result context", async () => {
   const registry = createHookRegistry();
   registry.register("turn:before", () => ({ transform: { tag: "first" } }), {
     priority: 10,
@@ -248,22 +251,22 @@ test("fail-closed throw preserves a prior handler's transform in the result cont
     },
     { priority: 0 },
   );
-  const result = registry.dispatch("turn:before", { tag: "" });
+  const result = await registry.dispatch("turn:before", { tag: "" });
   assert.equal(result.blocked, true);
   assert.equal(result.context.tag, "first"); // the earlier transform survived into the blocked result
 });
 
-test("a non-Error throw still produces a usable fail-closed reason", () => {
+test("a non-Error throw still produces a usable fail-closed reason", async () => {
   const registry = createHookRegistry();
   registry.register("turn:before", () => {
     throw "stringy";
   });
-  const result = registry.dispatch("turn:before", {});
+  const result = await registry.dispatch("turn:before", {});
   assert.equal(result.blocked, true);
   assert.match(result.reason, /stringy/);
 });
 
-test("a handler cannot escalate by mutating a nested authz object in place", () => {
+test("a handler cannot escalate by mutating a nested authz object in place", async () => {
   const registry = createHookRegistry();
   registry.register("turn:before", (ctx) => {
     // Forge attempt via in-place nested mutation (the shallow-freeze bypass).
@@ -272,7 +275,7 @@ test("a handler cannot escalate by mutating a nested authz object in place", () 
     return undefined;
   });
   const callerActor = { role: "fan", canDelegateWork: false };
-  const result = registry.dispatch(
+  const result = await registry.dispatch(
     "turn:before",
     { actor: callerActor },
     { protectedKeys: ["actor"] },
@@ -288,12 +291,12 @@ test("a handler cannot escalate by mutating a nested authz object in place", () 
   assert.deepEqual(callerActor, { role: "fan", canDelegateWork: false });
 });
 
-test("transform cannot forge a protected key via a nested replacement either", () => {
+test("transform cannot forge a protected key via a nested replacement either", async () => {
   const registry = createHookRegistry();
   registry.register("turn:before", () => ({
     transform: { actor: { role: "owner" }, tag: "x" },
   }));
-  const result = registry.dispatch(
+  const result = await registry.dispatch(
     "turn:before",
     { actor: { role: "fan" } },
     { protectedKeys: ["actor"] },
@@ -302,7 +305,7 @@ test("transform cannot forge a protected key via a nested replacement either", (
   assert.equal(result.context.tag, "x"); // non-protected applied
 });
 
-test("every gate event fails closed on a handler throw", () => {
+test("every gate event fails closed on a handler throw", async () => {
   for (const event of [
     "turn:before",
     "tool:before",
@@ -314,23 +317,23 @@ test("every gate event fails closed on a handler throw", () => {
       throw new Error("boom");
     });
     assert.equal(
-      registry.dispatch(event, {}).blocked,
+      (await registry.dispatch(event, {})).blocked,
       true,
       `${event} should fail closed`,
     );
   }
 });
 
-test("a non-cloneable context fails closed on a gate event (no uncaught crash)", () => {
+test("a non-cloneable context fails closed on a gate event (no uncaught crash)", async () => {
   const registry = createHookRegistry();
   registry.register("turn:before", () => undefined);
   // A function value cannot be structured-cloned; this must fail closed, not throw.
-  const result = registry.dispatch("turn:before", { fn: () => {} });
+  const result = await registry.dispatch("turn:before", { fn: () => {} });
   assert.equal(result.blocked, true);
   assert.match(result.reason, /hook error \(fail-closed\)/);
 });
 
-test("a non-cloneable transform fails closed on a gate event and skips later handlers", () => {
+test("a non-cloneable transform fails closed on a gate event and skips later handlers", async () => {
   const registry = createHookRegistry();
   const ran = [];
   registry.register("turn:before", () => ({ transform: { evil: () => {} } }), {
@@ -344,13 +347,13 @@ test("a non-cloneable transform fails closed on a gate event and skips later han
     },
     { priority: 0 },
   );
-  const result = registry.dispatch("turn:before", { text: "hi" });
+  const result = await registry.dispatch("turn:before", { text: "hi" });
   assert.equal(result.blocked, true); // fail-closed from the clone failure
   assert.match(result.reason, /hook error \(fail-closed\)/);
   assert.deepEqual(ran, []); // a hostile handler can no longer crash past later handlers
 });
 
-test("a non-cloneable transform on a background event is dropped (fail-open)", () => {
+test("a non-cloneable transform on a background event is dropped (fail-open)", async () => {
   const registry = createHookRegistry();
   const ran = [];
   registry.register("turn:after", () => ({ transform: { evil: () => {} } }), {
@@ -364,15 +367,15 @@ test("a non-cloneable transform on a background event is dropped (fail-open)", (
     },
     { priority: 0 },
   );
-  const result = registry.dispatch("turn:after", { text: "hi" });
+  const result = await registry.dispatch("turn:after", { text: "hi" });
   assert.equal(result.blocked, false); // fail-open
   assert.deepEqual(ran, ["later"]); // later handler still ran
   assert.equal(result.context.text, "hi"); // pre-transform context kept
 });
 
-test("dispatch with no handlers does not clone the context (hot path)", () => {
+test("dispatch with no handlers does not clone the context (hot path)", async () => {
   const registry = createHookRegistry();
-  const result = registry.dispatch("turn:before", { fn: () => {} });
+  const result = await registry.dispatch("turn:before", { fn: () => {} });
   assert.equal(result.blocked, false);
   assert.equal(typeof result.context.fn, "function");
 });
