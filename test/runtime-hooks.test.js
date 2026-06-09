@@ -6,6 +6,7 @@ import {
   createInMemoryProjectOs,
   createInMemoryUserRegistry,
   createIroHarness,
+  createStubMicroHarness,
 } from "../src/index.js";
 
 const createCapturingBrain = (id) => {
@@ -20,13 +21,23 @@ const createCapturingBrain = (id) => {
   };
 };
 
-const buildHarness = ({ hooks = null } = {}) => {
+const buildHarness = ({ hooks = null, work = false } = {}) => {
+  const userRegistry = createInMemoryUserRegistry();
+  if (work) {
+    userRegistry.registerUser({
+      id: "developer",
+      displayName: "Developer",
+      role: "developer",
+      identities: { slack: "UDEV" },
+    });
+  }
   const brain = createCapturingBrain("capture");
   const harness = createIroHarness({
     character: { id: "iroha", name: "Iroha", soul: "x", voiceStyle: "short" },
     projectOs: createInMemoryProjectOs(),
-    userRegistry: createInMemoryUserRegistry(),
+    userRegistry,
     brains: { voice: brain, text: brain },
+    microHarnesses: work ? [createStubMicroHarness("codex", ["code"])] : [],
     hooks,
   });
   return { harness, brain };
@@ -34,6 +45,14 @@ const buildHarness = ({ hooks = null } = {}) => {
 
 const sayHi = (harness, text = "hi") =>
   harness.receive({ source: "web", modality: "text", text });
+
+const delegateWork = (harness) =>
+  harness.receive({
+    source: "slack",
+    modality: "text",
+    text: "Codexでこのコードをレビューして",
+    actor: { platform: "slack", platformUserId: "UDEV" },
+  });
 
 test("a turn:before block hook denies the turn before the brain runs", async () => {
   const hooks = createHookRegistry();
@@ -95,4 +114,21 @@ test("a turn:before hook cannot escalate by mutating ctx.actor in place (denied)
   assert.equal(brain.captured(), null); // brain never ran
   // and the actor in the denial envelope was not elevated
   assert.notEqual(result.actor.user.role, "owner");
+});
+
+test("a tool:before block hook denies the delegation before the micro-harness runs", async () => {
+  const hooks = createHookRegistry();
+  hooks.register("tool:before", () => ({ block: { reason: "no tools" } }));
+  const { harness } = buildHarness({ hooks, work: true });
+  const result = await delegateWork(harness);
+  assert.equal(result.kind, "hook_denied");
+  assert.equal(result.reason, "no tools");
+  assert.equal(harness.projectOs().tickets.length, 0);
+});
+
+test("with no tool:before hook the work route still delegates", async () => {
+  const { harness } = buildHarness({ hooks: createHookRegistry(), work: true });
+  const result = await delegateWork(harness);
+  assert.equal(result.kind, "delegation");
+  assert.equal(harness.projectOs().tickets.length, 1);
 });

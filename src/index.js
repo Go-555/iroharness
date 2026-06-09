@@ -3070,6 +3070,17 @@ export const createIroHarness = ({
     }
 
     if (route.kind === "work" && route.harnessId) {
+      if (hooks) {
+        const toolResult = hooks.dispatch(
+          "tool:before",
+          { input, actor, audience, route },
+          { protectedKeys: ["actor"] },
+        );
+        if (toolResult.blocked) {
+          return rejectByHook(input, route, actor, audience, toolResult.reason);
+        }
+        input = toolResult.context.input ?? input;
+      }
       return runMicroHarness(
         input,
         route,
