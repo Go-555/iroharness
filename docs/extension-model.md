@@ -308,10 +308,17 @@ ignored at export. (Do **not** use `gateSkills` with empty `permissions` for thi
 — it would wrongly exclude capability-gated skills.) Eligible skills' `SKILL.md`
 plus their referenced resource files (the non-`SKILL.md` contents of
 `skill.metadata.skillDir`, e.g. `references/`) are copied into
-`current/skills/<id>/` via `copyViewFile` and added to the view manifest. A
-malformed `SKILL.md` is skipped with a warning (consistent with `gateSkills`),
-never aborting the export. `exportView` calls it alongside the existing
-`exportMemoryFiles`/`exportProjectOsFiles`.
+`current/skills/<id>/` via `cpSync(..., { recursive: true })` and added to the
+view manifest. **Symbolic links are dropped during the copy** (a `filter` that
+rejects every `isSymbolicLink()` entry): a link inside an eligible lower-zone
+skill could otherwise dereference to higher-zone content and smuggle it across
+the zone boundary, so the copy fails closed and materializes no links.
+Discovery lists app-local skills before built-ins and tracks seen ids, so a
+skill id present in both roots is copied and listed exactly once (app-local
+wins). The whole per-skill body is guarded, so a malformed `SKILL.md`, a
+dangling symlink, or a permission error on one skill is skipped with a warning
+(consistent with `gateSkills`) and never aborts the export. `exportView` calls
+it alongside the existing `exportMemoryFiles`/`exportProjectOsFiles`.
 
 Both layers then apply: presence on disk (this export filter) is necessary but
 not sufficient; within a view the per-actor `requires`/`capability` checks still
