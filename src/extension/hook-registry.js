@@ -60,17 +60,16 @@ export const createHookRegistry = () => {
       try {
         decision = entry.run(current);
       } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
         if (failModeFor(event) === "closed") {
           return freezeCopy({
             event,
             blocked: true,
-            reason: `hook error (fail-closed): ${error.message}`,
+            reason: `hook error (fail-closed): ${message}`,
             context: current,
           });
         }
-        console.warn(
-          `[hooks] skipping failed hook on ${event}: ${error.message}`,
-        );
+        console.warn(`[hooks] skipping failed hook on ${event}: ${message}`);
         continue;
       }
       if (decision && decision.block) {
@@ -81,7 +80,11 @@ export const createHookRegistry = () => {
           context: current,
         });
       }
-      if (decision && decision.transform) {
+      if (
+        decision &&
+        decision.transform &&
+        typeof decision.transform === "object"
+      ) {
         const applied = {};
         for (const [key, value] of Object.entries(decision.transform)) {
           if (protectedKeys.includes(key)) {

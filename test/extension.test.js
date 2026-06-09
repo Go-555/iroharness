@@ -235,3 +235,30 @@ test("with no protectedKeys (2-arg call) transform merges unrestricted", () => {
   const result = registry.dispatch("turn:before", { actor: { role: "fan" } });
   assert.deepEqual(result.context.actor, { role: "owner" });
 });
+
+test("fail-closed throw preserves a prior handler's transform in the result context", () => {
+  const registry = createHookRegistry();
+  registry.register("turn:before", () => ({ transform: { tag: "first" } }), {
+    priority: 10,
+  });
+  registry.register(
+    "turn:before",
+    () => {
+      throw new Error("boom");
+    },
+    { priority: 0 },
+  );
+  const result = registry.dispatch("turn:before", { tag: "" });
+  assert.equal(result.blocked, true);
+  assert.equal(result.context.tag, "first"); // the earlier transform survived into the blocked result
+});
+
+test("a non-Error throw still produces a usable fail-closed reason", () => {
+  const registry = createHookRegistry();
+  registry.register("turn:before", () => {
+    throw "stringy";
+  });
+  const result = registry.dispatch("turn:before", {});
+  assert.equal(result.blocked, true);
+  assert.match(result.reason, /stringy/);
+});
