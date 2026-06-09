@@ -1,0 +1,55 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { fileURLToPath } from "node:url";
+import { createHookRegistry } from "../src/extension/hook-registry.js";
+import { createCommandHook } from "../src/extension/hook-runners/command.js";
+
+const DECIDE = fileURLToPath(
+  new URL("./fixtures/hooks/decide.mjs", import.meta.url),
+);
+const nodeHook = (extra = {}) =>
+  createCommandHook({
+    command: process.execPath,
+    args: [DECIDE],
+    timeout: 5000,
+    ...extra,
+  });
+
+test("a command hook 'deny' becomes a block", async () => {
+  const registry = createHookRegistry();
+  registry.register("turn:before", nodeHook(), { style: "command" });
+  const result = await registry.dispatch("turn:before", {
+    input: { text: "deny" },
+  });
+  assert.equal(result.blocked, true);
+  assert.equal(result.reason, "fixture denied");
+});
+
+test("a command hook 'allow' + transform rewrites the context", async () => {
+  const registry = createHookRegistry();
+  registry.register("turn:before", nodeHook(), { style: "command" });
+  const result = await registry.dispatch("turn:before", {
+    input: { text: "rewrite" },
+  });
+  assert.equal(result.blocked, false);
+  assert.equal(result.context.input.text, "REWRITTEN");
+});
+
+test("a command hook 'allow' with no transform passes through", async () => {
+  const registry = createHookRegistry();
+  registry.register("turn:before", nodeHook(), { style: "command" });
+  const result = await registry.dispatch("turn:before", {
+    input: { text: "hello" },
+  });
+  assert.equal(result.blocked, false);
+  assert.equal(result.context.input.text, "hello");
+});
+
+test("createCommandHook validates its spec at construction", () => {
+  assert.throws(() => createCommandHook({ command: "" }), /command/);
+  assert.throws(
+    () => createCommandHook({ command: "x", args: "nope" }),
+    /args/,
+  );
+  assert.throws(() => createCommandHook({ command: "x", args: [1] }), /args/);
+});
