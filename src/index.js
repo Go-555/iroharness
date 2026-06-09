@@ -2960,6 +2960,7 @@ export const createIroHarness = ({
   microHarnesses = [],
   streamController = null,
   skills = null,
+  hooks = null,
 }) => {
   if (!character || !character.id || !character.name) {
     throw new Error("character.id and character.name are required");
@@ -3047,6 +3048,18 @@ export const createIroHarness = ({
       contextScopes,
     });
 
+    if (hooks) {
+      const turnResult = hooks.dispatch(
+        "turn:before",
+        { input, actor, audience, route },
+        { protectedKeys: ["actor"] },
+      );
+      if (turnResult.blocked) {
+        return rejectByHook(input, route, actor, audience, turnResult.reason);
+      }
+      input = turnResult.context.input ?? input;
+    }
+
     const permission = permissionPolicy.evaluate({
       user: actor.user,
       route,
@@ -3128,6 +3141,39 @@ export const createIroHarness = ({
       audience,
       text: response.text,
       brainId: brain.id,
+    });
+  };
+
+  const rejectByHook = (input, route, actor, audience, reason) => {
+    const text = "そのお願いは今は受けられないよ。";
+    setState({
+      mode: MODES.speaking,
+      emotion: "careful",
+      speechText: text,
+      mouth: "talking",
+      motion: MODES.speaking,
+    });
+    emit({
+      type: "speech",
+      text,
+      modality: input.modality,
+      brainId: "hook-policy",
+      timestamp: nowIso(),
+    });
+    setState({
+      mode: MODES.idle,
+      emotion: "careful",
+      speechText: null,
+      mouth: "closed",
+      motion: MODES.idle,
+    });
+    return freezeCopy({
+      kind: "hook_denied",
+      route,
+      actor,
+      audience,
+      reason: reason ?? null,
+      text,
     });
   };
 
