@@ -1,12 +1,14 @@
 #!/usr/bin/env node
 import { randomBytes } from "node:crypto";
-import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 
 import { createFileUserRegistry, createProjectOsMarkdown } from "../src/index.js";
 import {
   createFileSkillRegistry,
+  defaultBuiltInSkillDir,
   defaultIroHarnessSkillDir,
+  readSkillGating,
   createStackChanAvatarPackPlan,
   evaluateStackChanAvatarPack
 } from "../src/skills/index.js";
@@ -1459,6 +1461,55 @@ const exportConnectionFiles = ({ sourceRoot, targetRoot, zone, files }) => {
   });
 };
 
+const exportSkillFiles = ({ sourceRoot, targetRoot, zone, files }) => {
+  const zoneRank = viewZoneRank[zone];
+  // App-local first: an app-local skill shadows a built-in of the same id
+  // (spec §4.2 — app-local wins on collision). `seen` makes that dedup explicit
+  // so a colliding id is never copied or listed twice.
+  const skillRoots = [
+    join(sourceRoot, ".iroharness", "skills"),
+    defaultBuiltInSkillDir(),
+  ];
+  const seen = new Set();
+  for (const root of skillRoots) {
+    if (!existsSync(root)) {
+      continue;
+    }
+    for (const entry of readdirSync(root)) {
+      if (seen.has(entry)) {
+        continue; // shadowed by a higher-priority root
+      }
+      const skillDir = join(root, entry);
+      const manifestPath = join(skillDir, "SKILL.md");
+      // The whole per-skill body is guarded so no single bad skill (malformed
+      // frontmatter, dangling symlink, permission error) can abort the export.
+      try {
+        if (!lstatSync(skillDir).isDirectory() || !existsSync(manifestPath)) {
+          continue; // not a skill directory; do not claim the id
+        }
+        seen.add(entry); // this root defines the skill; lower roots are shadowed
+        const gating = readSkillGating({ id: entry, metadata: { manifestPath } });
+        if (viewZoneRank[gating.view] > zoneRank) {
+          continue; // claimed, but not visible in this zone
+        }
+        const targetPath = join("skills", entry);
+        // Reject symlinks: a link inside an eligible (lower-zone) skill dir could
+        // dereference to higher-zone content, leaking it into the export. Copying
+        // links verbatim would smuggle that content across the zone boundary, so
+        // we drop every symlink (fail-closed) rather than trust the directory.
+        cpSync(skillDir, join(targetRoot, targetPath), {
+          recursive: true,
+          filter: (src) => !lstatSync(src).isSymbolicLink(),
+        });
+        files.push(targetPath);
+      } catch (error) {
+        console.warn(`[view export] skipping unreadable skill ${entry}: ${error.message}`);
+        continue;
+      }
+    }
+  }
+};
+
 const exportView = (args) => {
   if (args.action !== "export") {
     throw new Error(`Unknown view action: ${args.action || "(missing)"}\n\n${usage}`);
@@ -1485,6 +1536,7 @@ const exportView = (args) => {
   exportMemoryFiles({ sourceRoot, targetRoot: currentRoot, zone, files });
   const projectOs = exportProjectOsFiles({ sourceRoot, targetRoot: currentRoot, zone, files });
   exportConnectionFiles({ sourceRoot, targetRoot: currentRoot, zone, files });
+  exportSkillFiles({ sourceRoot, targetRoot: currentRoot, zone, files });
   const gatewayPolicy = createGatewayPolicy({ zone });
   const workRunnerPolicy = createWorkRunnerPolicy({ zone });
   writeViewJson({

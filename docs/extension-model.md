@@ -261,20 +261,68 @@ receives a pre-filtered list. Invocation still goes through the existing
 
 ### 4.4 Zero-Trust View Integration
 
-Skill view gating reuses the existing zero-trust view export. `iroharness view
-export --zone public` materializes only `public`-visible skills, matching how
-view export already redacts core paths and restricts memory layers. A public
-gateway therefore never receives owner-only skills on disk, not merely at
-prompt-injection time.
+`iroharness view export --zone <zone>` already materializes a zone-scoped copy
+of a companion (SOUL/identity/voice, memory layers, Project OS items, and
+connection files, each filtered by zone). It does **not** yet materialize
+skills. This integration adds skill materialization so a `public` export never
+carries `trusted`/`owner` skills on disk — defense in depth beyond the runtime
+gate of §4.3.
 
-The disk-level view filter and the runtime gating of §4.3 are both applied:
-presence on disk (view export) is necessary but not sufficient. Within a view,
-the per-actor `requires` and `capability` checks still run at session start, so
-a skill materialized in a trusted view is still withheld from an actor who lacks
-its required capability.
+**Filtering is view-layer only.** A skill is materialized into a zone iff
+`rank(skill.view) <= rank(zone)` (with `public` < `trusted` < `owner`):
 
-This view-export integration is the heaviest piece and is sequenced last (see
-§8); the runtime gate (§4.3) lands first and is independently useful.
+- `--zone public` → only `view: public` skills.
+- `--zone trusted` → `public` + `trusted` skills.
+- `--zone owner` → all skills.
+
+`capability` and `requires` are **not** applied at export time. They are runtime
+gates (who may use a skill, under what conditions), not disk-presence decisions.
+A `trusted` skill that also requires `delegate_work` is still written into the
+`trusted` and `owner` views; its `capability`/`requires` checks run at session
+start (§4.3) when the skill is actually loaded. Export answers "what may this
+zone *see on disk*"; the runtime gate answers "what may *this actor* use now."
+
+**Fail closed.** A skill whose `view` is absent, malformed, or unrecognized
+resolves to `owner` (via the same normalizer as §4.1), so an un-annotated skill
+is materialized only into the `owner` view — never silently exposed to a public
+export.
+
+**Single source of truth.** The skill `view` normalization (alias map +
+fail-closed default) lives only in `src/skills/gate.js` and is reused by the
+export path via `readSkillGating` (below), so the runtime gate (§4.3) and the
+export cannot drift on how a skill's view is resolved. The rank comparison reuses
+the existing `viewZoneRank` in `bin/iroharness.mjs` (identical `public` <
+`trusted` < `owner` ladder already used by `canExposeProjectOsItem`).
+
+**Mechanism.** A new `exportSkillFiles({ sourceRoot, targetRoot, zone, files })`
+in `bin/iroharness.mjs` discovers the companion's skills — built-ins from
+`defaultBuiltInSkillDir()` (the iroharness package's own `skills/`) and app-local
+skills from `join(sourceRoot, ".iroharness", "skills")`, **not** the operator's
+global `~/.iroharness/skills/` (e.g. via `createFileSkillRegistry`'s discovery).
+For each skill it reads the **normalized** gating with the exported
+`readSkillGating(skill)` (which runs `parseSkillFrontmatter` → `parseSkillGating`
+→ `normalizeView`, so aliases like `external`/`team`/`internal` and the
+fail-closed default are honored) and compares **only** `gating.view`:
+`viewZoneRank[gating.view] <= viewZoneRank[zone]`. `capability`/`requires` are
+ignored at export. (Do **not** use `gateSkills` with empty `permissions` for this
+— it would wrongly exclude capability-gated skills.) Eligible skills' `SKILL.md`
+plus their referenced resource files (the non-`SKILL.md` contents of
+`skill.metadata.skillDir`, e.g. `references/`) are copied into
+`current/skills/<id>/` via `cpSync(..., { recursive: true })` and added to the
+view manifest. **Symbolic links are dropped during the copy** (a `filter` that
+rejects every `isSymbolicLink()` entry): a link inside an eligible lower-zone
+skill could otherwise dereference to higher-zone content and smuggle it across
+the zone boundary, so the copy fails closed and materializes no links.
+Discovery lists app-local skills before built-ins and tracks seen ids, so a
+skill id present in both roots is copied and listed exactly once (app-local
+wins). The whole per-skill body is guarded, so a malformed `SKILL.md`, a
+dangling symlink, or a permission error on one skill is skipped with a warning
+(consistent with `gateSkills`) and never aborts the export. `exportView` calls
+it alongside the existing `exportMemoryFiles`/`exportProjectOsFiles`.
+
+Both layers then apply: presence on disk (this export filter) is necessary but
+not sufficient; within a view the per-actor `requires`/`capability` checks still
+run at session start (§4.3).
 
 ## 5. Module Boundaries
 
@@ -357,14 +405,19 @@ Each unit has one purpose and a defined interface:
 ## 8. Phasing
 
 1. Hook registry + in-process runner + realtime invariant (the backbone). **Done.**
-2. Skill gating: add `skill-gate.js`, which reads `view`/`capability`/`requires`
-   from each `SKILL.md` via the exported `parseSkillFrontmatter` and filters the
-   existing registry before `createSkillContextListing`. Touches no
-   upstream-private code; builds on the existing `src/skills/` subsystem.
-3. Zero-trust view-export integration (§4.4): materialize only view-visible
-   skills on export. Heaviest skills piece, sequenced after the runtime gate.
-4. Command runner (text-path hook gates).
+2. Skill gating (`src/skills/gate.js`): view/capability/requires filter over the
+   existing registry. **Done.**
+3. Zero-trust view-export integration (§4.4): `exportSkillFiles` materializes
+   only view-visible skills on export, view-layer only, fail-closed, sharing
+   `gate.js`'s normalizer. **Done.**
+4. Command runner (text-path hook gates) — **and** the hook fail policy (§6):
+   the throwing-in-process-handler catch and per-event fail-closed/fail-open
+   classification land here, with `dispatch`'s first real loop consumer to
+   ground the gate/background taxonomy.
 5. Agent runner (response review).
+
+Note: the realtime invariant's coverage (device:emit, prefix/Set drift) is
+hardened with tests as part of Phase 3, independent of the deferred fail policy.
 
 Phase 1 delivered the latency-critical capability. Phase 2 adds skill gating as
 a thin filter over the existing skills subsystem; later phases add the
