@@ -3112,7 +3112,7 @@ export const createIroHarness = ({
           }),
         })
       : Object.freeze([]);
-    const response = await brain.respond({
+    let response = await brain.respond({
       character,
       input,
       actor,
@@ -3122,6 +3122,24 @@ export const createIroHarness = ({
       projectOs: projectOs.snapshot(),
       skills: skillListing,
     });
+
+    if (hooks) {
+      const responseResult = hooks.dispatch(
+        "response:before",
+        { input, actor, audience, route, response },
+        { protectedKeys: ["actor"] },
+      );
+      if (responseResult.blocked) {
+        return rejectByHook(
+          input,
+          route,
+          actor,
+          audience,
+          responseResult.reason,
+        );
+      }
+      response = responseResult.context.response ?? response;
+    }
 
     setState({
       mode: MODES.speaking,

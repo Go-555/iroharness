@@ -132,3 +132,32 @@ test("with no tool:before hook the work route still delegates", async () => {
   assert.equal(result.kind, "delegation");
   assert.equal(harness.projectOs().tickets.length, 1);
 });
+
+test("a response:before block hook suppresses the brain response", async () => {
+  const hooks = createHookRegistry();
+  hooks.register("response:before", () => ({ block: { reason: "filtered" } }));
+  const { harness } = buildHarness({ hooks });
+  const result = await harness.receive({
+    source: "web",
+    modality: "text",
+    text: "hi",
+  });
+  assert.equal(result.kind, "hook_denied");
+  assert.equal(result.reason, "filtered");
+  assert.notEqual(result.text, "ok");
+});
+
+test("a response:before transform rewrites the emitted/returned response text", async () => {
+  const hooks = createHookRegistry();
+  hooks.register("response:before", (ctx) => ({
+    transform: { response: { ...ctx.response, text: "MODERATED" } },
+  }));
+  const { harness } = buildHarness({ hooks });
+  const result = await harness.receive({
+    source: "web",
+    modality: "text",
+    text: "hi",
+  });
+  assert.equal(result.kind, "response");
+  assert.equal(result.text, "MODERATED");
+});
