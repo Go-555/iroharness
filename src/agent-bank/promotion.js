@@ -33,6 +33,15 @@ export const DEFAULT_PROMOTION_THRESHOLDS = Object.freeze({
   minScore: 4.0,
 });
 
+// Passing verdicts are registered here so the registry can verify a verdict
+// really came from this gate (a hand-built { promote: true } is rejected).
+const issuedPassingVerdicts = new WeakSet();
+
+export const isPassingPromotionVerdict = (verdict) =>
+  typeof verdict === "object" &&
+  verdict !== null &&
+  issuedPassingVerdicts.has(verdict);
+
 export const evaluatePromotion = ({
   ledgerEntry,
   thresholds = DEFAULT_PROMOTION_THRESHOLDS,
@@ -69,7 +78,11 @@ export const evaluatePromotion = ({
     ...canPromoteToActive({ securityReview, origin, ownerApproval }).reasons,
   );
 
-  return { promote: reasons.length === 0, reasons };
+  const verdict = { promote: reasons.length === 0, reasons };
+  if (verdict.promote) {
+    issuedPassingVerdicts.add(verdict);
+  }
+  return verdict;
 };
 
 const DAY_MS = 24 * 60 * 60 * 1000;

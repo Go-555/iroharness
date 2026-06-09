@@ -5,6 +5,8 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
+import { assertValidRecipeId } from "./registry.js";
+
 export const seedHarnessRecipe = ({
   root,
   id,
@@ -15,6 +17,7 @@ export const seedHarnessRecipe = ({
   if (!id) {
     throw new Error("seedHarnessRecipe requires id");
   }
+  assertValidRecipeId(id);
   const toolset = Array.isArray(harness?.capabilities)
     ? harness.capabilities
     : [];

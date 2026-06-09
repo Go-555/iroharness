@@ -41,3 +41,14 @@ test("seedHarnessRecipe does not mutate the harness (existing delegation unchang
   assert.equal(await harness.run(), "delegated");
   assert.deepEqual(harness.capabilities, ["code"]);
 });
+
+// Fix 3: seeding with a traversal id must not write outside the bank root.
+test("seedHarnessRecipe rejects path-traversal ids", () => {
+  const root = makeBank();
+  const harness = { capabilities: ["code"], run: async () => "ok" };
+
+  assert.throws(
+    () => seedHarnessRecipe({ root, id: "../escape", role: "x", harness }),
+    /invalid recipe id/i,
+  );
+});

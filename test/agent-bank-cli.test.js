@@ -102,3 +102,81 @@ test("bank promote moves a recipe to active when the gate passes", () => {
   assert.match(result.output, /promoted/i);
   assert.deepEqual(createBankRegistry({ root }).list("active"), ["tax-v3"]);
 });
+
+// Fix 2 (W-3): running the CLI is NOT owner approval. A minted recipe needs an
+// explicit --owner-approve flag for its first promotion to active.
+const passingRuns = (id) => [
+  {
+    harnessId: id,
+    status: "completed",
+    output: { qualityScore: 5 },
+    updatedAt: "2026-06-01T00:00:00Z",
+  },
+  {
+    harnessId: id,
+    status: "completed",
+    output: { qualityScore: 4 },
+    updatedAt: "2026-06-02T00:00:00Z",
+  },
+  {
+    harnessId: id,
+    status: "completed",
+    output: { qualityScore: 5 },
+    updatedAt: "2026-06-03T00:00:00Z",
+  },
+];
+
+const passingContext = {
+  sandboxVerified: true,
+  securityReview: { passed: true, by: "bantou" },
+};
+
+test("bank promote refuses a minted recipe without --owner-approve", () => {
+  const root = makeBank();
+  writeRecipe(root, "staging", "minted-one", "minted");
+
+  const result = runBankCommand({
+    root,
+    argv: ["promote", "minted-one"],
+    projectOs: fakeProjectOs(passingRuns("minted-one")),
+    promotionContext: passingContext,
+  });
+
+  assert.equal(result.exitCode, 1);
+  assert.match(result.output, /owner/i);
+  assert.deepEqual(createBankRegistry({ root }).list("staging"), [
+    "minted-one",
+  ]);
+});
+
+test("bank promote promotes a minted recipe with --owner-approve", () => {
+  const root = makeBank();
+  writeRecipe(root, "staging", "minted-one", "minted");
+
+  const result = runBankCommand({
+    root,
+    argv: ["promote", "minted-one", "--owner-approve"],
+    projectOs: fakeProjectOs(passingRuns("minted-one")),
+    promotionContext: passingContext,
+  });
+
+  assert.equal(result.exitCode, 0);
+  assert.deepEqual(createBankRegistry({ root }).list("active"), [
+    "minted-one",
+  ]);
+});
+
+// Fix 3: an argv-supplied id is validated before it reaches the filesystem.
+test("bank promote rejects a path-traversal id", () => {
+  const root = makeBank();
+
+  assert.throws(
+    () =>
+      runBankCommand({
+        root,
+        argv: ["promote", "../escape"],
+        projectOs: fakeProjectOs([]),
+      }),
+    /invalid recipe id/i,
+  );
+});

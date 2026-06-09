@@ -29,9 +29,12 @@ export const runBankCommand = ({
   if (sub === "promote") {
     const id = rest[0];
     if (!id) {
-      return { output: "usage: bank promote <id>", exitCode: 1 };
+      return {
+        output: "usage: bank promote <id> [--owner-approve]",
+        exitCode: 1,
+      };
     }
-    const { recipe } = registry.read(id); // throws if missing
+    const { recipe } = registry.read(id); // throws if missing or invalid id
     const ledger = computeLedger(
       projectOs ? projectOs.snapshot() : { runs: [] },
     );
@@ -41,7 +44,9 @@ export const runBankCommand = ({
       sandboxVerified: promotionContext.sandboxVerified === true,
       securityReview: promotionContext.securityReview ?? null,
       origin: originOf(recipe),
-      ownerApproval: true, // a human ran the CLI
+      // Fix 2 (W-3): running the CLI is not owner approval. The owner must
+      // state it explicitly.
+      ownerApproval: rest.includes("--owner-approve"),
     });
 
     if (!verdict.promote) {
@@ -51,7 +56,7 @@ export const runBankCommand = ({
       };
     }
 
-    registry.move(id, "active");
+    registry.move(id, "active", { promotion: verdict });
     return { output: `promoted ${id} to active`, exitCode: 0 };
   }
 
