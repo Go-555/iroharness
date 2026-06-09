@@ -317,3 +317,52 @@ test("every gate event fails closed on a handler throw", () => {
     );
   }
 });
+
+test("a non-cloneable context fails closed on a gate event (no uncaught crash)", () => {
+  const registry = createHookRegistry();
+  registry.register("turn:before", () => undefined);
+  // A function value cannot be structured-cloned; this must fail closed, not throw.
+  const result = registry.dispatch("turn:before", { fn: () => {} });
+  assert.equal(result.blocked, true);
+  assert.match(result.reason, /hook error \(fail-closed\)/);
+});
+
+test("a non-cloneable transform fails closed on a gate event and skips later handlers", () => {
+  const registry = createHookRegistry();
+  const ran = [];
+  registry.register("turn:before", () => ({ transform: { evil: () => {} } }), {
+    priority: 10,
+  });
+  registry.register(
+    "turn:before",
+    () => {
+      ran.push("later");
+      return { block: { reason: "should not reach" } };
+    },
+    { priority: 0 },
+  );
+  const result = registry.dispatch("turn:before", { text: "hi" });
+  assert.equal(result.blocked, true); // fail-closed from the clone failure
+  assert.match(result.reason, /hook error \(fail-closed\)/);
+  assert.deepEqual(ran, []); // a hostile handler can no longer crash past later handlers
+});
+
+test("a non-cloneable transform on a background event is dropped (fail-open)", () => {
+  const registry = createHookRegistry();
+  const ran = [];
+  registry.register("turn:after", () => ({ transform: { evil: () => {} } }), {
+    priority: 10,
+  });
+  registry.register(
+    "turn:after",
+    () => {
+      ran.push("later");
+      return undefined;
+    },
+    { priority: 0 },
+  );
+  const result = registry.dispatch("turn:after", { text: "hi" });
+  assert.equal(result.blocked, false); // fail-open
+  assert.deepEqual(ran, ["later"]); // later handler still ran
+  assert.equal(result.context.text, "hi"); // pre-transform context kept
+});

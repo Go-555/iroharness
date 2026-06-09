@@ -75,21 +75,40 @@ export const createHookRegistry = () => {
   };
 
   const dispatch = (event, context = {}, { protectedKeys = [] } = {}) => {
-    let current = freezeContext(context);
+    const mode = failModeFor(event);
+    const messageOf = (error) =>
+      error instanceof Error ? error.message : String(error);
+    const failClosed = (message, ctx) =>
+      freezeCopy({
+        event,
+        blocked: true,
+        reason: `hook error (fail-closed): ${message}`,
+        context: ctx,
+      });
+    const passthrough = (ctx) =>
+      freezeCopy({ event, blocked: false, reason: null, context: ctx });
+
+    // Freezing the context (a deep-frozen structural clone) can itself fail — a
+    // non-cloneable value in the context or a transform would otherwise throw a
+    // DataCloneError straight out of dispatch and crash the fail-closed control.
+    // Route any clone failure through the same fail mode.
+    let current;
+    try {
+      current = freezeContext(context);
+    } catch (error) {
+      const message = messageOf(error);
+      if (mode === "closed") return failClosed(message, freezeCopy({}));
+      console.warn(`[hooks] uncloneable context on ${event}: ${message}`);
+      return passthrough(freezeCopy({}));
+    }
+
     for (const entry of handlers.get(event) || []) {
       let decision;
       try {
         decision = entry.run(current);
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        if (failModeFor(event) === "closed") {
-          return freezeCopy({
-            event,
-            blocked: true,
-            reason: `hook error (fail-closed): ${message}`,
-            context: current,
-          });
-        }
+        const message = messageOf(error);
+        if (mode === "closed") return failClosed(message, current);
         console.warn(`[hooks] skipping failed hook on ${event}: ${message}`);
         continue;
       }
@@ -116,15 +135,19 @@ export const createHookRegistry = () => {
           }
           applied[key] = value;
         }
-        current = freezeContext({ ...current, ...applied });
+        try {
+          current = freezeContext({ ...current, ...applied });
+        } catch (error) {
+          const message = messageOf(error);
+          if (mode === "closed") return failClosed(message, current);
+          console.warn(
+            `[hooks] dropping uncloneable transform on ${event}: ${message}`,
+          );
+          // fail-open: keep the pre-transform context and continue.
+        }
       }
     }
-    return freezeCopy({
-      event,
-      blocked: false,
-      reason: null,
-      context: current,
-    });
+    return passthrough(current);
   };
 
   const registry = Object.freeze({ kind: "hook-registry", register, dispatch });

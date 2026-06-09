@@ -22,6 +22,7 @@ export interface HookRegistry {
   dispatch(
     event: string,
     context?: Record<string, unknown>,
+    options?: { protectedKeys?: readonly string[] },
   ): HookDispatchResult;
 }
 
