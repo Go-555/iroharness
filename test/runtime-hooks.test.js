@@ -229,3 +229,24 @@ test("a response:before transform that drops .text fails closed", async () => {
   assert.equal(result.kind, "hook_denied"); // undefined text never reaches emit/return
   assert.notEqual(result.text, undefined);
 });
+
+test("a response:before transform to empty text fails closed (symmetry with input)", async () => {
+  const hooks = createHookRegistry();
+  hooks.register("response:before", (ctx) => ({
+    transform: { response: { ...ctx.response, text: "" } },
+  }));
+  const { harness } = buildHarness({ hooks });
+  const result = await sayHi(harness);
+  assert.equal(result.kind, "hook_denied"); // empty speech is not a usable response
+});
+
+test("a tool:before transform to a non-object input fails closed", async () => {
+  const hooks = createHookRegistry();
+  hooks.register("tool:before", () => ({
+    transform: { input: "not an object" },
+  }));
+  const { harness } = buildHarness({ hooks, work: true });
+  const result = await delegateWork(harness);
+  assert.equal(result.kind, "hook_denied"); // primitive input never reaches runMicroHarness
+  assert.equal(harness.projectOs().tickets.length, 0);
+});

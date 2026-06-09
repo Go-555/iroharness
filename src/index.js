@@ -3024,7 +3024,10 @@ export const createIroHarness = ({
   // must not replace it with a primitive or strip the text the emit path needs.
   const isUsableResponse = (value) =>
     Boolean(
-      value && typeof value === "object" && typeof value.text === "string",
+      value &&
+      typeof value === "object" &&
+      typeof value.text === "string" &&
+      value.text,
     );
 
   const receive = async (input) => {
