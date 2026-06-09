@@ -71,3 +71,12 @@ test("a turn:before hook cannot forge the actor (protectedKeys)", async () => {
   await sayHi(harness);
   assert.notEqual(brain.captured().actor.user.role, "owner");
 });
+
+test("a turn:before block with no reason yields reason: null", async () => {
+  const hooks = createHookRegistry();
+  hooks.register("turn:before", () => ({ block: {} })); // no reason
+  const { harness } = buildHarness({ hooks });
+  const result = await sayHi(harness);
+  assert.equal(result.kind, "hook_denied");
+  assert.equal(result.reason, null); // not undefined
+});
