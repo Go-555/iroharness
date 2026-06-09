@@ -1493,13 +1493,17 @@ const exportSkillFiles = ({ sourceRoot, targetRoot, zone, files }) => {
           continue; // claimed, but not visible in this zone
         }
         const targetPath = join("skills", entry);
-        // Reject symlinks: a link inside an eligible (lower-zone) skill dir could
-        // dereference to higher-zone content, leaking it into the export. Copying
-        // links verbatim would smuggle that content across the zone boundary, so
-        // we drop every symlink (fail-closed) rather than trust the directory.
+        // Copy only visible, non-link resource files. Reject symlinks (a link
+        // inside an eligible lower-zone skill dir could dereference to
+        // higher-zone content and smuggle it across the boundary) and dotfiles/
+        // dot-dirs (.git, .env, .DS_Store, etc. — not legitimate skill
+        // resources and a common vector for leaking secrets/repo metadata). The
+        // skill dir itself is always allowed (its basename is the skill id).
         cpSync(skillDir, join(targetRoot, targetPath), {
           recursive: true,
-          filter: (src) => !lstatSync(src).isSymbolicLink(),
+          filter: (src) =>
+            src === skillDir ||
+            (!lstatSync(src).isSymbolicLink() && !basename(src).startsWith(".")),
         });
         files.push(targetPath);
       } catch (error) {

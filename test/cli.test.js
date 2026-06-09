@@ -1336,3 +1336,66 @@ test("CLI view export lists a colliding skill id only once (app-local shadows bu
   const hits = manifest.files.filter((f) => f === join("skills", collidingId));
   assert.equal(hits.length, 1); // no duplicate entry across roots
 });
+
+test("CLI view export drops dotfiles/dot-dirs (.git/.env) from a skill copy", () => {
+  const dir = mkdtempSync(join(tmpdir(), "iroharness-view-skills-dotfiles-"));
+  const appDir = join(dir, "companion");
+  runCli(["init", appDir, "--character", "Iroha"]);
+  const skillRoot = join(appDir, ".iroharness", "skills", "pub");
+  mkdirSync(join(skillRoot, ".git"), { recursive: true });
+  writeFileSync(
+    join(skillRoot, "SKILL.md"),
+    "---\nname: pub\ndescription: public.\nview: public\n---\n\n# pub\n",
+    "utf8",
+  );
+  writeFileSync(join(skillRoot, ".env"), "SECRET=leak\n", "utf8");
+  writeFileSync(join(skillRoot, ".git", "config"), "[core]\n", "utf8");
+  writeFileSync(join(skillRoot, "notes.md"), "visible resource\n", "utf8"); // legit resource kept
+
+  const out = join(dir, "public-view");
+  const result = runCli([
+    "view",
+    "export",
+    appDir,
+    "--zone",
+    "public",
+    "--out",
+    out,
+    "--force",
+  ]);
+  assert.equal(result.status, 0, result.stderr);
+  const exported = join(out, "current", "skills", "pub");
+  assert.equal(existsSync(join(exported, "SKILL.md")), true);
+  assert.equal(existsSync(join(exported, "notes.md")), true); // visible resource copied
+  assert.equal(existsSync(join(exported, ".env")), false); // dotfile dropped
+  assert.equal(existsSync(join(exported, ".git")), false); // dot-dir dropped
+});
+
+test("CLI view export normalizes an upper-case view through the export path", () => {
+  const dir = mkdtempSync(join(tmpdir(), "iroharness-view-skills-case-"));
+  const appDir = join(dir, "companion");
+  runCli(["init", appDir, "--character", "Iroha"]);
+  const skillsRoot = join(appDir, ".iroharness", "skills");
+  mkdirSync(join(skillsRoot, "shouty"), { recursive: true });
+  writeFileSync(
+    join(skillsRoot, "shouty", "SKILL.md"),
+    "---\nname: shouty\ndescription: public but shouty.\nview: PUBLIC\n---\n\n# shouty\n",
+    "utf8",
+  );
+
+  const out = join(dir, "public-view");
+  runCli([
+    "view",
+    "export",
+    appDir,
+    "--zone",
+    "public",
+    "--out",
+    out,
+    "--force",
+  ]);
+  assert.equal(
+    existsSync(join(out, "current", "skills", "shouty", "SKILL.md")),
+    true, // PUBLIC normalizes to public -> visible in public export
+  );
+});
