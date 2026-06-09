@@ -21,6 +21,12 @@ const validateEntry = (event, entry, index) => {
     );
   if (typeof entry.command !== "string" || entry.command.trim().length === 0)
     throw new Error(`${at}: command must be a non-empty string`);
+  if (
+    entry.args !== undefined &&
+    (!Array.isArray(entry.args) ||
+      entry.args.some((a) => typeof a !== "string"))
+  )
+    throw new Error(`${at}: args must be an array of strings`);
   if (entry.matcher !== undefined) {
     if (typeof entry.matcher !== "string")
       throw new Error(`${at}: matcher must be a string`);
@@ -71,13 +77,16 @@ export const registerCommandManifest = (
   // event+index) is thrown before a single hook is registered, so a malformed
   // manifest leaves the registry untouched (all-or-nothing load).
   for (const [event, entries] of Object.entries(hooks)) {
+    if (event.length === 0)
+      throw new Error("manifest.hooks key must be a non-empty string");
     if (!Array.isArray(entries))
       throw new Error(`manifest.hooks["${event}"] must be an array`);
     entries.forEach((entry, index) => validateEntry(event, entry, index));
   }
 
-  // Pass 2 — register only. Pass 1 guarantees every entry is well-formed and
-  // non-realtime, so register() cannot throw on a validation/invariant issue.
+  // Pass 2 — register only. Pass 1 has validated the event key, every entry
+  // (type/command/args/matcher), and the realtime invariant, so neither
+  // buildGatedHook (createCommandHook) nor register() can throw here.
   for (const [event, entries] of Object.entries(hooks)) {
     entries.forEach((entry, index) => {
       const gated = buildGatedHook(event, entry, index, baseDir);

@@ -181,3 +181,33 @@ test("a malformed manifest registers ZERO hooks (atomic load)", async () => {
   assert.equal(r.blocked, false);
   assert.equal(r.context.marker, undefined);
 });
+
+test("bad args is atomic: valid entry before non-string args registers zero hooks", async () => {
+  const registry = createHookRegistry();
+  assert.throws(
+    () =>
+      registerCommandManifest(
+        registry,
+        {
+          hooks: {
+            "turn:before": [
+              cmd(),
+              { type: "command", command: process.execPath, args: [123] },
+            ],
+          },
+        },
+        { baseDir: HOOKS_DIR },
+      ),
+    /args/,
+  );
+  const r = await registry.dispatch("turn:before", {
+    route: { kind: "x" },
+    input: { text: "x" },
+  });
+  assert.equal(r.blocked, false);
+  assert.equal(r.context.marker, undefined);
+});
+
+test("an empty-string event key throws (non-empty event required)", () => {
+  assert.throws(() => load({ hooks: { "": [cmd()] } }), /non-empty/);
+});
