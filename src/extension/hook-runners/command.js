@@ -44,7 +44,15 @@ export const createCommandHook = (spec = {}) => {
 
   return (ctx) =>
     new Promise((resolve, reject) => {
-      const child = spawn(command, args, { shell: false, cwd, env: childEnv });
+      // stderr is discarded ("ignore"): a noisy child writing >~64 KB to an
+      // undrained stderr pipe would block on write(2) and deadlock until the
+      // timeout SIGKILLs it (a misleading "timed out" instead of its decision).
+      const child = spawn(command, args, {
+        shell: false,
+        cwd,
+        env: childEnv,
+        stdio: ["pipe", "pipe", "ignore"],
+      });
       let stdout = "";
       let bytes = 0;
       let settled = false;
@@ -62,15 +70,16 @@ export const createCommandHook = (spec = {}) => {
       child.stdout.on("data", (chunk) => {
         bytes += chunk.length;
         if (bytes > MAX_STDOUT_BYTES) {
-          child.kill("SIGKILL");
+          child.kill("SIGKILL"); // no-op if the child already exited
           finish(reject, new Error("command hook stdout exceeded 1 MiB"));
           return;
         }
         stdout += chunk;
       });
       child.on("error", (error) => finish(reject, error));
-      // A child that exits before reading stdin raises EPIPE on the write;
-      // catch it so it routes through failModeFor, not as an uncaught rejection.
+      // A child that exits before reading stdin raises an ASYNC EPIPE on the
+      // write; this listener routes it through failModeFor instead of letting
+      // it surface as an uncaught rejection.
       child.stdin.on("error", (error) => finish(reject, error));
       child.on("close", (code) => {
         if (settled) return;
@@ -93,6 +102,8 @@ export const createCommandHook = (spec = {}) => {
       });
 
       try {
+        // Catches a SYNCHRONOUS write failure (e.g. stdin already destroyed);
+        // an async EPIPE goes to the child.stdin "error" listener above.
         child.stdin.write(JSON.stringify(ctx ?? {}));
         child.stdin.end();
       } catch (error) {

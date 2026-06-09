@@ -178,7 +178,7 @@ check**, the gate runs:
 
 ```js
 if (hooks) {
-  const result = hooks.dispatch(
+  const result = await hooks.dispatch( // async since 7a (§3.9)
     "turn:before",
     { input, actor, audience, route },
     { protectedKeys: ["actor"] },
@@ -238,7 +238,7 @@ free, and a no-`hooks` harness is unchanged.
 
 ```js
 if (hooks) {
-  const r = hooks.dispatch(
+  const r = await hooks.dispatch( // async since 7a (§3.9)
     "tool:before",
     { input, actor, audience, route },
     { protectedKeys: ["actor"] },
@@ -260,7 +260,7 @@ emitted**, so it can filter or rewrite the outgoing response:
 ```js
 let response = await brain.respond({ ... });
 if (hooks) {
-  const r = hooks.dispatch(
+  const r = await hooks.dispatch( // async since 7a (§3.9)
     "response:before",
     { input, actor, audience, route, response },
     { protectedKeys: ["actor"] },
@@ -282,6 +282,105 @@ if (hooks) {
 Both reuse the existing `rejectByHook` helper and the hardened `dispatch`. The
 only new wiring is threading `response` into the `response:before` context and
 reading the result downstream (the `const response` becomes a `let`).
+
+### 3.9 Command Runner (7a): async `dispatch` + child-process hook
+
+Phase 7a makes a hook handler allowed to be **asynchronous** and adds the
+**command** execution style (§3.2 style 2): a hook that runs an external program
+under the JSON stdin/stdout contract. 7a ships the async change and the
+`createCommandHook` factory with **direct registration**; the JSON manifest
+loader and `matcher` are 7b.
+
+**`dispatch` becomes async.** A child process is inherently asynchronous, and
+running it synchronously (`execFileSync`) would stall the shared event loop —
+including the realtime voice loop — for the child's duration. So `dispatch`
+returns a `Promise` and `await`s each handler:
+
+```js
+for (const entry of entries) {
+  let decision;
+  try {
+    decision = await entry.run(current); // in-process fn resolves immediately; command fn awaits the child
+  } catch (error) {
+    // unchanged: failModeFor(event) -> fail-closed (gate/unknown) or fail-open (background/realtime)
+  }
+  // ...block short-circuit / transform merge / protectedKeys — all unchanged
+}
+```
+
+Everything else in `dispatch` is unchanged: the no-handler hot-path, the
+`deepFreeze(structuredClone())` context isolation, the `failModeFor` fail
+policy, the `protectedKeys` guard, and the post-transform shape semantics. An
+async handler that **rejects** is caught by the same `try/catch` as a synchronous
+throw and routed through `failModeFor`. Awaiting an in-process (synchronous)
+handler costs one microtask (sub-millisecond), so the realtime budget is
+unaffected; the realtime invariant (§3.5) still guarantees no child process is
+ever registered on a realtime point, which is the actual latency protection.
+
+This is a **breaking change to the `dispatch` contract** (sync → async). All
+call sites `await`: the three `receive()` sites (§3.7/§3.8, already inside an
+`async` function) and **every existing `dispatch` unit test** is retrofitted to
+`await dispatch(…)` (its callback made `async`) — not just the new async tests.
+
+**`createCommandHook(spec)`** (`extension/hook-runners/command.js`) returns an
+`async (ctx) => decision` function registered like any handler with
+`style: "command"` (the realtime invariant rejects that style on a realtime
+event). `spec = { command, args = [], timeout = 5000, cwd?, env? }`:
+
+- Validates the spec at construction: `command` is a non-empty string and `args`
+  is an array of strings (otherwise `createCommandHook` throws at registration,
+  not at dispatch — a misconfiguration surfaces at load time).
+- Spawns `command` with `args` via a **non-shell** spawn (`shell: false`), so an
+  argument can never be reinterpreted as a shell command — command injection is
+  structurally impossible, not filtered. `cwd` defaults to `process.cwd()` (the
+  harness working directory, Node's `child_process` default).
+- Writes `JSON.stringify(ctx)` to the child's stdin and closes it. A child that
+  exits before reading stdin raises `EPIPE` on the write; that error is **caught
+  and rethrown as a hook error** so it lands in the same `try/catch` and routes
+  through `failModeFor` (never an uncaught rejection).
+- Collects stdout with a `spawn` `data`-event accumulator, **capped at 1 MiB**:
+  when the running total exceeds the cap the child is killed and the call throws
+  (a streaming cap, not `execFile`'s post-hoc `maxBuffer`).
+- A **timeout** (default 5 s) kills the child with **`SIGKILL`** (not a polite
+  `SIGTERM` an adversarial child could trap) and throws; a non-zero exit throws.
+- Parses stdout as JSON and maps the §3.4 wire contract to the internal decision
+  shape:
+  - `{ "decision": "deny", "reason"? }` → `{ block: { reason } }`
+  - `{ "decision": "allow", "transform"? }` → `{ transform }` when `transform`
+    is a non-null object, else `undefined` (pass-through). An absent, `null`, or
+    empty-object `transform` is pass-through; `reason` is ignored on `allow`.
+  - unparseable stdout or an unrecognized `decision` → **throw**
+- Every throw propagates to `dispatch`, where `failModeFor` decides the outcome:
+  a command failure on a **gate** event (`turn:before`, `tool:before`,
+  `response:before`, `memory:write`) **fails closed** (deny); on a **background**
+  event (`turn:after`) it **fails open** (§6). The child's stdout is an
+  **external trust boundary**, so it is validated here — consistent with the rule
+  that validation lives at boundaries (external input / external programs), not
+  between trusted in-process components.
+
+**Security defaults (baked in, not optional):**
+
+- **No shell** (`shell: false`) — the single most important control.
+- **Minimal environment** — the child receives `{ PATH: process.env.PATH }` only
+  by default (enough to locate an interpreter), never the parent's full
+  `process.env`, so harness secrets (API keys, tokens) are not handed to operator
+  hook programs. `spec.env` can explicitly extend this allow-list.
+- **Bounded** — timeout + output cap prevent a hung or flooding child from
+  stalling or exhausting the host.
+- **stderr discarded** (`stdio: ["pipe", "pipe", "ignore"]`) — the child's stderr
+  is ignored, so a noisy child cannot deadlock on a full (undrained) stderr pipe
+  and no child output bleeds into the harness's own stderr.
+- **Fail-closed on any doubt** — a missing, malformed, oversized, slow, or
+  crashed child output denies on a gate event.
+
+A symlinked `command` path that resolves to a different binary between
+registration and spawn is an OS-level TOCTOU concern, but the hook program is
+**operator-authored and within the operator's own trust domain** (the same actor
+that writes the hook controls its filesystem), so 7a does not re-resolve or pin
+the path; it is out of scope, not overlooked.
+
+7a adds **no manifest loader and no `matcher`** (7b). A command hook is
+registered directly: `register(event, createCommandHook(spec), { style: "command" })`.
 
 ## 4. Skills
 
@@ -645,7 +744,15 @@ Each unit has one purpose and a defined interface:
    brain output, transform→rewrite `response`), §3.8 — **Done.** All three
    in-process text-path hook points (`turn:before`/`tool:before`/`response:before`)
    are now wired into `receive()`.
-7. Command runner (text-path child-process hook gates).
+7. Command runner (text-path child-process hook gates), §3.9. Split in two:
+   - **7a (this phase):** make `dispatch` async (breaking change; all call sites
+     `await`) and add the `createCommandHook` factory — spawn a child under the
+     §3.4 JSON contract, `shell: false`, minimal env, timeout + output cap,
+     fail-closed-on-doubt — registered directly via `register(..., { style:
+     "command" })`.
+   - **7b:** the JSON manifest loader (`{ hooks: { event: [{ type, command,
+     matcher, timeout }] } }`) and `matcher` (regex against an event-specific
+     key) that registers command hooks in bulk.
 8. Agent runner (response review).
 
 Note: the realtime invariant's coverage (device:emit, prefix/Set drift) is

@@ -7,10 +7,13 @@ import { createCommandHook } from "../src/extension/hook-runners/command.js";
 const DECIDE = fileURLToPath(
   new URL("./fixtures/hooks/decide.mjs", import.meta.url),
 );
+// `--hook` activates the fixture's stdin/stdout behavior; without it the
+// node:test default glob (which discovers DECIDE under test/**) would run it as
+// a test that hangs on stdin. See test/fixtures/hooks/decide.mjs.
 const nodeHook = (extra = {}) =>
   createCommandHook({
     command: process.execPath,
-    args: [DECIDE],
+    args: [DECIDE, "--hook"],
     timeout: 5000,
     ...extra,
   });
@@ -43,6 +46,26 @@ test("a command hook 'allow' with no transform passes through", async () => {
   });
   assert.equal(result.blocked, false);
   assert.equal(result.context.input.text, "hello");
+});
+
+test("a command hook 'allow' with a null transform passes through", async () => {
+  const registry = createHookRegistry();
+  registry.register("turn:before", nodeHook(), { style: "command" });
+  const result = await registry.dispatch("turn:before", {
+    input: { text: "null-transform" },
+  });
+  assert.equal(result.blocked, false);
+  assert.equal(result.context.input.text, "null-transform");
+});
+
+test("a command hook 'allow' with an empty-object transform passes through", async () => {
+  const registry = createHookRegistry();
+  registry.register("turn:before", nodeHook(), { style: "command" });
+  const result = await registry.dispatch("turn:before", {
+    input: { text: "empty-transform" },
+  });
+  assert.equal(result.blocked, false);
+  assert.equal(result.context.input.text, "empty-transform");
 });
 
 test("createCommandHook validates its spec at construction", () => {
