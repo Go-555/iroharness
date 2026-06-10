@@ -21,7 +21,10 @@
 // production wiring is future work and is documented as such in
 // docs/agent-bank.md (no hidden default exists on purpose).
 
-import { createScopedWorkRunnerMicroHarness } from "../adapters/index.js";
+import {
+  createScopedWorkRunnerMicroHarness,
+  evaluateWorkRunnerDelegation,
+} from "../adapters/index.js";
 
 import { createBlackboard } from "./blackboard.js";
 import { createBankRegistry } from "./registry.js";
@@ -48,20 +51,13 @@ const reportedTokens = (result) => {
   return Number.isFinite(tokens) && tokens > 0 ? tokens : 0;
 };
 
-// Same decision table as createScopedWorkRunnerMicroHarness /
-// bin createWorkRunnerPolicy: public=denied, trusted=permission-required
-// (audience.canDelegateWork), owner=allowed. Exported so the gate semantics
-// are testable in isolation (B-3).
-export const evaluateDelegationGate = ({ policy, audience } = {}) => {
-  const delegation = policy?.delegation || "denied";
-  if (delegation === "denied") {
-    return { ok: false, reason: "delegation_denied" };
-  }
-  if (delegation === "permission-required" && !audience?.canDelegateWork) {
-    return { ok: false, reason: "permission_required" };
-  }
-  return { ok: true, reason: null };
-};
+// Phase 5b (5.3): the gate is the SAME function the scoped Work Runner uses
+// (src/adapters evaluateWorkRunnerDelegation) — one implementation for every
+// delegate path, speaking the work-runner-policy.json vocabulary written by
+// `iroharness view export` (public=denied, trusted=permission-required via
+// audience.canDelegateWork, owner=allowed). Kept under its Phase 4 name so
+// the gate semantics stay testable in isolation (B-3).
+export const evaluateDelegationGate = evaluateWorkRunnerDelegation;
 
 // Bantou-style permission verifier (Phase 4.4): work that claims to have used
 // tools outside the recipe's toolset is rejected. Mechanical and honest — it
