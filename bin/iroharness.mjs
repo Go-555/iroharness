@@ -4,6 +4,7 @@ import { cpSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, rm
 import { basename, dirname, join, resolve } from "node:path";
 
 import { createFileUserRegistry, createProjectOsMarkdown } from "../src/index.js";
+import { runPersonaCheck } from "../src/persona-check/index.js";
 import {
   createFileSkillRegistry,
   defaultBuiltInSkillDir,
@@ -30,6 +31,7 @@ Usage:
   iroharness skill list [dir] [--json]
   iroharness skill plan stackchan-avatar-pack [dir] --reference-image <path> [--pack-id <id>] [--out <dir>] [--json]
   iroharness skill eval stackchan-avatar-pack [dir] --pack-dir <dir> [--json]
+  iroharness persona-check [dir] [--slot <voice|text|deep>] [--responses <file>] [--soul <path>] [--json]
   iroharness view export [dir] --zone <public|trusted|owner> --out <view-dir> [--force]
   iroharness work-runner check <view-dir> [--json]
   iroharness doctor [dir] [--production] [--json]
@@ -47,6 +49,7 @@ Examples:
   iroharness skill list ./my-companion
   iroharness skill plan stackchan-avatar-pack ./my-companion --reference-image ./iroha.jpg
   iroharness skill eval stackchan-avatar-pack ./my-companion --pack-dir ./.iroharness/artifacts/avatar-packs/iroha
+  iroharness persona-check ./my-companion --slot text --responses ./text-brain-transcript.jsonl
   iroharness view export ./my-companion --zone trusted --out /Users/iroharness-trusted/iroha-view --force
   iroharness work-runner check /Users/iroharness-trusted/iroha-view
   iroharness doctor ./my-companion
@@ -94,6 +97,10 @@ const parseArgs = (argv) => {
   let packDir = null;
   let zone = null;
   let out = null;
+  let slot = "text";
+  let responses = null;
+  let soul = null;
+  let rich = false;
   const identities = {};
   const positional = [];
 
@@ -276,6 +283,25 @@ const parseArgs = (argv) => {
       index += 1;
       continue;
     }
+    if (value === "--slot") {
+      slot = rest[index + 1] || slot;
+      index += 1;
+      continue;
+    }
+    if (value === "--responses") {
+      responses = rest[index + 1];
+      index += 1;
+      continue;
+    }
+    if (value === "--soul") {
+      soul = rest[index + 1];
+      index += 1;
+      continue;
+    }
+    if (value === "--rich") {
+      rich = true;
+      continue;
+    }
     if (["--youtube", "--discord", "--slack", "--vscode", "--browser", "--m5stack", "--even-g2"].includes(value)) {
       identities[value.slice(2)] = rest[index + 1];
       index += 1;
@@ -339,6 +365,10 @@ const parseArgs = (argv) => {
     packDir,
     zone,
     out,
+    slot,
+    responses,
+    soul,
+    rich,
     identities
   };
 };
@@ -2233,6 +2263,50 @@ const skills = (args) => {
   throw new Error(`Unknown skill action: ${args.action || "(missing)"}\n\n${usage}`);
 };
 
+// Cheap tier only (docs/persona-guard.md §5, Phase B). The rich tier — fixed
+// question set against the real brain + LLM judge — is Phase C: opt-in,
+// issues LLM calls (cost), gated behind --rich and not implemented yet.
+const personaCheck = async (args) => {
+  if (args.rich) {
+    throw new Error(
+      "persona-check --rich is reserved for Phase C: the LLM-judged tier is opt-in, issues LLM calls (cost), and is not implemented yet. Run without --rich for the free mechanical tier.",
+    );
+  }
+  const result = await runPersonaCheck({
+    dir: args.dir,
+    soulPath: args.soul,
+    responsesPath: args.responses,
+    slot: args.slot,
+  });
+  if (args.json) {
+    console.log(JSON.stringify(result, null, 2));
+    if (!result.ok) {
+      process.exitCode = 1;
+    }
+    return;
+  }
+  console.log(`persona-check (cheap tier) slot: ${result.slot}`);
+  console.log(
+    `soul: ${result.soulPath}${result.sectionFound ? "" : " (no Vocabulary Rules section)"}`,
+  );
+  console.log(`rules: ${result.totalRules} total, checkable rules: ${result.checkableRules}`);
+  console.log(`responses: ${result.responseCount} from ${result.responseSource}`);
+  console.log(`violations: ${result.violations.length}`);
+  result.violations.forEach((violation) => {
+    console.log(
+      `- [${violation.rule.kind}] response #${violation.responseIndex + 1} matched 「${violation.matched}」: ${violation.response}`,
+    );
+  });
+  if (!result.ok) {
+    throw new Error(`persona-check failed: ${result.violations.length} violation(s)`);
+  }
+  console.log(
+    result.checkableRules === 0
+      ? "ok (no mechanically checkable rules — see docs/persona-guard.md §4a)"
+      : "ok",
+  );
+};
+
 const main = () => {
   const args = parseArgs(process.argv.slice(2));
   if (args.command === "--help" || args.command === "-h" || args.command === "help") {
@@ -2279,6 +2353,14 @@ const main = () => {
     }
     console.log(`exported ${result.manifest.zone} view to ${result.currentRoot}`);
     console.log(`files: ${result.manifest.files.length}`);
+    return;
+  }
+  if (args.command === "persona-check") {
+    // Async: report errors the same way the top-level catch does.
+    personaCheck(args).catch((error) => {
+      console.error(error.message);
+      process.exitCode = 1;
+    });
     return;
   }
   if (args.command === "work-runner") {
