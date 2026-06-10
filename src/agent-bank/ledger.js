@@ -24,7 +24,10 @@ export const computeLedger = (snapshot) => {
       entry.lastUsed = run.updatedAt ?? entry.lastUsed;
     }
     const score = run.output?.qualityScore;
-    if (typeof score === "number") {
+    // NaN gate (ajimi): `typeof NaN === "number"`, and a NaN avgScore would
+    // slip past the threshold gate (`NaN < minScore` is false). Only finite
+    // scores count; non-finite ones are ignored entirely.
+    if (Number.isFinite(score)) {
       entry.scores.push(score);
     }
   }
