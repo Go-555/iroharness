@@ -13,10 +13,15 @@
 >
 > **Where things stand (2026-06-10):** the Agent Bank core (recipe / registry /
 > ledger / seed / promotion gate / mint / persist-guard / sandbox-verification
-> ledger) and the beads Project OS backend (`createBeadsProjectOs`, 道A) are
-> implemented and green; orchestration over the plain beads loop is not yet
-> built, and the real Work Runner trial still plugs into `runSandboxVerification`
-> via its injected `runTrial`. See design-summary §7 for the live status.
+> ledger), the beads Project OS backend (`createBeadsProjectOs`, 道A), **and the
+> Hanaita orchestration (Phase 4: `createHanaita` / `delegateGoal` in
+> `src/agent-bank/hanaita.js`, blackboard in `src/agent-bank/blackboard.js`)**
+> are implemented and green. Two injection points remain UNWIRED to production
+> runtimes on purpose: the real Work Runner trial still plugs into
+> `runSandboxVerification` via its injected `runTrial`, and the Hanaita's
+> specialist execution plugs in via its injected `createRunner({ id, recipe })`
+> (tests use fakes; wiring a real Codex/OpenClaw/Claude-Code micro-harness
+> adapter into it is future work). See design-summary §7 for the live status.
 
 ## 1. Summary
 
@@ -212,6 +217,40 @@ Collaboration shapes:
 - **Verification loop** — Hanaita has results checked; on failure, send back;
   repeat until consensus or an iteration cap.
 
+> **Implemented (Phase 4, 2026-06-10).** All three mechanisms and all three
+> shapes ship in `src/agent-bank/hanaita.js` + `src/agent-bank/blackboard.js`:
+>
+> - **Sliced context**: a specialist receives `{ goal id/title, instruction,
+>   prior, feedback }` — `prior` is read back from the blackboard
+>   (`readConfirmed`, completed runs only) for its declared dependencies.
+>   Iroha's identity context is never forwarded, and the goal result returns a
+>   pinned shape (no runner raw output / verify chatter), tested in both
+>   directions (§6.3).
+> - **Blackboard**: `createBlackboard` rides the ProjectOs 6-method contract
+>   (1 delegation = 1 ticket = 1 run keyed by `harnessId`, so the derived
+>   ledger keeps working), proven contract-identical on the in-memory and
+>   beads backends. Only the Hanaita holds the handle (bd-isolation
+>   invariant); specialists never get a write surface.
+> - **Vertical thread**: `runGoal` assigns waves of READY steps (fan-out is
+>   genuinely concurrent), folds confirmed results before dependents run
+>   (pipeline / fan-in), and fails a stalled (circular) goal instead of
+>   hanging. The verify loop sends rejected work back to the same specialist
+>   with the verifier reasons as `slice.feedback`, then cuts the step off at
+>   `maxVerifyAttempts` and records the run as failed (the ledger counts the
+>   miss). Verifiers are injectable (`{ id, verify({ step, recipe, result }) }`,
+>   mekiki=quality / bantou=permission); a built-in
+>   `createToolUsageVerifier` rejects work claiming tools outside the
+>   recipe's toolset.
+> - **Cost/runaway guards (W-1)**: `DEFAULT_HANAITA_GUARDS` =
+>   `{ maxSpecialistsPerGoal, maxDepth, tokenBudget }`. A specialist's
+>   `context.delegate(subGoal)` re-enters the SAME gate with the root
+>   caller's audience and draws down the root goal's shared hire/token
+>   trackers; `tokenBudget` counts the runner-reported spend (an estimate,
+>   not metered billing).
+>
+> §6.2 channel-crossing return and §6.3 face graceful recovery remain out of
+> scope (MVP-external), per Plans.md.
+
 ### Three wallets of memory (mirrors AutoAgents short/long/dynamic)
 
 | Wallet | Holds | Counter analogy |
@@ -377,6 +416,18 @@ check_progress(run_id)      # optional
 recall(role)                # optional: summon a known regular by name
 ```
 
+> **Implemented shape (Phase 4.1):** `createHanaita({ root, projectOs,
+> workRunnerPolicy, createRunner, allowedWorkspaces, ... }).delegateGoal(goal,
+> { audience })` returns `{ goalId, summary }` synchronously, where `summary`
+> is a Promise resolving to the goal result (goal failures resolve with
+> `status: "failed"`; only gate/validation errors throw). The entry gate
+> speaks the existing `work-runner-policy` vocabulary (public=denied,
+> trusted=permission-required via `audience.canDelegateWork`, owner=allowed —
+> B-3), and every specialist run is additionally wrapped in
+> `createScopedWorkRunnerMicroHarness`, so no path bypasses the existing
+> policy/workspace enforcement (invariant 3). Hiring is active-folder-only
+> (invariant 1). `check_progress` / `recall` are still unbuilt.
+
 ### Layer 2 — what the Hanaita holds (hidden from the face)
 
 ```
@@ -388,6 +439,14 @@ post_to_board(item)                 # write to Project OS (beads) — Hanaita-on
 verify(item)                        # mekiki (quality) + bantou (permission)
 score_and_promote(run_id)           # compute derived ledger (by harnessId) + apply composite promotion gate
 ```
+
+> **Implementation note (Phase 4):** `spawn` / `collect` / `post_to_board` /
+> `verify` are not separate tools — they live inside `createHanaita`'s goal
+> loop (assign waves → scoped runner → verify loop → blackboard confirm).
+> `ask_bank` matching is NOT built yet: today a goal's steps name their
+> recipes explicitly, and hiring enforces active-folder-only. `spawn`'s actual
+> execution is the injected `createRunner` (see the status note at the top —
+> real micro-harness wiring is future work).
 
 ## 10. Cast
 

@@ -179,7 +179,7 @@ beads の流儀は「1委譲 = 1 bead」。run を独立レコードとして別
 | **beads バックエンド（`createBeadsProjectOs`・道A／6メソッド保持）** | **実装済み**（`src/beads-project-os.js`）。ユニット（fake exec）11 green ＋ **実 bd 統合テスト 1 green**、全体 204 green |
 | **本体 `runMicroHarness`** | **無改修**（道A＝6メソッド契約と snapshot 互換を保持したため。既存テスト全 green） |
 | snapshot メモ化（レイテンシ実測の上で） | **未了**（要否を実測で判断＝§9） |
-| 協力して動く（素の beads ループでの orchestration） | **未着手**（方針は確定：formula 不使用、素の ready/claim/close） |
+| 協力して動く（Hanaita orchestration / `delegate_goal`・Phase 4） | **実装済み・テスト green**（`src/agent-bank/hanaita.js`＋`blackboard.js`。切り身配布・黒板＝ProjectOs 6メソッド経由（in-memory / beads 同一契約をテストで保証）・star/pipeline/fan-out・verify ループ・コストガード W-1。職人実行は `createRunner` 注入式で **実 micro-harness への配線は未了**。formula 不使用の方針どおり） |
 | 設計書 `agent-bank.md` | あり（2026-06-10 改訂済み：beads 整合＋Phase 3 実装状況を反映） |
 | git 履歴 | 一部乱れ（commit と実体がズレ・要棚卸し） |
 

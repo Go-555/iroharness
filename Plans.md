@@ -67,11 +67,11 @@
 
 | Task | 内容 | DoD | Depends | Status |
 |------|------|-----|---------|--------|
-| 4.1 | `delegate_goal` ツール（async）＝ **既存 permission policy / work-runner-policy を必ず経由** | goal 投入→要約が非同期で返る統合テスト、かつ **public view が delegate_goal を呼ぶと拒否**される負テストが通る (B-3) | 1.2, 5.1 | cc:TODO |
-| 4.2 | context slice 配布 ＋ 黒板 post/read（Project OS 経由・双方向隔離） | 職人は黒板の確定成果のみ受け取り生 context を継がない。**逆方向＝orchestration の中間 chatter が Iroha の identity context を汚さない**ことも保証するテストが通る (§6.3) | 4.1, 0.1 | cc:TODO |
-| 4.3 | 縦糸采配（star: assign→verify→next）＋ pipeline / fan-out | 2 職人の pipeline と fan-in が 1 goal を完遂するテストが通る | 4.2 | cc:TODO |
-| 4.4 | verify ループ（mekiki=質 / bantou=権限 → 差し戻し → 上限打切り） | 不合格成果が差し戻され反復上限で打ち切られるテストが通る | 4.3 | cc:TODO |
-| 4.5 | コスト/暴走ガード: `max_specialists_per_goal` / `max_depth`（再帰 delegate）/ `token_budget` を policy 化 | 各上限超過で goal が打ち切られる負テストが通る。minted specialist の再帰 delegate も depth 上限に従う (W-1) | 4.1 | cc:TODO |
+| 4.1 | `delegate_goal` ツール（async）＝ **既存 permission policy / work-runner-policy を必ず経由** | goal 投入→要約が非同期で返る統合テスト、かつ **public view が delegate_goal を呼ぶと拒否**される負テストが通る (B-3) | 1.2, 5.1 | cc:DONE |
+| 4.2 | context slice 配布 ＋ 黒板 post/read（Project OS 経由・双方向隔離） | 職人は黒板の確定成果のみ受け取り生 context を継がない。**逆方向＝orchestration の中間 chatter が Iroha の identity context を汚さない**ことも保証するテストが通る (§6.3) | 4.1, 0.1 | cc:DONE |
+| 4.3 | 縦糸采配（star: assign→verify→next）＋ pipeline / fan-out | 2 職人の pipeline と fan-in が 1 goal を完遂するテストが通る | 4.2 | cc:DONE |
+| 4.4 | verify ループ（mekiki=質 / bantou=権限 → 差し戻し → 上限打切り） | 不合格成果が差し戻され反復上限で打ち切られるテストが通る | 4.3 | cc:DONE |
+| 4.5 | コスト/暴走ガード: `max_specialists_per_goal` / `max_depth`（再帰 delegate）/ `token_budget` を policy 化 | 各上限超過で goal が打ち切られる負テストが通る。minted specialist の再帰 delegate も depth 上限に従う (W-1) | 4.1 | cc:DONE |
 
 ## Phase 5b: 隔離の最終硬化
 
