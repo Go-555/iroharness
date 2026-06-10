@@ -52,3 +52,22 @@ test("requires sampleRate and sleepFn", () => {
   assert.throws(() => createAudioPacer({ sleepFn: async () => {} }));
   assert.throws(() => createAudioPacer({ sampleRate: 16000 }));
 });
+
+test("pace(0) is a no-op that does not corrupt state", async () => {
+  const clock = createFakeClock();
+  const pacer = createAudioPacer({ sampleRate: 16000, leadMs: 1500, nowFn: clock.nowFn, sleepFn: clock.sleepFn });
+  await pacer.pace(0); // no audio sent → no sleep
+  assert.deepEqual(clock.sleeps, []);
+  await pacer.pace(16000 * 3); // playback=3000ms, elapsed=0 → ahead 3000 → sleep 1500
+  assert.deepEqual(clock.sleeps, [1500]);
+});
+
+test("pace rejects NaN and negative sample counts", async () => {
+  const clock = createFakeClock();
+  const pacer = createAudioPacer({ sampleRate: 16000, leadMs: 1500, nowFn: clock.nowFn, sleepFn: clock.sleepFn });
+  await assert.rejects(() => pacer.pace(NaN), /non-negative sample count/);
+  await assert.rejects(() => pacer.pace(-1), /non-negative sample count/);
+  // state untouched by rejected calls
+  await pacer.pace(16000); // ahead 1000 < 1500 → no sleep
+  assert.deepEqual(clock.sleeps, []);
+});
