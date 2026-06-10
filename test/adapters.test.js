@@ -1500,6 +1500,20 @@ test("JSONL process micro harness sends one task and parses final JSON line", as
   assert.equal(output.summary, "processed ticket_2");
 });
 
+/**
+ * Poll `predicate` until it returns true or `timeoutMs` elapses.
+ * Used instead of a fixed sleep when waiting for child-process output
+ * so the suite does not flake under parallel load.
+ */
+const waitFor = async (predicate, { timeoutMs = 2000, intervalMs = 10 } = {}) => {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (predicate()) return true;
+    await new Promise((r) => setTimeout(r, intervalMs));
+  }
+  return predicate();
+};
+
 test("JSONL realtime core process streams events and keeps local interruption state", async () => {
   const dir = mkdtempSync(join(tmpdir(), "iroharness-realtime-core-"));
   const scriptPath = join(dir, "realtime-core.mjs");
@@ -1543,7 +1557,14 @@ test("JSONL realtime core process streams events and keeps local interruption st
   });
   core.finishSpeaking();
 
-  await new Promise((resolve) => setTimeout(resolve, 50));
+  // Poll until the last expected message from the child process arrives.
+  // shouldInterrupt is sent after publish, so waiting for it guarantees
+  // all earlier messages are already in `received` too.
+  assert.ok(
+    await waitFor(() => received.some((m) => m.op === "shouldInterrupt")),
+    "child process did not echo shouldInterrupt within timeout"
+  );
+
   const snapshot = core.snapshot();
   core.close();
 
