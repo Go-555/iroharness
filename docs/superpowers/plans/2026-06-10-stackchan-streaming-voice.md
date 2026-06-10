@@ -105,6 +105,13 @@ test("empty delta and flush of empty buffer", () => {
   assert.deepEqual(s.push(""), []);
   assert.deepEqual(s.flush(), []);
 });
+
+test("consecutive terminal punctuation (記号連続)", () => {
+  // spec §7-1 の golden case。「！？」は ！ で切れ、？ が単独フラグメントになる
+  // （本家 split_chars 逐次走査と同じ挙動として固定する）
+  const s = createSentenceSplitter();
+  assert.deepEqual(s.push("えっ！？そうなの。"), ["えっ！", "？", "そうなの。"]);
+});
 ```
 
 - [ ] **Step 2: 落ちるのを確認** — Run: `node --test test/voice-sentence-splitter.test.js` / Expected: FAIL (module not found)
@@ -297,7 +304,7 @@ OpenAI 実装: Responses API `stream: true` の SSE を fetchImpl で読み、`r
 仕様: `createVoicePipeline({ vad, stt, harness, tts, queue, pacer, quickResponder, metrics, maxSentences = 30, stageTimeoutMs = { stt: 10000, brain: 30000, tts: 10000 }, onEvent })`。
 （暴走ガードの**最大トークン**は pipeline ではなく brain adapter の責務: gateway 由来のオプション **`maxOutputTokens`**（env は `IROHARNESS_VOICE_BRAIN_MAX_TOKENS`）をそのまま使う。pipeline 側は文数と段別タイムアウトを持つ——二重実装しない）
 入力 `pushAudio(frame)` / `interrupt(reason)`。流れ: VAD end → STT → quickResponder.fire() → `harness.receiveStream` → splitter → 文ごとに `tts.stream`（AbortSignal 持参）→ pacer 経由で `onEvent({type:"speech.audio", ...})` → 全文後 finalize。
-エラー正規化: どの段の失敗も `onEvent({type:"error", stage, message})` 1 種。1 文の TTS 失敗はスキップして継続。brain 途中死は言いかけまで＋定型句。interrupt は進行中 brain/TTS を abort。
+エラー正規化: どの段の失敗も `onEvent({type:"error", stage, message})` 1 種。1 文の TTS 失敗はスキップして継続。**空白のみの文（"\n" 等、Markdown 由来）は TTS に送らずスキップ**（splitter は本家どおり素通しするので pipeline 側で濾す。テストも 1 本）。brain 途中死は言いかけまで＋定型句。interrupt は進行中 brain/TTS を abort。
 
 - [ ] **Step 1: failing test — 並走の証明**（mock brain が delta を 2 文ぶん時間差で流し、mock tts が呼び出し時刻を記録。**1 文目の tts 開始時刻 < brain 完了時刻** を assert）
 - [ ] **Step 2: failing test — barge-in**（再生中に interrupt → tts の signal.aborted が true、`speech.interrupted` イベント。**自動 barge-in も**: speaking 中の pushAudio で VAD が speech.start を返したら同様に abort されること）
