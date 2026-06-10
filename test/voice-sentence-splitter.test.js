@@ -25,6 +25,17 @@ test("handles mixed EN/JA and newline", () => {
   assert.deepEqual(s.flush(), ["right"]);
 });
 
+test("consecutive terminal punctuation (記号連続)", () => {
+  // spec §7-1 の golden case。「！？」は ！ で切れ、？ が単独フラグメントになる
+  // （本家 split_chars 逐次走査と同じ挙動として固定する）
+  const s = createSentenceSplitter();
+  assert.deepEqual(s.push("えっ！？そうなの。"), [
+    "えっ！",
+    "？",
+    "そうなの。",
+  ]);
+});
+
 test("empty delta and flush of empty buffer", () => {
   const s = createSentenceSplitter();
   assert.deepEqual(s.push(""), []);
