@@ -44,6 +44,27 @@ export const evaluateDelegationGate = ({ policy, audience } = {}) => {
   return { ok: true, reason: null };
 };
 
+// Bantou-style permission verifier (Phase 4.4): work that claims to have used
+// tools outside the recipe's toolset is rejected. Mechanical and honest — it
+// audits the runner's own report (toolsUsed); a deeper audit belongs to the
+// runtime sandbox, not this loop.
+export const createToolUsageVerifier = () => ({
+  id: "bantou-tool-usage",
+  verify: ({ recipe, result }) => {
+    const used = result?.toolsUsed ?? result?.raw?.toolsUsed ?? [];
+    const allowed = new Set(recipe?.toolset ?? []);
+    const outside = used.filter((tool) => !allowed.has(tool));
+    return outside.length > 0
+      ? {
+          ok: false,
+          reasons: [
+            `tools used outside the recipe toolset: ${outside.join(", ")}`,
+          ],
+        }
+      : { ok: true, reasons: [] };
+  },
+});
+
 const normalizeSteps = (goal) => {
   if (!Array.isArray(goal?.steps) || goal.steps.length === 0) {
     throw new Error("delegate_goal requires goal.steps (a non-empty array)");
@@ -76,6 +97,13 @@ export const createHanaita = ({
   allowedWorkspaces = [],
   defaultWorkspace = null,
   ownerCharacterId = "iroha",
+  // Phase 4.4 verify loop: mekiki-style (quality) and bantou-style
+  // (permission) verifiers. Each is { id, verify({ step, recipe, result }) }
+  // returning { ok, reasons } (sync or async). A rejected result is sent back
+  // to the SAME specialist with the reasons as feedback, up to
+  // maxVerifyAttempts; then the step is cut off and recorded as failed.
+  verifiers = [],
+  maxVerifyAttempts = 3,
 } = {}) => {
   if (!root) {
     throw new Error("createHanaita requires the bank root");
@@ -114,6 +142,22 @@ export const createHanaita = ({
     return entry.recipe;
   };
 
+  // Run every verifier; collect rejection reasons (empty = pass).
+  const runVerifiers = async ({ step, recipe, result }) => {
+    const reasons = [];
+    for (const verifier of verifiers) {
+      const verdict = await verifier.verify({ step, recipe, result });
+      if (verdict?.ok !== true) {
+        reasons.push(
+          ...(verdict?.reasons?.length
+            ? verdict.reasons
+            : [`${verifier.id ?? "verifier"} rejected the result`]),
+        );
+      }
+    }
+    return reasons;
+  };
+
   const runStep = async ({ goal, goalId, step, audience, ticketsByStep }) => {
     const recipe = hire(step.recipe);
 
@@ -125,17 +169,20 @@ export const createHanaita = ({
     const dependencyTickets = (step.dependsOn ?? [])
       .map((dep) => ticketsByStep.get(dep))
       .filter(Boolean);
-    const slice = Object.freeze({
-      goal: Object.freeze({ id: goalId, title: goal.title ?? "" }),
-      instruction: step.slice ?? goal.description ?? "",
-      prior: Object.freeze(blackboard.readConfirmed(dependencyTickets)),
-    });
+    const prior = Object.freeze(blackboard.readConfirmed(dependencyTickets));
+    const makeSlice = (feedback) =>
+      Object.freeze({
+        goal: Object.freeze({ id: goalId, title: goal.title ?? "" }),
+        instruction: step.slice ?? goal.description ?? "",
+        prior,
+        feedback,
+      });
 
     const { ticketId, runId } = blackboard.open({
       title: step.title ?? `${goal.title ?? goalId} / ${step.id}`,
-      purpose: slice.instruction,
+      purpose: step.slice ?? goal.description ?? "",
       harnessId: step.recipe,
-      input: { slice },
+      input: { slice: makeSlice(null) },
     });
 
     // Invariant 3: the worker runs INSIDE the existing scoped Work Runner
@@ -153,78 +200,127 @@ export const createHanaita = ({
     const task = Object.freeze({
       id: ticketId,
       title: step.title ?? step.id,
-      purpose: slice.instruction,
+      purpose: step.slice ?? goal.description ?? "",
       metadata: Object.freeze(
         step.workspace ? { workspace: step.workspace } : {},
       ),
     });
 
-    const result = await scoped.run(task, { audience, slice });
-
-    if (result?.status !== "completed") {
-      blackboard.reject({
-        runId,
-        output: {
-          status: "failed",
-          summary: result?.summary ?? "specialist run failed",
-        },
+    // Verify loop (4.4): run → verify → send back with feedback → ... → cap.
+    // Retries stay INSIDE the one delegation: 1 ticket = 1 run; only the
+    // final outcome is folded onto the board.
+    let attempts = 0;
+    let feedback = null;
+    while (attempts < maxVerifyAttempts) {
+      attempts += 1;
+      const result = await scoped.run(task, {
+        audience,
+        slice: makeSlice(feedback),
       });
-      throw new Error(
-        `step_failed: step ${step.id} failed: ${result?.summary ?? "unknown"}`,
-      );
+
+      if (result?.status !== "completed") {
+        blackboard.reject({
+          runId,
+          output: {
+            status: "failed",
+            summary: result?.summary ?? "specialist run failed",
+          },
+        });
+        throw new Error(
+          `step_failed: step ${step.id} failed: ${result?.summary ?? "unknown"}`,
+        );
+      }
+
+      const reasons = await runVerifiers({ step, recipe, result });
+      if (reasons.length === 0) {
+        const output = { status: "completed", summary: result.summary ?? "" };
+        blackboard.confirm({
+          ticketId,
+          runId,
+          output,
+          artifacts: result.artifacts ?? [],
+        });
+        // The step record is the ONLY thing that leaves the orchestration for
+        // this step (§6.3 reverse isolation): confirmed summary and
+        // bookkeeping, never the runner's raw output or verify chatter.
+        return {
+          stepId: step.id,
+          recipeId: step.recipe,
+          ticketId,
+          status: "completed",
+          summary: output.summary,
+          attempts,
+        };
+      }
+      feedback = Object.freeze([...reasons]);
     }
 
-    const output = {
-      status: "completed",
-      summary: result.summary ?? "",
-    };
-    blackboard.confirm({
-      ticketId,
+    blackboard.reject({
       runId,
-      output,
-      artifacts: result.artifacts ?? [],
+      output: {
+        status: "failed",
+        summary: `verify rejected after ${attempts} attempt(s): ${feedback.join("; ")}`,
+      },
     });
-
-    // The step record is the ONLY thing that leaves the orchestration for
-    // this step (§6.3 reverse isolation): confirmed summary and bookkeeping,
-    // never the runner's raw output or intermediate chatter.
-    return {
-      stepId: step.id,
-      recipeId: step.recipe,
-      ticketId,
-      status: "completed",
-      summary: output.summary,
-      attempts: 1,
-    };
+    throw new Error(
+      `verify_exhausted: step ${step.id} was rejected ${attempts} time(s) and was cut off: ${feedback.join("; ")}`,
+    );
   };
 
+  // The vertical thread (4.3): the Hanaita assigns every READY step (all
+  // dependencies confirmed) as one parallel wave — fan-out — then folds the
+  // confirmed results back before assigning dependents — pipeline / fan-in.
+  // Star topology: specialists only ever talk to the Hanaita/blackboard.
   const runGoal = async ({ goal, goalId, steps, audience }) => {
     const stepResults = [];
     const ticketsByStep = new Map();
-    try {
-      for (const step of steps) {
-        const record = await runStep({
-          goal,
-          goalId,
-          step,
-          audience,
-          ticketsByStep,
-        });
-        ticketsByStep.set(step.id, record.ticketId);
-        stepResults.push(record);
+    const remaining = new Map(steps.map((step) => [step.id, step]));
+    let failure = null;
+
+    while (remaining.size > 0 && !failure) {
+      const ready = [...remaining.values()].filter((step) =>
+        (step.dependsOn ?? []).every((dep) => ticketsByStep.has(dep)),
+      );
+      if (ready.length === 0) {
+        failure = new Error(
+          "goal_stalled: circular or unsatisfiable step dependencies",
+        );
+        break;
       }
-    } catch (error) {
+      for (const step of ready) {
+        remaining.delete(step.id);
+      }
+      const settled = await Promise.allSettled(
+        ready.map((step) =>
+          runStep({ goal, goalId, step, audience, ticketsByStep }),
+        ),
+      );
+      settled.forEach((outcome, index) => {
+        if (outcome.status === "fulfilled") {
+          ticketsByStep.set(ready[index].id, outcome.value.ticketId);
+          stepResults.push(outcome.value);
+        } else if (!failure) {
+          failure = outcome.reason;
+        }
+      });
+    }
+
+    if (failure) {
       return Object.freeze({
         goalId,
         status: "failed",
-        reason: error.message,
-        summary: `goal failed: ${error.message}`,
+        reason: failure.message,
+        summary: `goal failed: ${failure.message}`,
         steps: Object.freeze(stepResults),
       });
     }
 
+    // The goal summary aggregates the TERMINAL confirmed results (steps no
+    // other step depends on) — the fan-in plate handed back to Iroha.
+    const dependedOn = new Set(steps.flatMap((step) => step.dependsOn ?? []));
     const summary = stepResults
-      .map((step) => step.summary)
+      .filter((record) => !dependedOn.has(record.stepId))
+      .map((record) => record.summary)
       .filter(Boolean)
       .join("\n");
     return Object.freeze({

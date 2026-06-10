@@ -5,7 +5,10 @@ import { join } from "node:path";
 import test from "node:test";
 
 import { createInMemoryProjectOs } from "../src/index.js";
-import { createHanaita } from "../src/agent-bank/hanaita.js";
+import {
+  createHanaita,
+  createToolUsageVerifier,
+} from "../src/agent-bank/hanaita.js";
 
 const makeBank = () => mkdtempSync(join(tmpdir(), "agent-bank-hanaita-"));
 const makeWorkspace = () => mkdtempSync(join(tmpdir(), "hanaita-ws-"));
@@ -350,6 +353,241 @@ test("orchestration chatter does not pollute the identity context or the goal re
       "ticketId",
     ]);
   }
+});
+
+// ---- 4.3 star / pipeline / fan-out -----------------------------------------
+
+test("a two-specialist pipeline completes one goal through the blackboard", async () => {
+  const root = makeBank();
+  writeRecipe(root, "active", "researcher");
+  writeRecipe(root, "active", "writer");
+  const projectOs = createInMemoryProjectOs();
+  const { hanaita } = makeHanaita({
+    root,
+    projectOs,
+    createRunner: ({ id }) => ({
+      id,
+      run: async (task, context) => ({
+        status: "completed",
+        summary:
+          id === "researcher"
+            ? "FACTS: water is wet"
+            : `ARTICLE built on [${context.slice.prior
+                .map((p) => p.output.summary)
+                .join("; ")}]`,
+      }),
+    }),
+  });
+
+  const result = await hanaita.delegateGoal({
+    title: "publish",
+    steps: [
+      { id: "research", recipe: "researcher", slice: "gather facts" },
+      { id: "write", recipe: "writer", dependsOn: ["research"] },
+    ],
+  }).summary;
+
+  assert.equal(result.status, "completed");
+  // the goal summary is the terminal step's confirmed output
+  assert.match(result.summary, /ARTICLE built on \[FACTS: water is wet\]/);
+  // 2 delegations = 2 tickets = 2 completed runs
+  const snapshot = projectOs.snapshot();
+  assert.equal(snapshot.tickets.length, 2);
+  assert.equal(
+    snapshot.runs.filter((run) => run.status === "completed").length,
+    2,
+  );
+});
+
+test("fan-out runs independent steps concurrently and fan-in aggregates them", async () => {
+  const root = makeBank();
+  writeRecipe(root, "active", "alpha");
+  writeRecipe(root, "active", "beta");
+  writeRecipe(root, "active", "merger");
+
+  // barrier: alpha and beta must BOTH be in flight before either resolves —
+  // a sequential executor would deadlock here (and fail by timeout)
+  let started = 0;
+  let releaseBarrier;
+  const barrier = new Promise((resolve) => {
+    releaseBarrier = resolve;
+  });
+  const arrive = () => {
+    started += 1;
+    if (started === 2) {
+      releaseBarrier();
+    }
+    return barrier;
+  };
+
+  const seen = {};
+  const { hanaita } = makeHanaita({
+    root,
+    createRunner: ({ id }) => ({
+      id,
+      run: async (task, context) => {
+        seen[id] = context.slice;
+        if (id !== "merger") {
+          await arrive();
+        }
+        return { status: "completed", summary: `${id}-result` };
+      },
+    }),
+  });
+
+  const result = await hanaita.delegateGoal({
+    title: "fan",
+    steps: [
+      { id: "a", recipe: "alpha" },
+      { id: "b", recipe: "beta" },
+      { id: "merge", recipe: "merger", dependsOn: ["a", "b"] },
+    ],
+  }).summary;
+
+  assert.equal(result.status, "completed");
+  // fan-in: the merger received BOTH confirmed results
+  const priors = seen.merger.prior.map((p) => p.output.summary).sort();
+  assert.deepEqual(priors, ["alpha-result", "beta-result"]);
+  assert.match(result.summary, /merger-result/);
+});
+
+test("a circular dependency stalls the goal instead of hanging", async () => {
+  const root = makeBank();
+  writeRecipe(root, "active", "alpha");
+  writeRecipe(root, "active", "beta");
+  const { hanaita } = makeHanaita({ root });
+
+  const result = await hanaita.delegateGoal({
+    title: "loop",
+    steps: [
+      { id: "a", recipe: "alpha", dependsOn: ["b"] },
+      { id: "b", recipe: "beta", dependsOn: ["a"] },
+    ],
+  }).summary;
+
+  assert.equal(result.status, "failed");
+  assert.match(result.reason, /stalled|circular/i);
+});
+
+// ---- 4.4 verify loop: send back, then cut off at the cap --------------------
+
+test("a rejected result is sent back with feedback and the corrected result completes", async () => {
+  const root = makeBank();
+  writeRecipe(root, "active", "researcher");
+  const projectOs = createInMemoryProjectOs();
+  const feedbackSeen = [];
+  let attempt = 0;
+  const { hanaita } = makeHanaita({
+    root,
+    projectOs,
+    createRunner: ({ id }) => ({
+      id,
+      run: async (task, context) => {
+        attempt += 1;
+        feedbackSeen.push(context.slice.feedback);
+        return {
+          status: "completed",
+          summary: attempt === 1 ? "rough draft" : "VERIFIED-DATA final",
+        };
+      },
+    }),
+    options: {
+      verifiers: [
+        {
+          id: "mekiki",
+          verify: ({ result }) =>
+            result.summary.includes("VERIFIED-DATA")
+              ? { ok: true, reasons: [] }
+              : { ok: false, reasons: ["summary lacks VERIFIED-DATA"] },
+        },
+      ],
+      maxVerifyAttempts: 3,
+    },
+  });
+
+  const result = await hanaita.delegateGoal({
+    title: "t",
+    steps: [{ id: "s1", recipe: "researcher" }],
+  }).summary;
+
+  assert.equal(result.status, "completed");
+  assert.equal(result.steps[0].attempts, 2);
+  // first attempt had no feedback; the send-back carried the verifier reasons
+  assert.equal(feedbackSeen[0], null);
+  assert.deepEqual(feedbackSeen[1], ["summary lacks VERIFIED-DATA"]);
+  // still one delegation: 1 ticket, 1 run, completed (retries stay inside)
+  const snapshot = projectOs.snapshot();
+  assert.equal(snapshot.tickets.length, 1);
+  assert.equal(snapshot.runs.length, 1);
+  assert.equal(snapshot.runs[0].status, "completed");
+});
+
+test("unfit work is cut off at the iteration cap and recorded as failed", async () => {
+  const root = makeBank();
+  writeRecipe(root, "active", "researcher");
+  const projectOs = createInMemoryProjectOs();
+  let attempts = 0;
+  const { hanaita } = makeHanaita({
+    root,
+    projectOs,
+    createRunner: ({ id }) => ({
+      id,
+      run: async () => {
+        attempts += 1;
+        return { status: "completed", summary: "still sloppy" };
+      },
+    }),
+    options: {
+      verifiers: [
+        {
+          id: "mekiki",
+          verify: () => ({ ok: false, reasons: ["not good enough"] }),
+        },
+      ],
+      maxVerifyAttempts: 2,
+    },
+  });
+
+  const result = await hanaita.delegateGoal({
+    title: "t",
+    steps: [{ id: "s1", recipe: "researcher" }],
+  }).summary;
+
+  assert.equal(result.status, "failed");
+  assert.match(result.reason, /verify/i);
+  assert.equal(attempts, 2, "stops exactly at the cap");
+  // the failed delegation is on the board so the ledger counts it as a miss
+  const snapshot = projectOs.snapshot();
+  assert.equal(snapshot.runs.length, 1);
+  assert.equal(snapshot.runs[0].status, "failed");
+});
+
+test("the bantou-style tool-usage verifier rejects work that claims tools outside the recipe toolset", async () => {
+  const root = makeBank();
+  writeRecipe(root, "active", "clerk", { toolset: ["doc-read"] });
+  const { hanaita } = makeHanaita({
+    root,
+    createRunner: ({ id }) => ({
+      id,
+      run: async () => ({
+        status: "completed",
+        summary: "did the work",
+        toolsUsed: ["doc-read", "vault-read"],
+      }),
+    }),
+    options: {
+      verifiers: [createToolUsageVerifier()],
+      maxVerifyAttempts: 1,
+    },
+  });
+
+  const result = await hanaita.delegateGoal({
+    title: "t",
+    steps: [{ id: "s1", recipe: "clerk" }],
+  }).summary;
+
+  assert.equal(result.status, "failed");
+  assert.match(result.reason, /vault-read/);
 });
 
 test("a workspace outside the allowed scope fails the step (scoped runner enforces it)", async () => {
