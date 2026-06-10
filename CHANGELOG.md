@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Behavior Changes
+
+- removed the `deep` brain slot: `createIroHarness({ brains })` now accepts only
+  `voice` and `text`, the router no longer emits a `deep` route kind (deep
+  discussion signals route to the text brain), and `createAudienceContextPolicy`
+  no longer returns a `deep` response depth — `deep_discussion` permission still
+  upgrades depth to `standard`; the deployed StackChan gateway has already been
+  running without the deep slot
+
 ### Skills
 
 - added a first skills registry module in `iroharness/skills` with built-in
@@ -21,6 +30,10 @@
 - added AIAvatarStackChan-style WebSocket compatibility to the StackChan realtime
   session handler, including `start`, `data`, `invoke`, `stop`, `connected`,
   `accepted`, `chunk`, and `final` message translation
+- added host-side WAV-to-PCM16 normalization for StackChan realtime speech so
+  AivisSpeech TTS can feed the firmware's existing PCM speaker path
+- allowed the StackChan HTTP invoke path to deliver speech through the active
+  realtime WebSocket session when a device is connected
 - added AIAvatarStackChan protocol mode to the StackChan realtime simulator
 - added the IroHarness-owned StackChan firmware runtime under
   `firmware/stackchan-runtime`, derived from AIAvatarStackChan with MIT notice
