@@ -3316,9 +3316,14 @@ export const createIroHarness = ({
   // Streaming entry point with the same 関所 (gate sequence) as receive().
   // Resolves to { stream: null, result } when a gate rejects/redirects the
   // turn (result is exactly what receive() would return), or to
-  // { stream, finalize } on the happy path. The caller consumes the stream,
-  // then calls finalize(fullText, { emotion }) once to run receive()'s
-  // post-brain path (response:before hook, speaking/idle states, speech emit).
+  // { stream, finalize, abandon } on the happy path. The caller consumes the
+  // stream, then calls finalize(fullText, { emotion }) once to run receive()'s
+  // post-brain path (response:before hook, speaking/idle states, speech emit),
+  // or abandon() to drop the turn (e.g. barge-in with no follow-up) and return
+  // the state to idle without any speech emit. finalize/abandon share a
+  // one-shot latch: after either has run, finalize() returns null and
+  // abandon() is a no-op, so a turn is never spoken twice or spoken after
+  // being abandoned.
   const receiveStream = async (input, { signal } = {}) => {
     const prepared = await prepareTurn(input);
     if (prepared.done) {
@@ -3327,9 +3332,29 @@ export const createIroHarness = ({
     const stream = toBrainStream(prepared.brain, prepared.brainContext, {
       signal,
     });
-    const finalize = (fullText, { emotion } = {}) =>
-      finalizeResponse(prepared, { text: fullText, emotion });
-    return freezeCopy({ stream, finalize });
+    let settled = false;
+    const finalize = async (fullText, { emotion } = {}) => {
+      if (settled) {
+        return null;
+      }
+      settled = true;
+      return finalizeResponse(prepared, { text: fullText, emotion });
+    };
+    const abandon = () => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      // Same idle transition finalizeResponse ends with, minus the speech.
+      setState({
+        mode: MODES.idle,
+        emotion: "attentive",
+        speechText: null,
+        mouth: "closed",
+        motion: MODES.idle,
+      });
+    };
+    return freezeCopy({ stream, finalize, abandon });
   };
 
   const rejectByHook = (input, route, actor, audience, reason) => {

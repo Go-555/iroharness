@@ -230,16 +230,24 @@ export interface BrainStreamDelta {
 // receiveStream resolves to one of two shapes:
 // - gate rejected/redirected: { stream: null, result } where result is exactly
 //   what receive() would have returned for the same input.
-// - happy path: { stream, finalize } — consume the stream, then call
-//   finalize(fullText, { emotion }) once to run receive()'s post-brain path.
-export interface ReceiveStreamResult {
-  readonly stream: AsyncIterable<BrainStreamDelta> | null;
-  readonly result?: JsonObject;
-  readonly finalize?: (
-    fullText: string,
-    options?: { readonly emotion?: string },
-  ) => Promise<JsonObject>;
-}
+// - happy path: { stream, finalize, abandon } — consume the stream, then call
+//   finalize(fullText, { emotion }) once to run receive()'s post-brain path,
+//   or abandon() to drop the turn and return state to idle with no speech.
+//   finalize/abandon share a one-shot latch: after either has run, finalize()
+//   resolves to null and abandon() is a no-op.
+export type ReceiveStreamResult =
+  | {
+      readonly stream: null;
+      readonly result: JsonObject;
+    }
+  | {
+      readonly stream: AsyncIterable<BrainStreamDelta>;
+      readonly finalize: (
+        fullText: string,
+        options?: { readonly emotion?: string },
+      ) => Promise<JsonObject | null>;
+      readonly abandon: () => void;
+    };
 
 export interface IroHarness {
   readonly character: CharacterProfile;

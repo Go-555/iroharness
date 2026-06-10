@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { createHookRegistry } from "../src/extension/hook-registry.js";
 import {
   createEchoBrain,
   createHeuristicRouter,
@@ -21,7 +22,7 @@ const createDeveloperRegistry = () => {
   return userRegistry;
 };
 
-const buildHarness = ({ brains } = {}) => {
+const buildHarness = ({ brains, hooks = null } = {}) => {
   const recorder = createRecorderDevice("recorder");
   const harness = createIroHarness({
     character: {
@@ -38,6 +39,7 @@ const buildHarness = ({ brains } = {}) => {
       text: createEchoBrain("text-standard"),
     },
     devices: [recorder],
+    hooks,
   });
   return { harness, recorder };
 };
@@ -186,4 +188,102 @@ test("receiveStream passes the caller's signal through to the streaming brain", 
   assert.equal(capturedContext.route.kind, "voice");
   assert.ok(capturedContext.actor);
   assert.ok(capturedContext.audience);
+});
+
+const startTurn = (harness) =>
+  harness.receiveStream({
+    source: "web",
+    modality: "voice",
+    text: "こんにちは",
+  });
+
+test("abandon() resets state to idle without any speech emit", async () => {
+  const { harness, recorder } = buildHarness();
+  const { abandon } = await startTurn(harness);
+
+  // prepareTurn left the harness thinking; an abandoned turn must not wedge it.
+  assert.equal(harness.state().mode, "thinking");
+  abandon();
+
+  assert.equal(harness.state().mode, "idle");
+  assert.equal(harness.state().speechText, null);
+  assert.equal(harness.state().mouth, "closed");
+  assert.equal(
+    recorder.events().filter((event) => event.type === "speech").length,
+    0,
+  );
+});
+
+test("finalize() after abandon() is a no-op returning null", async () => {
+  const { harness, recorder } = buildHarness();
+  const { finalize, abandon } = await startTurn(harness);
+
+  abandon();
+  const eventsBefore = recorder.events().length;
+  const stateBefore = harness.state();
+
+  const result = await finalize("喋らないで");
+
+  assert.equal(result, null);
+  assert.equal(recorder.events().length, eventsBefore);
+  assert.deepEqual(harness.state(), stateBefore);
+});
+
+test("abandon() after finalize() is a no-op", async () => {
+  const { harness, recorder } = buildHarness();
+  const { finalize, abandon } = await startTurn(harness);
+
+  const result = await finalize("やあ");
+  assert.equal(result.kind, "response");
+  assert.equal(result.text, "やあ");
+
+  const eventsBefore = recorder.events().length;
+  const stateBefore = harness.state();
+  abandon();
+
+  assert.equal(recorder.events().length, eventsBefore);
+  assert.deepEqual(harness.state(), stateBefore);
+});
+
+test("a second finalize() returns null and emits nothing", async () => {
+  const { harness, recorder } = buildHarness();
+  const { finalize } = await startTurn(harness);
+
+  const first = await finalize("やあ");
+  assert.equal(first.kind, "response");
+
+  const eventsBefore = recorder.events().length;
+  const second = await finalize("やあ");
+
+  assert.equal(second, null);
+  assert.equal(recorder.events().length, eventsBefore);
+  assert.equal(
+    recorder.events().filter((event) => event.type === "speech").length,
+    1,
+  );
+});
+
+test("receiveStream resolves stream: null with the exact receive() result when a turn:before hook blocks", async () => {
+  const blockedInput = Object.freeze({
+    source: "web",
+    modality: "voice",
+    text: "こんにちは",
+  });
+  const makeHooks = () => {
+    const hooks = createHookRegistry();
+    hooks.register("turn:before", () => ({ block: { reason: "nope" } }));
+    return hooks;
+  };
+
+  const receiveHarness = buildHarness({ hooks: makeHooks() }).harness;
+  const receiveResult = await receiveHarness.receive(blockedInput);
+  assert.equal(receiveResult.kind, "hook_denied");
+  assert.equal(receiveResult.reason, "nope");
+
+  const streamHarness = buildHarness({ hooks: makeHooks() }).harness;
+  const streamed = await streamHarness.receiveStream(blockedInput);
+  assert.equal(streamed.stream, null);
+  assert.equal(typeof streamed.finalize, "undefined");
+  assert.equal(typeof streamed.abandon, "undefined");
+  assert.deepEqual(streamed.result, receiveResult);
 });
