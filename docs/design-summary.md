@@ -164,17 +164,18 @@ beads の流儀は「1委譲 = 1 bead」。run を独立レコードとして別
 
 ---
 
-## 7. 実装状況（2026-06-08 時点）
+## 7. 実装状況（2026-06-10 時点）
 
 | 部位 | 状態 |
 |---|---|
 | `ProjectOs` 契約・本体配線 | **実装済み**（`createInMemoryProjectOs` / `createFileProjectOs` ＋ 本体・adapter が契約に依存） |
-| Bank コア（recipe/registry/ledger/seed/昇格ガード） | **実装済み・テスト green**（worktree `feat/agent-bank`）。mint / persist-guard は Phase 3 の仕掛かり（本トランシェ未収録） |
+| Bank コア（recipe/registry/ledger/seed/昇格ガード） | **実装済み・テスト green** |
+| **Phase 3 動的生成（mint / persist-guard / sandbox 検証）** | **実装済み・テスト green・本トランシェ収録**。mint は id 検証＋frontmatter 注入拒否＋allowlist intersect＋staging ガード必須経由、persist は scoped workspace 限定（host グローバル dir は既定拒否・owner 承認のみ）、sandbox 検証は bank root の `verification-ledger.json` が権威（昇格ガードは記録優先で導出、`runTrial` への実 Work Runner 配線は今後） |
 | **beads バックエンド（`createBeadsProjectOs`・道A／6メソッド保持）** | **実装済み**（`src/beads-project-os.js`）。ユニット（fake exec）11 green ＋ **実 bd 統合テスト 1 green**、全体 204 green |
 | **本体 `runMicroHarness`** | **無改修**（道A＝6メソッド契約と snapshot 互換を保持したため。既存テスト全 green） |
 | snapshot メモ化（レイテンシ実測の上で） | **未了**（要否を実測で判断＝§9） |
 | 協力して動く（素の beads ループでの orchestration） | **未着手**（方針は確定：formula 不使用、素の ready/claim/close） |
-| 設計書 `agent-bank.md` | あり（Agent Bank 中心の旧構成・本書に合わせ要更新） |
+| 設計書 `agent-bank.md` | あり（2026-06-10 改訂済み：beads 整合＋Phase 3 実装状況を反映） |
 | git 履歴 | 一部乱れ（commit と実体がズレ・要棚卸し） |
 
 ---

@@ -59,9 +59,9 @@
 
 | Task | 内容 | DoD | Depends | Status |
 |------|------|-----|---------|--------|
-| 3.1 | `mint_specialist`: task から recipe(role/prompt/toolset) を生成＋ **要求 toolset を allowlist と intersect（許可外は剥がす/拒否）** | サンプル task から schema 妥当な recipe.md が `staging/` に生成され、許可外ツール要求が剥がれる/拒否される負テストが通る (B-1) | 3.1依存→ 1.1, 1.5, 5.1 | cc:TODO |
-| 3.2 | 生成 recipe の永続化連携 ＝ **書込先を scoped workspace 内に限定**。host グローバル agent dir（`~/.claude/agents/` 等）への書込は owner 明示承認時のみ・既定禁止 | scoped workspace への書込は成功、host グローバルへの書込が既定で拒否される境界テストが通る（mock 可） (B-4) | 3.1, 0.2 | cc:TODO |
-| 3.3 | 生成 recipe のサンドボックス検証（Work Runner 隔離試走） | 未検証 recipe は active へ昇格できないことを保証するテストが通る（2.2 合成ガードの sandbox-verified 条件を満たす） | 3.1, 2.2 | cc:TODO |
+| 3.1 | `mint_specialist`: task から recipe(role/prompt/toolset) を生成＋ **要求 toolset を allowlist と intersect（許可外は剥がす/拒否）** | サンプル task から schema 妥当な recipe.md が `staging/` に生成され、許可外ツール要求が剥がれる/拒否される負テストが通る (B-1) | 3.1依存→ 1.1, 1.5, 5.1 | cc:DONE |
+| 3.2 | 生成 recipe の永続化連携 ＝ **書込先を scoped workspace 内に限定**。host グローバル agent dir（`~/.claude/agents/` 等）への書込は owner 明示承認時のみ・既定禁止 | scoped workspace への書込は成功、host グローバルへの書込が既定で拒否される境界テストが通る（mock 可） (B-4) | 3.1, 0.2 | cc:DONE |
+| 3.3 | 生成 recipe のサンドボックス検証（Work Runner 隔離試走） | 未検証 recipe は active へ昇格できないことを保証するテストが通る（2.2 合成ガードの sandbox-verified 条件を満たす） | 3.1, 2.2 | cc:DONE |
 
 ## Phase 4: Hanaita orchestration（delegate_goal）
 
