@@ -2583,6 +2583,58 @@ test("Discord bot runtime identifies, receives messages, and replies", async () 
   runtime.stop();
 });
 
+test("createAivisSpeechTts overrides outputSamplingRate when configured", async () => {
+  const calls = [];
+  const fetchImpl = async (url, opts) => {
+    calls.push({ url: String(url), body: opts?.body });
+    if (String(url).includes("audio_query")) {
+      return {
+        ok: true,
+        status: 200,
+        async text() {
+          return JSON.stringify({ outputSamplingRate: 44100 });
+        }
+      };
+    }
+    return {
+      ok: true,
+      status: 200,
+      async arrayBuffer() {
+        return new ArrayBuffer(44);
+      }
+    };
+  };
+  const tts = createAivisSpeechTts({ speaker: 1, fetchImpl, outputSamplingRate: 24000 });
+  await tts.stream({ text: "テスト" });
+  assert.match(calls[1].body, /"outputSamplingRate":24000/);
+});
+
+test("createAivisSpeechTts keeps engine outputSamplingRate when option is absent", async () => {
+  const calls = [];
+  const fetchImpl = async (url, opts) => {
+    calls.push({ url: String(url), body: opts?.body });
+    if (String(url).includes("audio_query")) {
+      return {
+        ok: true,
+        status: 200,
+        async text() {
+          return JSON.stringify({ outputSamplingRate: 44100 });
+        }
+      };
+    }
+    return {
+      ok: true,
+      status: 200,
+      async arrayBuffer() {
+        return new ArrayBuffer(44);
+      }
+    };
+  };
+  const tts = createAivisSpeechTts({ speaker: 1, fetchImpl });
+  await tts.stream({ text: "テスト" });
+  assert.match(calls[1].body, /"outputSamplingRate":44100/);
+});
+
 test("Discord bot runtime ignores messages from itself", async () => {
   const sentGateway = [];
   const receivedTurns = [];

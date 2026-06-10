@@ -2925,7 +2925,8 @@ export const createAivisSpeechTts = ({
   speaker,
   headers = {},
   fetchImpl = globalThis.fetch,
-  useCancellableSynthesis = false
+  useCancellableSynthesis = false,
+  outputSamplingRate = null
 } = {}) => {
   if (speaker === undefined || speaker === null || speaker === "") {
     throw new Error("createAivisSpeechTts requires speaker");
@@ -2975,6 +2976,9 @@ export const createAivisSpeechTts = ({
         response: queryResponse,
         label: `AivisSpeech audio_query ${id}`
       });
+      if (outputSamplingRate) {
+        audioQuery.outputSamplingRate = outputSamplingRate;
+      }
       if (signal?.aborted) {
         emit({
           type: "tts.interrupted",
