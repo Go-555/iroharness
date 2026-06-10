@@ -17,7 +17,10 @@ const character = createFileCharacterProfile({
 Files:
 
 - `AGENTS.md`: operating instructions for coding agents and micro harnesses
-- `SOUL.md`: personality, tone, boundaries, and stable behavior
+- `SOUL.md`: personality, tone, boundaries, and stable behavior.
+  [persona-guard.md](./persona-guard.md) defines the recommended structure — an
+  explicit `## Vocabulary Rules` section and perplexed-response examples — that
+  `iroharness persona-check` can verify.
 - `IDENTITY.md`: who the character is
 - `MEMORY.md`: durable facts and relationship context
 - `VOICE.md`: optional voice style
