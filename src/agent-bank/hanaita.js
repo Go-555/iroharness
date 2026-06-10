@@ -29,6 +29,25 @@ import { createBankRegistry } from "./registry.js";
 const createId = (prefix) =>
   `${prefix}-${Math.random().toString(36).slice(2, 10)}`;
 
+// Cost / runaway guard policy (Phase 4.5, W-1). Finite, safe-by-default:
+// - maxSpecialistsPerGoal: hires across the ROOT goal and every recursive
+//   sub-goal it spawns (one shared counter — a runaway recursion cannot
+//   reset it).
+// - maxDepth: how deep recursive delegate() may nest (root goal = depth 0).
+// - tokenBudget: the runner-REPORTED token spend (result.tokensUsed, an
+//   estimate, not metered billing) shared by the root goal and its sub-goals;
+//   once exceeded, no further specialist is hired.
+export const DEFAULT_HANAITA_GUARDS = Object.freeze({
+  maxSpecialistsPerGoal: 8,
+  maxDepth: 1,
+  tokenBudget: 200_000,
+});
+
+const reportedTokens = (result) => {
+  const tokens = Number(result?.tokensUsed ?? result?.raw?.tokensUsed);
+  return Number.isFinite(tokens) && tokens > 0 ? tokens : 0;
+};
+
 // Same decision table as createScopedWorkRunnerMicroHarness /
 // bin createWorkRunnerPolicy: public=denied, trusted=permission-required
 // (audience.canDelegateWork), owner=allowed. Exported so the gate semantics
@@ -104,6 +123,7 @@ export const createHanaita = ({
   // maxVerifyAttempts; then the step is cut off and recorded as failed.
   verifiers = [],
   maxVerifyAttempts = 3,
+  guards = {},
 } = {}) => {
   if (!root) {
     throw new Error("createHanaita requires the bank root");
@@ -124,6 +144,7 @@ export const createHanaita = ({
 
   const registry = createBankRegistry({ root });
   const blackboard = createBlackboard({ projectOs, ownerCharacterId });
+  const guardPolicy = Object.freeze({ ...DEFAULT_HANAITA_GUARDS, ...guards });
 
   // Hire = resolve the recipe with the FOLDER as the status authority.
   // Anything not in active/ is refused (invariant 1).
@@ -158,7 +179,30 @@ export const createHanaita = ({
     return reasons;
   };
 
-  const runStep = async ({ goal, goalId, step, audience, ticketsByStep }) => {
+  const runStep = async ({
+    goal,
+    goalId,
+    step,
+    audience,
+    ticketsByStep,
+    depth,
+    trackers,
+  }) => {
+    // 4.5 guards, checked BEFORE any hire so a tripped guard stops the goal
+    // without creating another runner. Both counters are shared with every
+    // recursive sub-goal of the same root goal (W-1).
+    if (trackers.tokensUsed > guardPolicy.tokenBudget) {
+      throw new Error(
+        `token_budget_exceeded: ~${trackers.tokensUsed} reported tokens spent of ${guardPolicy.tokenBudget} — the goal is cut off`,
+      );
+    }
+    trackers.hires += 1;
+    if (trackers.hires > guardPolicy.maxSpecialistsPerGoal) {
+      throw new Error(
+        `max_specialists_per_goal_exceeded: hiring specialist #${trackers.hires} exceeds the limit of ${guardPolicy.maxSpecialistsPerGoal}`,
+      );
+    }
+
     const recipe = hire(step.recipe);
 
     // The specialist's context slice: ONLY the instruction for this step plus
@@ -206,6 +250,14 @@ export const createHanaita = ({
       ),
     });
 
+    // Recursive delegation (W-1): a specialist may delegate a sub-goal, but
+    // only through the SAME gate + guards (no bypass): the sub-goal re-runs
+    // the permission gate with the ROOT caller's audience (a specialist
+    // cannot claim broader permissions), sits one level deeper for maxDepth,
+    // and draws down the shared hire/token trackers.
+    const delegate = (subGoal) =>
+      delegateInternal(subGoal, { audience, depth: depth + 1, trackers });
+
     // Verify loop (4.4): run → verify → send back with feedback → ... → cap.
     // Retries stay INSIDE the one delegation: 1 ticket = 1 run; only the
     // final outcome is folded onto the board.
@@ -216,7 +268,9 @@ export const createHanaita = ({
       const result = await scoped.run(task, {
         audience,
         slice: makeSlice(feedback),
+        delegate,
       });
+      trackers.tokensUsed += reportedTokens(result);
 
       if (result?.status !== "completed") {
         blackboard.reject({
@@ -271,7 +325,14 @@ export const createHanaita = ({
   // dependencies confirmed) as one parallel wave — fan-out — then folds the
   // confirmed results back before assigning dependents — pipeline / fan-in.
   // Star topology: specialists only ever talk to the Hanaita/blackboard.
-  const runGoal = async ({ goal, goalId, steps, audience }) => {
+  const runGoal = async ({
+    goal,
+    goalId,
+    steps,
+    audience,
+    depth,
+    trackers,
+  }) => {
     const stepResults = [];
     const ticketsByStep = new Map();
     const remaining = new Map(steps.map((step) => [step.id, step]));
@@ -292,7 +353,15 @@ export const createHanaita = ({
       }
       const settled = await Promise.allSettled(
         ready.map((step) =>
-          runStep({ goal, goalId, step, audience, ticketsByStep }),
+          runStep({
+            goal,
+            goalId,
+            step,
+            audience,
+            ticketsByStep,
+            depth,
+            trackers,
+          }),
         ),
       );
       settled.forEach((outcome, index) => {
@@ -332,10 +401,10 @@ export const createHanaita = ({
     });
   };
 
-  // delegate_goal: synchronous gate + validation, asynchronous execution.
-  // Returns { goalId, summary } where summary is a Promise resolving to the
-  // goal result — goal failures RESOLVE (status: "failed"), they never reject.
-  const delegateGoal = (goal, { audience } = {}) => {
+  // Shared entry for the public delegate_goal and recursive sub-delegations:
+  // BOTH pass the same permission gate and the same guards — there is no
+  // privileged inner path.
+  const delegateInternal = (goal, { audience, depth, trackers }) => {
     const gate = evaluateDelegationGate({ policy: workRunnerPolicy, audience });
     if (!gate.ok) {
       throw new Error(
@@ -344,11 +413,26 @@ export const createHanaita = ({
           : "delegate_goal denied: delegation requires delegate_work permission",
       );
     }
+    if (depth > guardPolicy.maxDepth) {
+      throw new Error(
+        `max_depth_exceeded: delegation depth ${depth} exceeds the limit of ${guardPolicy.maxDepth}`,
+      );
+    }
     const steps = normalizeSteps(goal);
     const goalId = createId("goal");
-    const summary = runGoal({ goal, goalId, steps, audience });
+    const summary = runGoal({ goal, goalId, steps, audience, depth, trackers });
     return Object.freeze({ goalId, summary });
   };
+
+  // delegate_goal: synchronous gate + validation, asynchronous execution.
+  // Returns { goalId, summary } where summary is a Promise resolving to the
+  // goal result — goal failures RESOLVE (status: "failed"), they never reject.
+  const delegateGoal = (goal, { audience } = {}) =>
+    delegateInternal(goal, {
+      audience,
+      depth: 0,
+      trackers: { hires: 0, tokensUsed: 0 },
+    });
 
   return Object.freeze({ delegateGoal });
 };

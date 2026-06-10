@@ -590,6 +590,163 @@ test("the bantou-style tool-usage verifier rejects work that claims tools outsid
   assert.match(result.reason, /vault-read/);
 });
 
+// ---- 4.5 cost / runaway guards (W-1) ----------------------------------------
+
+test("a goal is cut off when it exceeds max_specialists_per_goal", async () => {
+  const root = makeBank();
+  for (const id of ["alpha", "beta", "gamma"]) {
+    writeRecipe(root, "active", id);
+  }
+  let hired = 0;
+  const { hanaita } = makeHanaita({
+    root,
+    createRunner: ({ id }) => {
+      hired += 1;
+      return {
+        id,
+        run: async () => ({ status: "completed", summary: `${id}-done` }),
+      };
+    },
+    options: { guards: { maxSpecialistsPerGoal: 2 } },
+  });
+
+  const result = await hanaita.delegateGoal({
+    title: "too many cooks",
+    steps: [
+      { id: "a", recipe: "alpha" },
+      { id: "b", recipe: "beta" },
+      { id: "c", recipe: "gamma" },
+    ],
+  }).summary;
+
+  assert.equal(result.status, "failed");
+  assert.match(result.reason, /max_specialists_per_goal/);
+  assert.equal(hired, 2, "the third specialist is never hired");
+});
+
+test("recursive delegation by a specialist obeys max_depth (W-1)", async () => {
+  const root = makeBank();
+  writeRecipe(root, "active", "fractal");
+  let hired = 0;
+  const depthErrors = [];
+  const { hanaita } = makeHanaita({
+    root,
+    createRunner: ({ id }) => ({
+      id,
+      run: async (task, context) => {
+        hired += 1;
+        try {
+          // every specialist tries to delegate a sub-goal, forever
+          const sub = context.delegate({
+            title: "go deeper",
+            steps: [{ id: "deeper", recipe: "fractal" }],
+          });
+          const subResult = await sub.summary;
+          return {
+            status: "completed",
+            summary: `spawned: ${subResult.status}`,
+          };
+        } catch (error) {
+          depthErrors.push(error.message);
+          return { status: "completed", summary: "bottomed out" };
+        }
+      },
+    }),
+    options: { guards: { maxDepth: 1, maxSpecialistsPerGoal: 10 } },
+  });
+
+  const result = await hanaita.delegateGoal({
+    title: "recurse",
+    steps: [{ id: "top", recipe: "fractal" }],
+  }).summary;
+
+  assert.equal(result.status, "completed");
+  // root specialist (depth 0) may delegate once (depth 1); the depth-1
+  // specialist's attempt to go to depth 2 is refused
+  assert.equal(hired, 2, "recursion stops after one sub-delegation");
+  assert.equal(depthErrors.length, 1);
+  assert.match(depthErrors[0], /max_depth/);
+});
+
+test("a goal is cut off when the reported token usage exceeds token_budget", async () => {
+  const root = makeBank();
+  writeRecipe(root, "active", "alpha");
+  writeRecipe(root, "active", "beta");
+  let hired = 0;
+  const { hanaita } = makeHanaita({
+    root,
+    createRunner: ({ id }) => {
+      hired += 1;
+      return {
+        id,
+        run: async () => ({
+          status: "completed",
+          summary: `${id}-done`,
+          tokensUsed: 100,
+        }),
+      };
+    },
+    options: { guards: { tokenBudget: 50 } },
+  });
+
+  const result = await hanaita.delegateGoal({
+    title: "expensive",
+    steps: [
+      { id: "a", recipe: "alpha" },
+      { id: "b", recipe: "beta", dependsOn: ["a"] },
+    ],
+  }).summary;
+
+  assert.equal(result.status, "failed");
+  assert.match(result.reason, /token_budget/);
+  assert.equal(hired, 1, "no new specialist is hired once the budget is spent");
+});
+
+test("recursive sub-goals draw down the SAME root token budget", async () => {
+  const root = makeBank();
+  writeRecipe(root, "active", "spender");
+  writeRecipe(root, "active", "alpha");
+  let alphaHired = 0;
+  const { hanaita } = makeHanaita({
+    root,
+    createRunner: ({ id }) => ({
+      id,
+      run: async (task, context) => {
+        if (id === "spender" && context.slice.goal.title === "root") {
+          // the root spender delegates a sub-goal that burns the budget
+          const sub = context.delegate({
+            title: "burn",
+            steps: [{ id: "burnit", recipe: "spender" }],
+          });
+          await sub.summary;
+          return { status: "completed", summary: "delegated", tokensUsed: 0 };
+        }
+        if (id === "alpha") {
+          alphaHired += 1;
+        }
+        return { status: "completed", summary: "spent", tokensUsed: 100 };
+      },
+    }),
+    options: { guards: { tokenBudget: 50, maxSpecialistsPerGoal: 10 } },
+  });
+
+  const result = await hanaita.delegateGoal({
+    title: "root",
+    steps: [
+      { id: "first", recipe: "spender" },
+      { id: "second", recipe: "alpha", dependsOn: ["first"] },
+    ],
+  }).summary;
+
+  assert.equal(result.status, "failed");
+  assert.match(result.reason, /token_budget/);
+  assert.equal(
+    alphaHired,
+    0,
+    "the sub-goal's spend blocks the root's next hire",
+  );
+});
+
 test("a workspace outside the allowed scope fails the step (scoped runner enforces it)", async () => {
   const root = makeBank();
   writeRecipe(root, "active", "researcher");
