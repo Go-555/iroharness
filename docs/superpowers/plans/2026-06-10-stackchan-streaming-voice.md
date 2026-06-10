@@ -232,7 +232,8 @@ test("createAivisSpeechTts overrides outputSamplingRate", async () => {
 - Create: `src/voice-pipeline/metrics.js`
 - Test: `test/voice-metrics.test.js`
 
-仕様: `createVoiceTurnMetrics({ nowFn })`、`mark(name)` / `snapshot()`。snapshot は `vad_close_ms / stt_ms / llm_first_sentence_ms / tts_first_audio_ms / first_audio_total_ms` を mark 間差分で返す（mark 不足は null）。既存 `createRealtimeLatencyTracker` があれば包んで使い、二重実装しない。
+仕様: `createVoiceTurnMetrics({ nowFn })`、`mark(name)` / `snapshot()`。snapshot は `vad_close_ms / stt_ms / llm_first_sentence_ms / tts_first_audio_ms / first_audio_total_ms / total_ms` を mark 間差分で返す（mark 不足は null。`total_ms` は Task 13 の summary 用に意図的に追加）。
+**決定済み**: 既存 `createRealtimeLatencyTracker` は last-wins ＆ measure() throw のため**包まずスタンドアロン実装**（first-wins と null 許容が要件。理由はモジュールヘッダに明記）。
 
 - [ ] Step 1 failing test → Step 2 FAIL → Step 3 実装 → Step 4 PASS → Step 5 Commit `feat(voice): per-stage voice turn metrics`
 
