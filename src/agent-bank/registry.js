@@ -11,32 +11,17 @@ import {
 } from "node:fs";
 import { join } from "node:path";
 
+import { assertValidRecipeId, BANK_STATUSES } from "./ids.js";
 import {
   consumePromotionVerdict,
   isPassingPromotionVerdict,
 } from "./promotion.js";
 import { parseRecipe } from "./recipe.js";
 
-export const BANK_STATUSES = Object.freeze(["staging", "active", "archived"]);
-
-// Fix 3: single id validator applied at every entry point that turns an id
-// into a filesystem path. Rejects traversal ("..", "../x"), separators, and
-// anything not starting with an alphanumeric (so "." and ".hidden" fail too).
-const RECIPE_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
-
-export const assertValidRecipeId = (id) => {
-  if (
-    typeof id !== "string" ||
-    !RECIPE_ID_PATTERN.test(id) ||
-    id.includes("/") ||
-    id.includes("\\") ||
-    id === "." ||
-    id === ".."
-  ) {
-    throw new Error(`invalid recipe id: ${JSON.stringify(id)}`);
-  }
-  return id;
-};
+// BANK_STATUSES and the Fix 3 id validator live in ids.js (dependency-free, so
+// leaf modules can use them without import cycles); re-exported here because
+// this module is their historical home.
+export { assertValidRecipeId, BANK_STATUSES } from "./ids.js";
 
 export const createBankRegistry = ({ root }) => {
   const statusDir = (status) => join(root, status);

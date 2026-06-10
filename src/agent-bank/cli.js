@@ -42,6 +42,10 @@ export const runBankCommand = ({
       // Fix A: the verdict is bound to this recipe and is single-use.
       recipeId: id,
       ledgerEntry: ledger[id],
+      // Phase 3.3: passing the bank root makes the verification ledger
+      // (runSandboxVerification's record) the authority — a recorded trial
+      // outcome overrides the self-reported context below in both directions.
+      root,
       sandboxVerified: promotionContext.sandboxVerified === true,
       securityReview: promotionContext.securityReview ?? null,
       // B-1: origin comes from the seed manifest at the bank root (folder-

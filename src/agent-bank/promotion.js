@@ -4,6 +4,8 @@
 // recipe's own frontmatter. Returns { ok, reasons } so the composite promotion
 // gate (Phase 2.2) can combine it with threshold + sandbox + folder checks.
 
+import { lookupSandboxVerification } from "./sandbox.js";
+
 export const canPromoteToActive = ({
   securityReview,
   origin,
@@ -56,6 +58,12 @@ export const evaluatePromotion = ({
   securityReview,
   origin,
   ownerApproval = false,
+  // Phase 3.3: when the bank root is provided, sandbox verification is derived
+  // from the authoritative record (verification-ledger.json, written by
+  // runSandboxVerification) — a recorded outcome always beats the caller's
+  // self-reported `sandboxVerified`. Without a root the legacy self-report
+  // path is unchanged (compat).
+  root,
 } = {}) => {
   const reasons = [];
   const entry = ledgerEntry || { calls: 0, success: 0, avgScore: null };
@@ -77,7 +85,21 @@ export const evaluatePromotion = ({
       `avgScore ${entry.avgScore} < required ${thresholds.minScore}`,
     );
   }
-  if (sandboxVerified !== true) {
+  let sandboxOk = sandboxVerified === true;
+  if (root !== undefined) {
+    if (typeof recipeId === "string" && recipeId.length > 0) {
+      const record = lookupSandboxVerification({ root, id: recipeId });
+      if (record !== null) {
+        // The record is the authority — it overrides the self-report in BOTH
+        // directions (a recorded failure defeats a lying caller).
+        sandboxOk = record.verified === true;
+      }
+    } else {
+      // No id to look up: cannot be record-verified.
+      sandboxOk = false;
+    }
+  }
+  if (!sandboxOk) {
     reasons.push("not sandbox-verified");
   }
 
