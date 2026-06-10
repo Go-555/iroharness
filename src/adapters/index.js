@@ -1147,7 +1147,7 @@ export const createOpenAiResponsesBrain = ({
         })
       });
     },
-    async *respondStream(context) {
+    async *respondStream(context, { signal } = {}) {
       const prompt = formatOpenAiBrainPrompt({ slot, context });
       const response = await fetchImpl(endpoint, {
         method: "POST",
@@ -1161,7 +1161,8 @@ export const createOpenAiResponsesBrain = ({
           input: prompt.user,
           max_output_tokens: maxOutputTokens,
           stream: true
-        })
+        }),
+        signal
       });
       if (!response.ok) {
         const errorText = await response.text();

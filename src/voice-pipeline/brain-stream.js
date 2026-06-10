@@ -2,20 +2,25 @@
  * brain-stream.js — Streaming brain contract helpers for IroHarness voice pipeline.
  *
  * Contract A — Brain streaming interface (optional method on any brain adapter):
- *   brain.respondStream(context) → AsyncIterable<{ delta: string, emotion?: string, final?: boolean }>
+ *   brain.respondStream(context, { signal } = {}) →
+ *     AsyncIterable<{ delta: string, emotion?: string, final?: boolean }>
  *   Yields text deltas as the LLM generates. Iteration ends when the response is complete.
+ *   The optional second options arg carries an AbortSignal so callers (e.g. barge-in) can
+ *   cancel the underlying request even while it is suspended pre-first-byte.
  *
- * Contract B — toBrainStream(brain, context):
- *   - If brain.respondStream is a function → return brain.respondStream(context) directly.
+ * Contract B — toBrainStream(brain, context, { signal } = {}):
+ *   - If brain.respondStream is a function → return brain.respondStream(context, options).
  *   - Else if brain.respond is a function → return an async generator that awaits respond()
  *     once and yields a single { delta: response.text || "", emotion: response.emotion, final: true }.
- *     (Graceful degradation for respond-only brains — non-breaking.)
+ *     (Graceful degradation for respond-only brains — non-breaking. respond() has no signal,
+ *     so the fallback ignores options.signal.)
  *   - Throws if brain has neither method.
  *
  * Contract C — parseSseStream(body):
  *   - Input: async iterable of Uint8Array or string chunks (fetch response.body compatible).
  *   - Buffers by lines across chunk boundaries.
- *   - For each "data: {json}" line, JSON.parse and yield the object.
+ *   - For each "data: {json}" line (space after the colon optional), JSON.parse and yield
+ *     the object.
  *   - Ignores: empty lines, comment lines (: prefix), [DONE] sentinels, unparseable lines.
  */
 
@@ -59,9 +64,12 @@ export async function* parseSseStream(body) {
       if (line.startsWith(":")) {
         continue;
       }
-      // Data line
-      if (line.startsWith("data: ")) {
-        const payload = line.slice(6);
+      // Data line — the space after "data:" is optional per the SSE spec
+      if (line.startsWith("data:")) {
+        let payload = line.slice(5);
+        if (payload.startsWith(" ")) {
+          payload = payload.slice(1);
+        }
         // [DONE] sentinel — skip
         if (payload === "[DONE]") {
           continue;
@@ -82,11 +90,13 @@ export async function* parseSseStream(body) {
  *
  * @param {object} brain - A brain adapter with respond() or respondStream().
  * @param {object} context - The conversation context passed to the brain.
+ * @param {{ signal?: AbortSignal }} [options] - Passed through to respondStream.
+ *   The respond() fallback ignores it (respond has no signal support).
  * @returns {AsyncIterable<{ delta: string, emotion?: string, final?: boolean }>}
  */
-export function toBrainStream(brain, context) {
+export function toBrainStream(brain, context, options = {}) {
   if (typeof brain?.respondStream === "function") {
-    return brain.respondStream(context);
+    return brain.respondStream(context, options);
   }
   if (typeof brain?.respond === "function") {
     return respondFallback(brain, context);

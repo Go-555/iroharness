@@ -84,6 +84,26 @@ test("toBrainStream passthrough: brain with respondStream returns its iterable",
   assert.deepEqual(items, expectedDeltas);
 });
 
+test("toBrainStream forwards options (signal) to brain.respondStream", async () => {
+  const captured = [];
+  const brain = {
+    respondStream(context, options) {
+      captured.push({ context, options });
+      return (async function* () {
+        yield { delta: "ok", final: true };
+      })();
+    }
+  };
+  const controller = new AbortController();
+  const context = { input: { text: "hi" } };
+  const items = await collect(toBrainStream(brain, context, { signal: controller.signal }));
+
+  assert.equal(items.length, 1);
+  assert.equal(captured.length, 1);
+  assert.equal(captured[0].context, context);
+  assert.equal(captured[0].options.signal, controller.signal);
+});
+
 test("toBrainStream throws for brain with neither respond nor respondStream", async () => {
   const brain = { id: "broken-brain" };
   await assert.rejects(
@@ -144,6 +164,18 @@ test("parseSseStream: Uint8Array chunks are decoded correctly", async () => {
   assert.deepEqual(items, [{ u: 8 }]);
 });
 
+test("parseSseStream: data: without space is accepted", async () => {
+  const body = makeBody(['data:{"c":3}\n\n']);
+  const items = await collect(parseSseStream(body));
+  assert.deepEqual(items, [{ c: 3 }]);
+});
+
+test("parseSseStream: data: without space [DONE] sentinel is ignored", async () => {
+  const body = makeBody(['data:[DONE]\n\ndata:{"d":4}\n\n']);
+  const items = await collect(parseSseStream(body));
+  assert.deepEqual(items, [{ d: 4 }]);
+});
+
 // ---------------------------------------------------------------------------
 // Contract D: createOpenAiResponsesBrain.respondStream
 // ---------------------------------------------------------------------------
@@ -183,6 +215,60 @@ test("OpenAI respondStream: collects deltas from response.output_text.delta even
   );
   assert.equal(calls[0].endpoint, "https://api.test/v1/responses");
   assert.equal(calls[0].body.stream, true, "request body must have stream:true");
+});
+
+test("OpenAI respondStream: forwards AbortSignal to fetchImpl options", async () => {
+  const captured = [];
+  const brain = createOpenAiResponsesBrain({
+    id: "stream-abort",
+    slot: "voice",
+    apiKey: STUB,
+    baseUrl: "https://api.test/v1",
+    model: "gpt-stream-test",
+    fetchImpl: async (endpoint, options) => {
+      captured.push(options);
+      return {
+        ok: true,
+        body: makeSseBody([
+          { type: "response.output_text.delta", delta: "ok" },
+          { type: "response.completed" }
+        ])
+      };
+    }
+  });
+
+  const controller = new AbortController();
+  const items = await collect(
+    brain.respondStream({ input: { text: "hi" } }, { signal: controller.signal })
+  );
+
+  assert.deepEqual(items.map((i) => i.delta), ["ok"]);
+  assert.equal(captured[0].signal, controller.signal);
+});
+
+test("OpenAI respondStream: works without options (signal undefined)", async () => {
+  const captured = [];
+  const brain = createOpenAiResponsesBrain({
+    id: "stream-no-options",
+    slot: "voice",
+    apiKey: STUB,
+    baseUrl: "https://api.test/v1",
+    model: "gpt-stream-test",
+    fetchImpl: async (endpoint, options) => {
+      captured.push(options);
+      return {
+        ok: true,
+        body: makeSseBody([
+          { type: "response.output_text.delta", delta: "ok" },
+          { type: "response.completed" }
+        ])
+      };
+    }
+  });
+
+  const items = await collect(brain.respondStream({ input: { text: "hi" } }));
+  assert.deepEqual(items.map((i) => i.delta), ["ok"]);
+  assert.equal(captured[0].signal, undefined);
 });
 
 test("OpenAI respondStream: non-ok response throws with status", async () => {
