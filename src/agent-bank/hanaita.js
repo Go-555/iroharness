@@ -114,16 +114,21 @@ export const createHanaita = ({
     return entry.recipe;
   };
 
-  const runStep = async ({ goal, goalId, step, audience }) => {
+  const runStep = async ({ goal, goalId, step, audience, ticketsByStep }) => {
     const recipe = hire(step.recipe);
 
     // The specialist's context slice: ONLY the instruction for this step plus
-    // confirmed prior results read from the blackboard. Never the raw goal
-    // context, never Iroha's identity context (§6.3).
+    // the CONFIRMED outputs of its dependencies, read back from the blackboard
+    // (not handed over in-memory — the board is the single cross-specialist
+    // data path). Never the raw goal context, never Iroha's identity context
+    // (§6.3 forward isolation).
+    const dependencyTickets = (step.dependsOn ?? [])
+      .map((dep) => ticketsByStep.get(dep))
+      .filter(Boolean);
     const slice = Object.freeze({
       goal: Object.freeze({ id: goalId, title: goal.title ?? "" }),
       instruction: step.slice ?? goal.description ?? "",
-      prior: [],
+      prior: Object.freeze(blackboard.readConfirmed(dependencyTickets)),
     });
 
     const { ticketId, runId } = blackboard.open({
@@ -180,20 +185,33 @@ export const createHanaita = ({
       artifacts: result.artifacts ?? [],
     });
 
+    // The step record is the ONLY thing that leaves the orchestration for
+    // this step (§6.3 reverse isolation): confirmed summary and bookkeeping,
+    // never the runner's raw output or intermediate chatter.
     return {
       stepId: step.id,
       recipeId: step.recipe,
       ticketId,
       status: "completed",
       summary: output.summary,
+      attempts: 1,
     };
   };
 
   const runGoal = async ({ goal, goalId, steps, audience }) => {
     const stepResults = [];
+    const ticketsByStep = new Map();
     try {
       for (const step of steps) {
-        stepResults.push(await runStep({ goal, goalId, step, audience }));
+        const record = await runStep({
+          goal,
+          goalId,
+          step,
+          audience,
+          ticketsByStep,
+        });
+        ticketsByStep.set(step.id, record.ticketId);
+        stepResults.push(record);
       }
     } catch (error) {
       return Object.freeze({

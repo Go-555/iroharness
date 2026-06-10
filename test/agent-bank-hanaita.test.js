@@ -240,6 +240,118 @@ test("specialist runs go through createScopedWorkRunnerMicroHarness (no direct p
   assert.equal(task.metadata.workspace, workspace);
 });
 
+// ---- 4.2 isolation, forward: the specialist gets only its slice -------------
+
+test("a specialist receives only its context slice and confirmed board results — never the raw/identity context", async () => {
+  const root = makeBank();
+  writeRecipe(root, "active", "researcher");
+  writeRecipe(root, "active", "writer");
+  const seen = {};
+  const { hanaita } = makeHanaita({
+    root,
+    createRunner: ({ id }) => ({
+      id,
+      run: async (task, context) => {
+        seen[id] = { task, context };
+        return {
+          status: "completed",
+          summary: id === "researcher" ? "FACTS: water is wet" : "ARTICLE",
+        };
+      },
+    }),
+  });
+
+  const identityContext = {
+    persona: "SECRET-IDENTITY-MARKER",
+    memory: ["owner said SECRET-MEMORY-MARKER"],
+  };
+  const result = await hanaita.delegateGoal(
+    {
+      title: "write an article",
+      description: "article about water",
+      steps: [
+        { id: "research", recipe: "researcher", slice: "gather facts" },
+        {
+          id: "write",
+          recipe: "writer",
+          slice: "write from confirmed facts",
+          dependsOn: ["research"],
+        },
+      ],
+    },
+    { audience: { canDelegateWork: true }, identityContext },
+  ).summary;
+  assert.equal(result.status, "completed");
+
+  // the writer got the researcher's CONFIRMED output via the blackboard ...
+  const writerSlice = seen.writer.context.slice;
+  assert.equal(writerSlice.prior.length, 1);
+  assert.equal(writerSlice.prior[0].harnessId, "researcher");
+  assert.match(writerSlice.prior[0].output.summary, /water is wet/);
+  // ... and the first specialist got no prior at all
+  assert.deepEqual(seen.researcher.context.slice.prior, []);
+
+  // neither specialist ever sees the identity context (forward isolation)
+  for (const id of ["researcher", "writer"]) {
+    const visible = JSON.stringify([seen[id].task, seen[id].context]);
+    assert.ok(!visible.includes("SECRET-IDENTITY-MARKER"));
+    assert.ok(!visible.includes("SECRET-MEMORY-MARKER"));
+  }
+});
+
+// ---- 4.2 isolation, reverse: chatter never reaches Iroha's identity ---------
+
+test("orchestration chatter does not pollute the identity context or the goal result", async () => {
+  const root = makeBank();
+  writeRecipe(root, "active", "researcher");
+  const { hanaita } = makeHanaita({
+    root,
+    createRunner: ({ id }) => ({
+      id,
+      run: async () => ({
+        status: "completed",
+        summary: "clean confirmed summary",
+        raw: { spawnLog: "CHATTER-MARKER intermediate spawn output" },
+      }),
+    }),
+  });
+
+  const identityContext = Object.freeze({
+    persona: Object.freeze({ name: "iroha" }),
+    memory: Object.freeze(["stable memory"]),
+  });
+  const before = JSON.stringify(identityContext);
+
+  const result = await hanaita.delegateGoal(
+    { title: "t", steps: [{ id: "s1", recipe: "researcher" }] },
+    { identityContext },
+  ).summary;
+
+  // the identity context object is untouched by the orchestration
+  assert.equal(JSON.stringify(identityContext), before);
+
+  // the goal result carries ONLY the confirmed shape — no runner raw output,
+  // no intermediate chatter
+  assert.ok(!JSON.stringify(result).includes("CHATTER-MARKER"));
+  assert.deepEqual(Object.keys(result).sort(), [
+    "goalId",
+    "reason",
+    "status",
+    "steps",
+    "summary",
+  ]);
+  for (const step of result.steps) {
+    assert.deepEqual(Object.keys(step).sort(), [
+      "attempts",
+      "recipeId",
+      "status",
+      "stepId",
+      "summary",
+      "ticketId",
+    ]);
+  }
+});
+
 test("a workspace outside the allowed scope fails the step (scoped runner enforces it)", async () => {
   const root = makeBank();
   writeRecipe(root, "active", "researcher");
