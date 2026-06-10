@@ -121,3 +121,34 @@ These rules are absolute.
   assert.equal(result.rules.length, 1);
   assert.equal(result.skipped.length, 0);
 });
+
+test("parseVocabularyRules splits never lists on a full-width slash (I1)", () => {
+  const soul = `## Vocabulary Rules
+
+- First person: あたし (never 私 ／ 僕)
+`;
+  const { rules } = parseVocabularyRules(soul);
+  assert.deepEqual(
+    rules[0].forbidden.map((entry) => entry.term),
+    ["私", "僕"],
+  );
+});
+
+test("parseVocabularyRules uses only the first Vocabulary Rules section", () => {
+  const soul = `## Vocabulary Rules
+
+- First person: あたし (never 私)
+
+## Notes
+
+Some prose between the sections.
+
+## Vocabulary Rules
+
+- Forbidden: 拝承
+`;
+  const result = parseVocabularyRules(soul);
+  assert.equal(result.sectionFound, true);
+  assert.equal(result.rules.length, 1);
+  assert.equal(result.rules[0].kind, "first-person");
+});

@@ -23,11 +23,11 @@ const kindOf = (label) => {
   return "custom";
 };
 
-// Split a never-list such as "私 / 僕", "です・ます", or "拝承, 承知いたしました"
-// into literal terms.
+// Split a never-list such as "私 / 僕", "私 ／ 僕" (full-width slash),
+// "です・ます", or "拝承, 承知いたしました" into literal terms.
 const splitTerms = (text) =>
   text
-    .split(/[/、,・，]/u)
+    .split(/[/／、,・，]/u)
     .map((term) => term.trim())
     .filter((term) => term.length > 0);
 
@@ -78,6 +78,8 @@ const sectionLines = (soulText) => {
 // A rule is mechanically checkable when it carries at least one forbidden
 // term; must-use values are recorded but only enforced through their
 // never-list (a bare must-use has no precise mechanical test).
+// If SOUL.md contains more than one `## Vocabulary Rules` heading, only the
+// first section is parsed; later ones are ignored.
 export const parseVocabularyRules = (soulText) => {
   if (!soulText || typeof soulText !== "string") {
     return { sectionFound: false, rules: [], skipped: [] };
