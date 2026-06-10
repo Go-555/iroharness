@@ -82,7 +82,12 @@ beads の流儀は「1委譲 = 1 bead」。run を独立レコードとして別
 - 既存 `createInMemoryProjectOs` / `createFileProjectOs`（JSON）は**残す**（テスト・フォールバック）＝ 完全非破壊
 - **将来の拡張余地（今は YAGNI）**：retry/verify ループで「1 ticket に複数 run」が要るようになって初めて、その時に子 bead 等で拡張する。現状（1委譲1run）では不要。
 
-### 3.2 まさお推奨に忠実に「軽く」使う（彫り込まない）
+> ⚠️ **既知制約（beads バックエンドと in-memory/file 実装の契約ドリフト。mekiki W-C）**
+> beads バックエンド（`src/beads-project-os.js`）は 6 メソッドの「口」は保つが、以下 3 点で in-memory/file 実装と挙動が異なる。**コードは直していない（文書化のみ）**——直すのは将来の beads 実配線時。下流（ledger / promotion / 本体 `runMicroHarness`）はいずれにも依存していないため現状実害なし。
+>
+> 1. **`updateTicket` は `patch.status` 以外を黙って捨てる**。in-memory 実装は patch 全体をマージし、更新後の ticket を返し、不在 id には throw する。beads 版は `projectStatus` への畳み込みだけを行い、**戻り値なし・不在チェックなし**（存在しない id でも黙って `bd update` が走るだけ）。
+> 2. **`snapshot()` の ticket に `metadata` フィールドがない**。`createTicket` で渡した追加 metadata は bead には畳まれるが、`beadsToSnapshot` は ticket への写し出しで `metadata` を復元しない（owner/executor 等の既知フィールドのみ写す）。in-memory 実装の ticket は `metadata` を保持する。
+> 3. **`acceptance` 配列は非可逆**。`createTicket` で `--acceptance` に `join("\n")` で畳み、snapshot では `[bead.acceptance_criteria]` の **1 要素配列**として返る。複数要素の acceptance は往復で形が変わる（要素境界が失われる）。
 
 > まさおさん：「粒度は早々にモデルに吸収される。**過度に作り込むな**。最小の理解は **Claude Code の TODO ツールの置き換え**。プロジェクト規模で分割するものではない」
 
