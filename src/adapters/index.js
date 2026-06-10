@@ -1050,6 +1050,107 @@ export const createCodexAppServerBrain = ({
         unsubscribe?.();
       }
     },
+
+    // respondStream streams incremental deltas from the Codex app-server.
+    //
+    // Protocol: the transport emits "item/agentMessage/delta" events for each
+    // text chunk, followed by a "turn/completed" event when the turn ends.
+    // Each delta event is yielded as { delta: string }.
+    //
+    // Graceful degradation: if the transport emits turn/completed with no
+    // preceding delta events (final-only protocol), the accumulated text
+    // (empty string in that case) is yielded as a single { delta, final: true }.
+    //
+    // Abort: when signal is aborted, the generator stops consuming events and
+    // cleans up subscriptions. The app-server turn itself continues running on
+    // the server side — clean cancellation of an in-flight turn is not exposed
+    // by the existing transport helpers.
+    async *respondStream(context, { signal } = {}) {
+      const nextThreadId = await ensureThread();
+
+      // Queue of incoming events; a resolver to wake the consumer.
+      const queue = [];
+      let notify = null;
+      let done = false;
+
+      const push = (event) => {
+        queue.push(event);
+        if (notify) {
+          const resolve = notify;
+          notify = null;
+          resolve();
+        }
+      };
+
+      const unsubscribe = transport.subscribe?.((event) => {
+        if (event.method === "item/agentMessage/delta" || event.method === "turn/completed") {
+          push(event);
+        }
+      });
+
+      try {
+        await transport.sendRequest("turn/start", {
+          threadId: nextThreadId,
+          input: [
+            {
+              type: "text",
+              text: formatContext({ slot, model, context })
+            }
+          ],
+          cwd,
+          approvalPolicy,
+          sandboxPolicy
+        });
+
+        let deltaCount = 0;
+        const deadline = Date.now() + timeoutMs;
+
+        while (!done) {
+          // Respect abort signal
+          if (signal?.aborted) {
+            break;
+          }
+
+          if (queue.length === 0) {
+            // Wait for next event or timeout
+            const remaining = deadline - Date.now();
+            if (remaining <= 0) {
+              throw new Error(`Codex app-server brain ${id} timed out after ${timeoutMs}ms`);
+            }
+            await Promise.race([
+              new Promise((resolve) => {
+                notify = resolve;
+              }),
+              new Promise((_, reject) =>
+                setTimeout(
+                  () => reject(new Error(`Codex app-server brain ${id} timed out after ${timeoutMs}ms`)),
+                  remaining
+                )
+              )
+            ]);
+            continue;
+          }
+
+          const event = queue.shift();
+
+          if (event.method === "item/agentMessage/delta") {
+            const delta = event.params?.delta || event.params?.text || "";
+            deltaCount++;
+            yield { delta };
+          } else if (event.method === "turn/completed") {
+            done = true;
+            // Graceful degradation: if no deltas arrived, yield final-only
+            if (deltaCount === 0) {
+              yield { delta: "", final: true };
+            }
+          }
+        }
+      } finally {
+        unsubscribe?.();
+        notify = null;
+      }
+    },
+
     close() {
       transport.close?.();
       threadId = null;

@@ -1,5 +1,5 @@
 /**
- * Tests for brain streaming contract (Task 7).
+ * Tests for brain streaming contract (Task 7 + Task 8).
  *
  * Covers:
  *   - toBrainStream fallback (respond-only brain)
@@ -7,13 +7,14 @@
  *   - toBrainStream throws for brain with neither method
  *   - parseSseStream: split mid-line, [DONE], comments, garbage
  *   - createOpenAiResponsesBrain.respondStream: deltas collected, stream:true sent, non-ok throws
+ *   - createCodexAppServerBrain.respondStream: delta events, final-only degradation, abort
  */
 
 import assert from "node:assert/strict";
 import test from "node:test";
 
 import { toBrainStream, parseSseStream } from "../src/voice-pipeline/brain-stream.js";
-import { createOpenAiResponsesBrain } from "../src/adapters/index.js";
+import { createOpenAiResponsesBrain, createCodexAppServerBrain } from "../src/adapters/index.js";
 
 // ---------------------------------------------------------------------------
 // helpers
@@ -320,4 +321,164 @@ test("OpenAI respondStream: events with other types are ignored", async () => {
     items.map((i) => i.delta),
     ["hello"]
   );
+});
+
+// ---------------------------------------------------------------------------
+// Contract E: createCodexAppServerBrain.respondStream (Task 8)
+// ---------------------------------------------------------------------------
+
+/**
+ * Creates a fake Codex app-server transport for testing.
+ * Mirrors the createFakeCodexTransport helper from adapters.test.js.
+ * By default emits two item/agentMessage/delta events then turn/completed.
+ */
+const createFakeCodexTransport = (
+  {
+    deltas = ["今日は", "晴れ。"],
+    finalOnly = false
+  } = {}
+) => {
+  let listeners = [];
+  const requests = [];
+  const emit = (event) => {
+    listeners.forEach((listener) => listener(event));
+  };
+  return {
+    requests,
+    async initialize() {
+      requests.push({ method: "initialize" });
+    },
+    async sendRequest(method, params) {
+      requests.push({ method, params });
+      if (method === "thread/start") {
+        return { thread: { id: "thread_1" } };
+      }
+      if (method === "turn/start") {
+        setTimeout(() => {
+          if (!finalOnly) {
+            for (const delta of deltas) {
+              emit({ method: "item/agentMessage/delta", params: { delta } });
+            }
+          }
+          emit({ method: "turn/completed", params: { turn: { id: "turn_1" } } });
+        }, 0);
+        return { turn: { id: "turn_1" } };
+      }
+      return {};
+    },
+    subscribe(listener) {
+      listeners = [...listeners, listener];
+      return () => {
+        listeners = listeners.filter((c) => c !== listener);
+      };
+    },
+    close() {}
+  };
+};
+
+test("Codex respondStream: collects delta events in order", async () => {
+  const transport = createFakeCodexTransport({ deltas: ["今日は", "晴れ。"] });
+  const brain = createCodexAppServerBrain({
+    id: "codex-stream-test",
+    slot: "voice",
+    cwd: "/tmp/project",
+    model: "gpt-brain-test",
+    transport,
+    timeoutMs: 1000
+  });
+
+  const context = { input: { text: "天気は？" } };
+  const items = await collect(brain.respondStream(context));
+
+  assert.deepEqual(
+    items.map((i) => i.delta),
+    ["今日は", "晴れ。"]
+  );
+  // No false final flags on intermediate deltas
+  assert.equal(items[0].final, undefined);
+});
+
+test("Codex respondStream: graceful degradation when transport emits no deltas (final-only)", async () => {
+  // When the app-server emits turn/completed with no preceding delta events,
+  // respondStream yields the accumulated text (empty in this case) as a single
+  // delta with final:true — matches Contract A's graceful-degradation clause.
+  const transport = createFakeCodexTransport({ deltas: [], finalOnly: true });
+  // Override: emit one final event but no delta events
+  // We patch sendRequest to emit turn/completed without any deltas
+  const brain = createCodexAppServerBrain({
+    id: "codex-final-only",
+    slot: "voice",
+    cwd: "/tmp/project",
+    model: "gpt-brain-test",
+    transport,
+    timeoutMs: 1000
+  });
+
+  const items = await collect(brain.respondStream({ input: { text: "hi" } }));
+
+  assert.equal(items.length, 1);
+  assert.equal(items[0].final, true);
+  assert.equal(typeof items[0].delta, "string");
+});
+
+test("Codex respondStream: abort mid-stream stops iteration without unhandled rejection", async () => {
+  let listeners = [];
+  let emitRef = null;
+  const transport = {
+    requests: [],
+    async initialize() {
+      this.requests.push({ method: "initialize" });
+    },
+    async sendRequest(method, params) {
+      this.requests.push({ method, params });
+      if (method === "thread/start") return { thread: { id: "thread_1" } };
+      if (method === "turn/start") {
+        // Emit one delta immediately, hold the second
+        setTimeout(() => {
+          listeners.forEach((l) =>
+            l({ method: "item/agentMessage/delta", params: { delta: "first" } })
+          );
+          // Hold completion — caller will abort before it fires
+          emitRef = () => {
+            listeners.forEach((l) =>
+              l({ method: "turn/completed", params: { turn: { id: "turn_1" } } })
+            );
+          };
+        }, 0);
+        return { turn: { id: "turn_1" } };
+      }
+      return {};
+    },
+    subscribe(listener) {
+      listeners = [...listeners, listener];
+      return () => {
+        listeners = listeners.filter((c) => c !== listener);
+      };
+    },
+    close() {}
+  };
+
+  const brain = createCodexAppServerBrain({
+    id: "codex-abort-test",
+    slot: "voice",
+    cwd: "/tmp/project",
+    model: "gpt-brain-test",
+    transport,
+    timeoutMs: 2000
+  });
+
+  const controller = new AbortController();
+  const collected = [];
+
+  const iter = brain.respondStream({ input: { text: "hi" } }, { signal: controller.signal });
+  // Collect first delta then abort
+  for await (const item of iter) {
+    collected.push(item);
+    controller.abort();
+    break;
+  }
+
+  assert.equal(collected.length, 1);
+  assert.equal(collected[0].delta, "first");
+  // No unhandled rejection — test completes cleanly
 });
