@@ -3,7 +3,8 @@ import { randomBytes } from "node:crypto";
 import { cpSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 
-import { createFileUserRegistry, createProjectOsMarkdown } from "../src/index.js";
+import { createFileProjectOs, createFileUserRegistry, createProjectOsMarkdown } from "../src/index.js";
+import { runBankCommand } from "../src/agent-bank/cli.js";
 import {
   createFileSkillRegistry,
   defaultBuiltInSkillDir,
@@ -30,6 +31,9 @@ Usage:
   iroharness skill list [dir] [--json]
   iroharness skill plan stackchan-avatar-pack [dir] --reference-image <path> [--pack-id <id>] [--out <dir>] [--json]
   iroharness skill eval stackchan-avatar-pack [dir] --pack-dir <dir> [--json]
+  iroharness bank list [dir] [--all]
+  iroharness bank promote <id> [dir] [--owner-approve]
+  iroharness bank sweep [dir] [--max-idle-days <days>] [--dry-run]
   iroharness view export [dir] --zone <public|trusted|owner> --out <view-dir> [--force]
   iroharness work-runner check <view-dir> [--json]
   iroharness doctor [dir] [--production] [--json]
@@ -47,6 +51,9 @@ Examples:
   iroharness skill list ./my-companion
   iroharness skill plan stackchan-avatar-pack ./my-companion --reference-image ./iroha.jpg
   iroharness skill eval stackchan-avatar-pack ./my-companion --pack-dir ./.iroharness/artifacts/avatar-packs/iroha
+  iroharness bank list ./my-companion --all
+  iroharness bank promote tax-v3 ./my-companion --owner-approve
+  iroharness bank sweep ./my-companion --max-idle-days 30 --dry-run
   iroharness view export ./my-companion --zone trusted --out /Users/iroharness-trusted/iroha-view --force
   iroharness work-runner check /Users/iroharness-trusted/iroha-view
   iroharness doctor ./my-companion
@@ -94,6 +101,11 @@ const parseArgs = (argv) => {
   let packDir = null;
   let zone = null;
   let out = null;
+  let bankId = null;
+  let all = false;
+  let ownerApprove = false;
+  let maxIdleDays = null;
+  let dryRun = false;
   const identities = {};
   const positional = [];
 
@@ -276,6 +288,23 @@ const parseArgs = (argv) => {
       index += 1;
       continue;
     }
+    if (value === "--all") {
+      all = true;
+      continue;
+    }
+    if (value === "--owner-approve") {
+      ownerApprove = true;
+      continue;
+    }
+    if (value === "--max-idle-days") {
+      maxIdleDays = rest[index + 1];
+      index += 1;
+      continue;
+    }
+    if (value === "--dry-run") {
+      dryRun = true;
+      continue;
+    }
     if (["--youtube", "--discord", "--slack", "--vscode", "--browser", "--m5stack", "--even-g2"].includes(value)) {
       identities[value.slice(2)] = rest[index + 1];
       index += 1;
@@ -292,6 +321,14 @@ const parseArgs = (argv) => {
     } else {
       skillId = positional[1] || null;
       dir = positional[2] || ".";
+    }
+  } else if (command === "bank") {
+    [action = null] = positional;
+    if (action === "promote") {
+      bankId = positional[1] || null;
+      dir = positional[2] || ".";
+    } else {
+      dir = positional[1] || ".";
     }
   } else if (command === "audience" || command === "connect" || command === "view" || command === "work-runner") {
     [action = null, dir = "."] = positional;
@@ -339,6 +376,11 @@ const parseArgs = (argv) => {
     packDir,
     zone,
     out,
+    bankId,
+    all,
+    ownerApprove,
+    maxIdleDays,
+    dryRun,
     identities
   };
 };
@@ -2233,6 +2275,50 @@ const skills = (args) => {
   throw new Error(`Unknown skill action: ${args.action || "(missing)"}\n\n${usage}`);
 };
 
+// Agent Bank (mekiki W-B): thin wiring over src/agent-bank/cli.js. The bank
+// lives at <dir>/.iroharness/agent-bank; the ledger derives from the app's
+// Project OS file (.iroharness/pjos.json), same convention as the generated
+// app. Promotion still goes through the single composite gate — no flag here
+// can bypass it (the sandbox condition comes from the recorded
+// verification-ledger.json, and the security review from bantou's verdict).
+const bank = (args) => {
+  if (!["list", "promote", "sweep"].includes(args.action)) {
+    throw new Error(`Unknown bank action: ${args.action || "(missing)"}\n\n${usage}`);
+  }
+  const targetDir = resolve(args.dir);
+  const root = join(targetDir, ".iroharness", "agent-bank");
+  const projectOs = createFileProjectOs({
+    path: join(targetDir, ".iroharness", "pjos.json")
+  });
+
+  const argv = [args.action];
+  if (args.action === "list" && args.all) {
+    argv.push("--all");
+  }
+  if (args.action === "promote") {
+    if (args.bankId) {
+      argv.push(args.bankId);
+    }
+    if (args.ownerApprove) {
+      argv.push("--owner-approve");
+    }
+  }
+  if (args.action === "sweep") {
+    if (args.maxIdleDays !== null) {
+      argv.push("--max-idle-days", args.maxIdleDays);
+    }
+    if (args.dryRun) {
+      argv.push("--dry-run");
+    }
+  }
+
+  const result = runBankCommand({ root, argv, projectOs });
+  if (result.exitCode !== 0) {
+    throw new Error(result.output);
+  }
+  console.log(result.output);
+};
+
 const main = () => {
   const args = parseArgs(process.argv.slice(2));
   if (args.command === "--help" || args.command === "-h" || args.command === "help") {
@@ -2269,6 +2355,10 @@ const main = () => {
   }
   if (args.command === "skill") {
     skills(args);
+    return;
+  }
+  if (args.command === "bank") {
+    bank(args);
     return;
   }
   if (args.command === "view") {

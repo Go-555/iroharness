@@ -128,7 +128,17 @@ export const evaluatePromotion = ({
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-// Decay: an active recipe idle beyond the window is retired to archived.
+/**
+ * Decay predicate: an active recipe idle beyond the window is retired to
+ * archived (executor: sweepDecayedRecipes in sweep.js).
+ *
+ * Semantics (pinned by tests):
+ * - Strict `>`: idle for EXACTLY maxIdleDays does NOT decay.
+ * - KNOWN BEHAVIOR: a missing/empty `lastUsed` (an active recipe that was
+ *   never used, so it has no ledger entry) returns false — never-used actives
+ *   are "immortal" and survive every sweep. Changing that (e.g. decay from
+ *   promotion date) is a future design decision, deliberately not made here.
+ */
 export const shouldDecay = ({ lastUsed, now, maxIdleDays }) => {
   if (!lastUsed) {
     return false;
