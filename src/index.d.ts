@@ -221,9 +221,33 @@ export interface Device {
   emit(event: JsonObject): void;
 }
 
+export interface BrainStreamDelta {
+  readonly delta: string;
+  readonly emotion?: string;
+  readonly final?: boolean;
+}
+
+// receiveStream resolves to one of two shapes:
+// - gate rejected/redirected: { stream: null, result } where result is exactly
+//   what receive() would have returned for the same input.
+// - happy path: { stream, finalize } — consume the stream, then call
+//   finalize(fullText, { emotion }) once to run receive()'s post-brain path.
+export interface ReceiveStreamResult {
+  readonly stream: AsyncIterable<BrainStreamDelta> | null;
+  readonly result?: JsonObject;
+  readonly finalize?: (
+    fullText: string,
+    options?: { readonly emotion?: string },
+  ) => Promise<JsonObject>;
+}
+
 export interface IroHarness {
   readonly character: CharacterProfile;
   receive(input: TurnInput): Promise<JsonObject>;
+  receiveStream(
+    input: TurnInput,
+    options?: { readonly signal?: AbortSignal },
+  ): Promise<ReceiveStreamResult>;
   state(): CharacterState;
   brains(): readonly BrainSummary[];
   projectOs(): ProjectOsSnapshot;
