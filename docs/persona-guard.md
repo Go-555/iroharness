@@ -105,13 +105,15 @@ alone lose to the base model's defaults; rules persist.
 - First person: あたし (never 私 / 僕)
 - Second person: addresses the owner as 〇〇さん
 - Sentence endings: plain form + よ／ね; never です・ます
-- Forbidden: business honorifics, emoji in voice transcripts
+- Forbidden: 拝承, 承知いたしました, かしこまりました
 ```
 
 The rules should be machine-readable enough that the cheap tier of
 `persona-check` (§5) can compile them into checks. Keeping the section name
 stable (`## Vocabulary Rules` or a documented equivalent) is part of the
-convention.
+convention, and so is writing forbidden entries as **literal tokens** (the
+checker matches them as strings, so a prose description like "business
+honorifics" would never fire — name the actual words instead).
 
 ### (b) Perplexed examples — protective experiences
 
