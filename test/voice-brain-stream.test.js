@@ -400,11 +400,9 @@ test("Codex respondStream: collects delta events in order", async () => {
 
 test("Codex respondStream: graceful degradation when transport emits no deltas (final-only)", async () => {
   // When the app-server emits turn/completed with no preceding delta events,
-  // respondStream yields the accumulated text (empty in this case) as a single
-  // delta with final:true — matches Contract A's graceful-degradation clause.
+  // respondStream yields a single empty delta with final:true — matches
+  // Contract A's graceful-degradation clause.
   const transport = createFakeCodexTransport({ deltas: [], finalOnly: true });
-  // Override: emit one final event but no delta events
-  // We patch sendRequest to emit turn/completed without any deltas
   const brain = createCodexAppServerBrain({
     id: "codex-final-only",
     slot: "voice",
@@ -423,7 +421,6 @@ test("Codex respondStream: graceful degradation when transport emits no deltas (
 
 test("Codex respondStream: abort mid-stream stops iteration without unhandled rejection", async () => {
   let listeners = [];
-  let emitRef = null;
   const transport = {
     requests: [],
     async initialize() {
@@ -433,17 +430,11 @@ test("Codex respondStream: abort mid-stream stops iteration without unhandled re
       this.requests.push({ method, params });
       if (method === "thread/start") return { thread: { id: "thread_1" } };
       if (method === "turn/start") {
-        // Emit one delta immediately, hold the second
+        // Emit one delta; never emit turn/completed — caller aborts first.
         setTimeout(() => {
           listeners.forEach((l) =>
             l({ method: "item/agentMessage/delta", params: { delta: "first" } })
           );
-          // Hold completion — caller will abort before it fires
-          emitRef = () => {
-            listeners.forEach((l) =>
-              l({ method: "turn/completed", params: { turn: { id: "turn_1" } } })
-            );
-          };
         }, 0);
         return { turn: { id: "turn_1" } };
       }
@@ -481,4 +472,61 @@ test("Codex respondStream: abort mid-stream stops iteration without unhandled re
   assert.equal(collected.length, 1);
   assert.equal(collected[0].delta, "first");
   // No unhandled rejection — test completes cleanly
+});
+
+test("Codex respondStream: abort during a queue-empty wait wakes the generator promptly", async () => {
+  // The generator suspends in its event-wait when no events are pending
+  // (e.g. while Codex executes a tool between deltas). An abort fired in that
+  // gap must wake it immediately — not after the next event or the turn timeout.
+  let listeners = [];
+  const transport = {
+    requests: [],
+    async initialize() {
+      this.requests.push({ method: "initialize" });
+    },
+    async sendRequest(method, params) {
+      this.requests.push({ method, params });
+      if (method === "thread/start") return { thread: { id: "thread_1" } };
+      // turn/start: emit NOTHING — the generator goes straight into its wait
+      if (method === "turn/start") return { turn: { id: "turn_1" } };
+      return {};
+    },
+    subscribe(listener) {
+      listeners = [...listeners, listener];
+      return () => {
+        listeners = listeners.filter((c) => c !== listener);
+      };
+    },
+    close() {}
+  };
+
+  const brain = createCodexAppServerBrain({
+    id: "codex-abort-idle",
+    slot: "voice",
+    cwd: "/tmp/project",
+    model: "gpt-brain-test",
+    transport,
+    timeoutMs: 30_000 // far beyond the 500ms guard below — abort must not wait for this
+  });
+
+  const controller = new AbortController();
+  setTimeout(() => controller.abort(), 20);
+
+  const iteration = collect(
+    brain.respondStream({ input: { text: "hi" } }, { signal: controller.signal })
+  );
+
+  let guard = null;
+  const items = await Promise.race([
+    iteration,
+    new Promise((_, reject) => {
+      guard = setTimeout(
+        () => reject(new Error("abort did not wake the idle stream within 500ms")),
+        500
+      );
+    })
+  ]);
+  clearTimeout(guard);
+
+  assert.deepEqual(items, []);
 });

@@ -1058,8 +1058,8 @@ export const createCodexAppServerBrain = ({
     // Each delta event is yielded as { delta: string }.
     //
     // Graceful degradation: if the transport emits turn/completed with no
-    // preceding delta events (final-only protocol), the accumulated text
-    // (empty string in that case) is yielded as a single { delta, final: true }.
+    // preceding delta events (final-only protocol), a single empty
+    // { delta: "", final: true } is yielded so consumers still observe one item.
     //
     // Abort: when signal is aborted, the generator stops consuming events and
     // cleans up subscriptions. The app-server turn itself continues running on
@@ -1112,22 +1112,41 @@ export const createCodexAppServerBrain = ({
           }
 
           if (queue.length === 0) {
-            // Wait for next event or timeout
+            // Wait for the next event, an abort, or the turn timeout.
             const remaining = deadline - Date.now();
             if (remaining <= 0) {
               throw new Error(`Codex app-server brain ${id} timed out after ${timeoutMs}ms`);
             }
-            await Promise.race([
-              new Promise((resolve) => {
-                notify = resolve;
-              }),
-              new Promise((_, reject) =>
-                setTimeout(
-                  () => reject(new Error(`Codex app-server brain ${id} timed out after ${timeoutMs}ms`)),
-                  remaining
-                )
-              )
-            ]);
+            let timer = null;
+            let onAbort = null;
+            try {
+              const racers = [
+                new Promise((resolve) => {
+                  notify = resolve;
+                }),
+                new Promise((_, reject) => {
+                  timer = setTimeout(
+                    () =>
+                      reject(new Error(`Codex app-server brain ${id} timed out after ${timeoutMs}ms`)),
+                    remaining
+                  );
+                })
+              ];
+              if (signal) {
+                racers.push(
+                  new Promise((resolve) => {
+                    onAbort = resolve;
+                    signal.addEventListener("abort", onAbort, { once: true });
+                  })
+                );
+              }
+              await Promise.race(racers);
+            } finally {
+              clearTimeout(timer);
+              if (signal && onAbort) {
+                signal.removeEventListener("abort", onAbort);
+              }
+            }
             continue;
           }
 
