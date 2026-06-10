@@ -6,6 +6,8 @@ import { extname, join, normalize, relative, resolve } from "node:path";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 
+import { parseSseStream } from "../voice-pipeline/brain-stream.js";
+
 const normalizeMicroHarnessOutput = (value, fallbackSummary) => {
   if (value && typeof value === "object") {
     return Object.freeze({
@@ -1144,6 +1146,32 @@ export const createOpenAiResponsesBrain = ({
           payload
         })
       });
+    },
+    async *respondStream(context) {
+      const prompt = formatOpenAiBrainPrompt({ slot, context });
+      const response = await fetchImpl(endpoint, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${apiKey}`,
+          "content-type": "application/json"
+        },
+        body: JSON.stringify({
+          model,
+          instructions: prompt.system,
+          input: prompt.user,
+          max_output_tokens: maxOutputTokens,
+          stream: true
+        })
+      });
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`OpenAI brain ${id} failed: ${response.status} ${errorText}`);
+      }
+      for await (const obj of parseSseStream(response.body)) {
+        if (obj.type === "response.output_text.delta") {
+          yield Object.freeze({ delta: obj.delta });
+        }
+      }
     }
   });
 };
