@@ -4,13 +4,14 @@
 
 const escapeRegExp = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-// "sentence-end" terms must be followed by sentence-final punctuation or the
-// end of the text; "anywhere" terms match as literal substrings. Cheap tier:
-// false positives (e.g. 私 inside 私立) are acceptable and visible in the
-// report; the rich tier (Phase C) is the judgment call.
+// "sentence-end" terms must be followed by sentence-final or clause-final
+// punctuation (読点 included: 「〜いたします、」 is still a です・ます ending)
+// or the end of the text; "anywhere" terms match as literal substrings.
+// Cheap tier: false positives (e.g. 私 inside 私立) are acceptable and
+// visible in the report; the rich tier (Phase C) is the judgment call.
 const compile = (term, scope) =>
   scope === "sentence-end"
-    ? new RegExp(`${escapeRegExp(term)}(?=[。．.！!？?…\\s]|$)`, "u")
+    ? new RegExp(`${escapeRegExp(term)}(?=[。．.！!？?…、，\\s]|$)`, "u")
     : new RegExp(escapeRegExp(term), "u");
 
 const textOf = (response) => {

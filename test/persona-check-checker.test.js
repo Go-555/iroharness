@@ -42,6 +42,20 @@ test("checkResponses flags forbidden sentence endings only at sentence end", () 
   assert.equal(endingViolations[0].matched, "です");
 });
 
+test("checkResponses flags forbidden endings before a comma (読点)", () => {
+  // W3: 「〜いたします、」 must not slip through just because the clause
+  // continues after a comma.
+  const report = checkResponses({
+    rules: rulesOf(),
+    responses: ["よろしくお願いいたします、また明日ね。"],
+  });
+  const endings = report.violations.filter(
+    (entry) => entry.rule.kind === "sentence-ending",
+  );
+  assert.equal(endings.length, 1);
+  assert.equal(endings[0].matched, "ます");
+});
+
 test("checkResponses flags banned vocabulary anywhere", () => {
   const report = checkResponses({
     rules: rulesOf(),

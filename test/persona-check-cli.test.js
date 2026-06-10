@@ -33,7 +33,8 @@ test("persona-check fails with violations from a responses file", () => {
     join(fixturesDir, "responses.violations.jsonl"),
   ]);
   assert.equal(result.status, 1);
-  assert.match(result.stdout, /violations: 3/);
+  // 4 violations: 私 / です。/ いたします、(W3: comma counts as a boundary) / 拝承
+  assert.match(result.stdout, /violations: 4/);
   assert.match(result.stdout, /first-person/);
   assert.match(result.stdout, /「私」/);
   assert.match(result.stdout, /forbidden/);
@@ -90,7 +91,7 @@ test("persona-check --json emits the full machine-readable report", () => {
   assert.equal(report.tier, "cheap");
   assert.equal(report.totalRules, 4);
   assert.equal(report.checkableRules, 3);
-  assert.equal(report.violations.length, 3);
+  assert.equal(report.violations.length, 4);
   assert.ok(report.violations[0].rule.kind);
 });
 
