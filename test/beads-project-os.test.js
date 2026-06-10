@@ -323,6 +323,46 @@ test("completeRun marks the folded run complete and closes the bead", () => {
   assert.equal(done.output.qualityScore, 4.5);
 });
 
+// ajimi recommendation-8: completeRun on a bead that never had createRun called
+// (no metadata.run) used to spread undefined into a broken half-run and close
+// the bead silently. It must throw instead, and must NOT write or close.
+test("completeRun throws on a bead without a folded run instead of fabricating one", () => {
+  const calls = [];
+  const exec = (args) => {
+    calls.push(args);
+    if (args[0] === "show") {
+      // A bead createRun never touched: no metadata.run.
+      return JSON.stringify([
+        { id: "bd-orphan", metadata: { ownerCharacterId: "iroha" } },
+      ]);
+    }
+    return "";
+  };
+
+  const pos = createBeadsProjectOs({ exec });
+
+  assert.throws(
+    () => pos.completeRun("bd-orphan", { qualityScore: 5 }, "completed"),
+    /no folded run|metadata\.run/i,
+  );
+  // Fail fast and clean: nothing was written back, nothing was closed.
+  const cmds = calls.map((c) => c[0]);
+  assert.ok(!cmds.includes("update"), "must not write a fabricated run");
+  assert.ok(!cmds.includes("close"), "must not close the bead");
+});
+
+test("completeRun throws when the bead has no metadata at all", () => {
+  const exec = (args) =>
+    args[0] === "show" ? JSON.stringify([{ id: "bd-bare" }]) : "";
+
+  const pos = createBeadsProjectOs({ exec });
+
+  assert.throws(
+    () => pos.completeRun("bd-bare", null, "failed"),
+    /no folded run|metadata\.run/i,
+  );
+});
+
 // addArtifact: 既存 artifacts 配列に追記して bead.metadata.artifacts へ書き戻す。
 test("addArtifact appends an artifact to the bead metadata", () => {
   const calls = [];
