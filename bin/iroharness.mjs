@@ -57,6 +57,16 @@ Examples:
   iroharness doctor ./my-companion --production --json
 `;
 
+// W1: persona-check flags must not silently fall back when their value is
+// missing (e.g. `--responses` without a path would probe the echo brain and
+// exit 0 — a green CI run that checked nothing).
+const requireFlagValue = (flag, value) => {
+  if (value === undefined || value === "" || value.startsWith("-")) {
+    throw new Error(`${flag} requires a value`);
+  }
+  return value;
+};
+
 const parseArgs = (argv) => {
   const [command = "--help", ...rest] = argv;
   let dir = ".";
@@ -284,17 +294,17 @@ const parseArgs = (argv) => {
       continue;
     }
     if (value === "--slot") {
-      slot = rest[index + 1] || slot;
+      slot = requireFlagValue("--slot", rest[index + 1]);
       index += 1;
       continue;
     }
     if (value === "--responses") {
-      responses = rest[index + 1];
+      responses = requireFlagValue("--responses", rest[index + 1]);
       index += 1;
       continue;
     }
     if (value === "--soul") {
-      soul = rest[index + 1];
+      soul = requireFlagValue("--soul", rest[index + 1]);
       index += 1;
       continue;
     }

@@ -94,6 +94,59 @@ test("persona-check --json emits the full machine-readable report", () => {
   assert.ok(report.violations[0].rule.kind);
 });
 
+test("persona-check rejects --responses without a value instead of silently probing", () => {
+  const dir = companionDir();
+  const result = runCli(["persona-check", dir, "--responses"]);
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /--responses/);
+  assert.doesNotMatch(result.stdout, /echo brain/);
+});
+
+test("persona-check rejects --responses with an empty value instead of silently probing", () => {
+  const dir = companionDir();
+  const result = runCli(["persona-check", dir, "--responses", ""]);
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /--responses/);
+  assert.doesNotMatch(result.stdout, /echo brain/);
+});
+
+test("persona-check rejects --slot without a value instead of falling back to text", () => {
+  const dir = companionDir();
+  const result = runCli(["persona-check", dir, "--slot"]);
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /--slot/);
+  assert.doesNotMatch(result.stdout, /slot: text/);
+});
+
+test("persona-check rejects --soul without a value", () => {
+  const dir = companionDir();
+  const result = runCli(["persona-check", dir, "--soul"]);
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /--soul/);
+});
+
+test("persona-check reads the soul file from --soul <path>", () => {
+  const dir = companionDir({ soul: null });
+  const soulPath = join(dir, "custom-soul.md");
+  writeFileSync(
+    soulPath,
+    "## Vocabulary Rules\n\n- First person: あたし (never 私)\n",
+  );
+  const responses = join(dir, "responses.jsonl");
+  writeFileSync(responses, '{"text":"私だよ。"}\n');
+  const result = runCli([
+    "persona-check",
+    dir,
+    "--soul",
+    soulPath,
+    "--responses",
+    responses,
+  ]);
+  assert.equal(result.status, 1);
+  assert.match(result.stdout, /violations: 1/);
+  assert.match(result.stdout, /first-person/);
+});
+
 test("persona-check rejects an invalid slot", () => {
   const dir = companionDir();
   const result = runCli(["persona-check", dir, "--slot", "turbo"]);
