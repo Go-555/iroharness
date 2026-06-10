@@ -45,7 +45,7 @@ repository credentials, browser sessions, or the host's Codex OAuth session.
 
 Confirmed implementation detail: Codex OAuth is used through the local
 `codex app-server` process on a host that has already run `codex login`. When
-Codex is used as a text/deep brain, prefer read-only sandboxing. Coding,
+Codex is used as a text brain, prefer read-only sandboxing. Coding,
 editing, review, repository work, and other privileged operations should be
 delegated through a micro harness / Work Runner with explicit permissions and a
 scoped workspace.
@@ -136,7 +136,7 @@ The macro harness can route across model classes:
 
 ```text
 voice-fast   short replies, low latency, barge-in friendly
-text-deep    higher quality text reasoning
+text         higher quality text reasoning
 work         delegates to Codex, Claude Code, OpenClaw, Hermes, or others
 ```
 

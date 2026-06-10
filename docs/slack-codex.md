@@ -3,7 +3,7 @@
 This recipe runs IroHarness as a Slack-facing macro harness and delegates coding
 work to Codex through `codex app-server`.
 
-It can also use Codex OAuth for the main text/deep brain slots, so normal Slack
+It can also use Codex OAuth for the main text brain, so normal Slack
 chat and deep discussion can run on a selected Codex model while coding work is
 still delegated through a separate micro harness path.
 
@@ -16,9 +16,8 @@ Use two separate auth layers:
 2. Codex OAuth: run `codex login` on the host machine. The Codex app-server
    process uses that local OAuth session. IroHarness does not ask every Slack
    user for a Codex login.
-3. Model selection: set `IROHARNESS_TEXT_BRAIN_MODEL`,
-   `IROHARNESS_DEEP_BRAIN_MODEL`, and `CODEX_MODEL` separately. The first two
-   pick the character brain models; `CODEX_MODEL` picks the delegated coding
+3. Model selection: set `IROHARNESS_TEXT_BRAIN_MODEL` and `CODEX_MODEL`
+   separately. The first picks the character brain model; `CODEX_MODEL` picks the delegated coding
    worker model.
 
 Slack users are authorized through the IroHarness audience registry. A Slack
@@ -45,9 +44,7 @@ SLACK_SIGNING_SECRET=... \
 SLACK_BOT_USER_ID=UIROHA \
 IROHARNESS_RUN_CODEX=1 \
 IROHARNESS_TEXT_BRAIN_PROVIDER=codex \
-IROHARNESS_TEXT_BRAIN_MODEL=gpt-5.4 \
-IROHARNESS_DEEP_BRAIN_PROVIDER=codex \
-IROHARNESS_DEEP_BRAIN_MODEL=gpt-5.5 \
+IROHARNESS_TEXT_BRAIN_MODEL=gpt-5.5 \
 IROHARNESS_SLACK_OWNER_USER_ID=UOWNER \
 CODEX_WORKSPACE=/path/to/project \
 npm run example:slack-codex
@@ -118,7 +115,7 @@ Slack mention
   -> Slack signature verification
   -> IroHarness Slack adapter
   -> audience registry resolves slack:U...
-  -> text/deep route uses Codex app-server brain with selected model
+  -> text route uses Codex app-server brain with selected model
   -> permission policy checks delegate_work for work routes
   -> work route uses Codex app-server micro harness with selected worker model
   -> Slack thread reply

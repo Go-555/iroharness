@@ -1494,12 +1494,6 @@ export const createAudienceContextPolicy = ({
     if (route.kind === "voice") {
       return "brief";
     }
-    if (
-      route.kind === "deep" &&
-      hasPermission(permissions, "deep_discussion")
-    ) {
-      return "deep";
-    }
     if (hasPermission(permissions, "deep_discussion")) {
       return "standard";
     }
@@ -1616,10 +1610,10 @@ export const createHeuristicRouter = () => {
     }
     if (!isWork) {
       return freezeCopy({
-        kind: input.modality === "voice" ? "voice" : isDeep ? "deep" : "text",
+        kind: input.modality === "voice" ? "voice" : "text",
         harnessId: null,
         reason: isDeep
-          ? "Deep discussion signal detected"
+          ? "Deep discussion signal detected; using text brain"
           : "No work signal detected",
       });
     }
@@ -1632,9 +1626,9 @@ export const createHeuristicRouter = () => {
     if (!selectedHarness && input.modality !== "voice") {
       if (isDeep) {
         return freezeCopy({
-          kind: "deep",
+          kind: "text",
           harnessId: null,
-          reason: "Deep discussion signal detected",
+          reason: "Deep discussion signal detected; using text brain",
         });
       }
     }
@@ -2344,6 +2338,7 @@ export const createHttpStreamingStt = ({
     start({ onEvent = () => {} } = {}) {
       let sequence = 0;
       let closed = false;
+      const sessionId = createId(`${id}_session`);
       const emit = (event) => {
         const nextEvent = createRealtimeAdapterEvent({ id, sequence, event });
         sequence += 1;
@@ -2382,6 +2377,8 @@ export const createHttpStreamingStt = ({
           }
           return post({
             type: "audio",
+            sessionId,
+            session_id: sessionId,
             audio: chunk?.audio || chunk?.data || null,
             text: typeof chunk === "string" ? chunk : chunk?.text || null,
             final: Boolean(chunk?.final),
@@ -2392,7 +2389,12 @@ export const createHttpStreamingStt = ({
             return Object.freeze([]);
           }
           closed = true;
-          return post({ type: "end", final: true });
+          return post({
+            type: "end",
+            sessionId,
+            session_id: sessionId,
+            final: true,
+          });
         },
         cancel(reason = "cancelled") {
           if (closed) {
@@ -3003,7 +3005,6 @@ export const createIroHarness = ({
       [
         ["voice", brains.voice],
         ["text", brains.text],
-        ["deep", brains.deep],
       ]
         .filter(([, brain]) => Boolean(brain))
         .map(([slot, brain]) =>
@@ -3165,12 +3166,7 @@ export const createIroHarness = ({
       return runStreamController(input, route, actor, audience);
     }
 
-    const brain =
-      route.kind === "voice"
-        ? brains.voice
-        : route.kind === "deep"
-          ? brains.deep || brains.text
-          : brains.text;
+    const brain = route.kind === "voice" ? brains.voice : brains.text;
     const satisfied = resolveSatisfiedRequirements(satisfiedRequirements, {
       input,
       actor,

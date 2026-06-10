@@ -3,7 +3,7 @@ import { pathToFileURL } from "node:url";
 
 const port = Number(process.env.PORT || 8789);
 
-const slots = Object.freeze(["voice", "text", "deep"]);
+const slots = Object.freeze(["voice", "text"]);
 
 const readJson = (request) =>
   new Promise((resolve, reject) => {
@@ -53,9 +53,7 @@ export const createBrainPrompt = ({ slot, payload }) => {
     "Stay in the same character identity supplied by the macro harness.",
     slot === "voice"
       ? "Reply briefly for low-latency spoken output."
-      : slot === "deep"
-        ? "Reason carefully for developer-level or strategic discussion."
-        : "Reply naturally for text chat.",
+      : "Reply naturally for text chat, including developer-level or strategic discussion.",
     character.soul ? `SOUL:\n${character.soul}` : null,
     character.identity ? `IDENTITY:\n${character.identity}` : null,
     character.memory ? `MEMORY:\n${character.memory}` : null,
@@ -167,7 +165,7 @@ export const callProvider = async ({ slot, payload, config, fetchImpl = fetch })
     const providerPayload = await parseJsonResponse(response);
     return {
       text: extractOpenAIText(providerPayload),
-      emotion: slot === "deep" ? "focused" : "attentive",
+      emotion: "attentive",
       provider: "openai",
       model: config.model
     };
@@ -191,7 +189,7 @@ export const callProvider = async ({ slot, payload, config, fetchImpl = fetch })
     const providerPayload = await parseJsonResponse(response);
     return {
       text: extractAnthropicText(providerPayload),
-      emotion: slot === "deep" ? "focused" : "attentive",
+      emotion: "attentive",
       provider: "anthropic",
       model: config.model
     };
@@ -216,7 +214,7 @@ export const callProvider = async ({ slot, payload, config, fetchImpl = fetch })
     const providerPayload = await parseJsonResponse(response);
     return {
       text: extractChatText(providerPayload),
-      emotion: slot === "deep" ? "focused" : "attentive",
+      emotion: "attentive",
       provider: "openai-compatible",
       model: config.model
     };
@@ -247,7 +245,7 @@ export const createProviderBrainGatewayHandler = ({
   if (request.method !== "POST" || !slot) {
     writeJson(response, 404, {
       error: "not_found",
-      routes: ["POST /voice", "POST /text", "POST /deep", "GET /health"]
+      routes: ["POST /voice", "POST /text", "GET /health"]
     });
     return;
   }
@@ -275,7 +273,6 @@ if (runningDirectly) {
     console.log(`IroHarness provider brain gateway: http://127.0.0.1:${port}`);
     console.log(`voice=http://127.0.0.1:${port}/voice`);
     console.log(`text=http://127.0.0.1:${port}/text`);
-    console.log(`deep=http://127.0.0.1:${port}/deep`);
   });
 
   process.once("SIGINT", () => {

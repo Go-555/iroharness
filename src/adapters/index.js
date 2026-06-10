@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { createServer } from "node:http";
-import { readFileSync, statSync } from "node:fs";
+import { mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { extname, join, normalize, relative, resolve } from "node:path";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
@@ -43,6 +43,18 @@ const truncateForPrompt = (value, maxLength = 8000) => {
   }
   return `${text.slice(0, maxLength)}\n[truncated]`;
 };
+
+const normalizeSpeechText = (text) =>
+  String(text || "")
+    .replace(/```[\s\S]*?```/g, "")
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+    .replace(/[*_#>|~-]+/g, "")
+    .replace(/\b(?:OK|okay)\b/g, "うん")
+    .replace(/\b(?:Yes|No)\b/g, (match) => (match === "Yes" ? "はい" : "いいえ"))
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 
 const buildDefaultMicroHarnessPrompt = ({ task, context = {}, label }) =>
   [
@@ -127,6 +139,124 @@ const bufferFromAudioChunk = (chunk) => {
 };
 
 const arrayBufferToBase64 = (value) => Buffer.from(value).toString("base64");
+
+const isRiffWave = (buffer) =>
+  Buffer.isBuffer(buffer) &&
+  buffer.length >= 12 &&
+  buffer.toString("ascii", 0, 4) === "RIFF" &&
+  buffer.toString("ascii", 8, 12) === "WAVE";
+
+const createPcm16WavBuffer = ({ pcm, sampleRate = 16000, channels = 1 } = {}) => {
+  const data = Buffer.isBuffer(pcm) ? pcm : Buffer.from(pcm || []);
+  const wav = Buffer.alloc(44 + data.length);
+  wav.write("RIFF", 0, "ascii");
+  wav.writeUInt32LE(36 + data.length, 4);
+  wav.write("WAVE", 8, "ascii");
+  wav.write("fmt ", 12, "ascii");
+  wav.writeUInt32LE(16, 16);
+  wav.writeUInt16LE(1, 20);
+  wav.writeUInt16LE(channels, 22);
+  wav.writeUInt32LE(sampleRate, 24);
+  wav.writeUInt32LE(sampleRate * channels * 2, 28);
+  wav.writeUInt16LE(channels * 2, 32);
+  wav.writeUInt16LE(16, 34);
+  wav.write("data", 36, "ascii");
+  wav.writeUInt32LE(data.length, 40);
+  data.copy(wav, 44);
+  return wav;
+};
+
+const parsePcm16Wav = (audio) => {
+  const buffer = Buffer.isBuffer(audio) ? audio : Buffer.from(audio || []);
+  if (!isRiffWave(buffer)) {
+    throw new Error("expected RIFF/WAVE audio");
+  }
+
+  let fmt = null;
+  let data = null;
+  let offset = 12;
+  while (offset + 8 <= buffer.length) {
+    const chunkId = buffer.toString("ascii", offset, offset + 4);
+    const chunkSize = buffer.readUInt32LE(offset + 4);
+    const chunkStart = offset + 8;
+    const chunkEnd = chunkStart + chunkSize;
+    if (chunkEnd > buffer.length) {
+      break;
+    }
+    if (chunkId === "fmt ") {
+      fmt = {
+        audioFormat: buffer.readUInt16LE(chunkStart),
+        channels: buffer.readUInt16LE(chunkStart + 2),
+        sampleRate: buffer.readUInt32LE(chunkStart + 4),
+        bitsPerSample: buffer.readUInt16LE(chunkStart + 14)
+      };
+    }
+    if (chunkId === "data") {
+      data = buffer.subarray(chunkStart, chunkEnd);
+    }
+    offset = chunkEnd + (chunkSize % 2);
+  }
+
+  if (!fmt || !data) {
+    throw new Error("WAV audio is missing fmt or data chunk");
+  }
+  if (fmt.audioFormat !== 1 || fmt.bitsPerSample !== 16) {
+    throw new Error(`unsupported WAV format=${fmt.audioFormat} bits=${fmt.bitsPerSample}`);
+  }
+  return Object.freeze({
+    encoding: "pcm16",
+    dataBase64: data.toString("base64"),
+    sampleRate: fmt.sampleRate,
+    channels: fmt.channels,
+    bitsPerSample: 16
+  });
+};
+
+const normalizeStackChanSpeechAudio = (event) => {
+  const encoding = String(event?.encoding || "wav").toLowerCase();
+  if (encoding === "wav") {
+    const parsed = parsePcm16Wav(Buffer.from(event.audio || "", "base64"));
+    return Object.freeze({
+      encoding: "pcm16",
+      dataBase64: parsed.dataBase64,
+      sampleRate: parsed.sampleRate,
+      channels: parsed.channels,
+      bitsPerSample: parsed.bitsPerSample
+    });
+  }
+  return Object.freeze({
+    encoding: encoding === "pcm_s16le" ? "pcm16" : encoding,
+    dataBase64: event?.audio || event?.dataBase64 || "",
+    sampleRate: event?.sampleRate || event?.sample_rate || 24000,
+    channels: event?.channels || 1,
+    bitsPerSample: event?.bitsPerSample || event?.bits_per_sample || 16
+  });
+};
+
+const splitStackChanSpeechAudio = (audio, { maxBytes = 8192 } = {}) => {
+  const data = Buffer.from(audio?.dataBase64 || "", "base64");
+  if (data.length === 0 || data.length <= maxBytes || audio?.encoding !== "pcm16") {
+    return Object.freeze([audio]);
+  }
+  const bytesPerSampleFrame = Math.max(
+    1,
+    Number(audio.channels || 1) * Math.max(1, Number(audio.bitsPerSample || 16) / 8)
+  );
+  const chunkBytes = Math.max(
+    bytesPerSampleFrame,
+    Math.floor(maxBytes / bytesPerSampleFrame) * bytesPerSampleFrame
+  );
+  const chunks = [];
+  for (let offset = 0; offset < data.length; offset += chunkBytes) {
+    chunks.push(
+      Object.freeze({
+        ...audio,
+        dataBase64: data.subarray(offset, offset + chunkBytes).toString("base64")
+      })
+    );
+  }
+  return Object.freeze(chunks);
+};
 
 const sendJson = (response, status, value) => {
   response.writeHead(status, {
@@ -804,6 +934,10 @@ const formatCodexBrainContext = ({ slot, model, context }) =>
     "Answer as the character. Do not claim to be Codex unless the user asks about the backend.",
     "Keep character identity, audience permissions, and Project OS context stable.",
     "Do not modify files or run development work from this brain path; delegate work belongs to micro harnesses.",
+    "Always answer in natural Japanese unless the user explicitly asks for another language.",
+    "For voice or StackChan input, produce one or two short spoken Japanese sentences.",
+    "Avoid Markdown, bullet lists, code blocks, URLs, emoji, and English filler in voice replies.",
+    "Do not include backend labels such as TEXT, VOICE, Codex, model names, or route names unless the user asks.",
     "",
     `Brain slot: ${slot}`,
     `Model: ${model || "default"}`,
@@ -902,7 +1036,7 @@ export const createCodexAppServerBrain = ({
         );
         return Object.freeze({
           text: extractCodexText(events) || "受け取ったよ。",
-          emotion: context.route?.kind === "deep" ? "focused" : "attentive",
+          emotion: context.audience?.responseDepth === "standard" ? "focused" : "attentive",
           raw: Object.freeze({
             provider: "codex",
             model,
@@ -917,6 +1051,99 @@ export const createCodexAppServerBrain = ({
     close() {
       transport.close?.();
       threadId = null;
+    }
+  });
+};
+
+const extractOpenAiResponsesText = (payload = {}) => {
+  if (typeof payload.output_text === "string") {
+    return payload.output_text;
+  }
+  const output = Array.isArray(payload.output) ? payload.output : [];
+  return output
+    .flatMap((item) => (Array.isArray(item.content) ? item.content : []))
+    .map((content) => content.text || "")
+    .join("")
+    .trim();
+};
+
+const formatOpenAiBrainPrompt = ({ slot, context }) => {
+  const character = context.character || {};
+  const audience = context.audience || {};
+  const actor = context.actor || {};
+  const input = context.input || {};
+
+  const system = [
+    `あなたは${character.name || character.id || "IroHarness character"}です。`,
+    "IroHarnessの同じ人格として、自然な日本語で返答してください。",
+    slot === "voice"
+      ? "音声会話用です。最初に短い相づちを置いてもよいです。返答は1〜2文、30文字前後を目安にしてください。"
+      : "テキスト会話用です。必要な範囲で自然に返答してください。",
+    "音声合成される可能性があるため、Markdown、箇条書き、コード、URL、絵文字、XMLタグ、モデル名、backend名は使わないでください。",
+    "ユーザーの入力は音声認識結果の可能性があります。文脈上おかしい場合は、元の発話を推測してください。",
+    character.soul ? `SOUL:\n${character.soul}` : null,
+    character.identity ? `IDENTITY:\n${character.identity}` : null,
+    character.memory ? `MEMORY:\n${character.memory}` : null,
+    character.voiceStyle ? `VOICE:\n${character.voiceStyle}` : null
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+
+  const user = [
+    `actor: ${actor.displayName || actor.user?.displayName || "user"}`,
+    `relationship: ${audience.relationship || "public"}`,
+    `modality: ${input.modality || "text"}`,
+    "",
+    input.text || ""
+  ].join("\n");
+
+  return Object.freeze({ system, user });
+};
+
+export const createOpenAiResponsesBrain = ({
+  id = "openai-responses-brain",
+  slot = "voice",
+  apiKey = process.env.OPENAI_API_KEY || "",
+  baseUrl = process.env.OPENAI_BASE_URL || "https://api.openai.com/v1",
+  model = "gpt-5.5",
+  maxOutputTokens = slot === "voice" ? 96 : 700,
+  fetchImpl = globalThis.fetch
+} = {}) => {
+  if (!apiKey) {
+    throw new Error("createOpenAiResponsesBrain requires OPENAI_API_KEY");
+  }
+  if (typeof fetchImpl !== "function") {
+    throw new Error("createOpenAiResponsesBrain requires fetchImpl");
+  }
+  const endpoint = `${String(baseUrl).replace(/\/+$/, "")}/responses`;
+  return Object.freeze({
+    id,
+    async respond(context) {
+      const prompt = formatOpenAiBrainPrompt({ slot, context });
+      const response = await fetchImpl(endpoint, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${apiKey}`,
+          "content-type": "application/json"
+        },
+        body: JSON.stringify({
+          model,
+          instructions: prompt.system,
+          input: prompt.user,
+          max_output_tokens: maxOutputTokens
+        })
+      });
+      const payload = await parseJsonResponse({ response, label: `OpenAI brain ${id}` });
+      const text = normalizeSpeechText(extractOpenAiResponsesText(payload));
+      return Object.freeze({
+        text: text || "うん、聞いてるよ。",
+        emotion: "attentive",
+        raw: Object.freeze({
+          provider: "openai",
+          model,
+          payload
+        })
+      });
     }
   });
 };
@@ -2538,9 +2765,12 @@ export const createAzureSpeechStt = ({
   subscriptionKey = null,
   authorizationToken = null,
   language = "ja-JP",
+  alternativeLanguages = [],
   format = "detailed",
+  mode = "classic",
   sampleRate = 16000,
   contentType = `audio/wav; codecs=audio/pcm; samplerate=${sampleRate}`,
+  debugAudioDir = null,
   headers = {},
   fetchImpl = globalThis.fetch
 } = {}) => {
@@ -2555,7 +2785,9 @@ export const createAzureSpeechStt = ({
   }
   const url =
     endpoint ||
-    `https://${region}.stt.speech.microsoft.com/speech/recognition/conversation/cognitiveservices/v1?language=${encodeURIComponent(language)}&format=${encodeURIComponent(format)}`;
+    (mode === "fast"
+      ? `https://${region}.api.cognitive.microsoft.com/speechtotext/transcriptions:transcribe?api-version=2024-11-15`
+      : `https://${region}.stt.speech.microsoft.com/speech/recognition/conversation/cognitiveservices/v1?language=${encodeURIComponent(language)}&format=${encodeURIComponent(format)}`);
 
   return Object.freeze({
     id,
@@ -2591,21 +2823,71 @@ export const createAzureSpeechStt = ({
             return Object.freeze([]);
           }
           closed = true;
-          const audio = Buffer.concat(buffers);
-          const response = await fetchImpl(url, {
-            method: "POST",
-            headers: {
-              accept: "application/json;text/xml",
-              "content-type": contentType,
-              ...(subscriptionKey ? { "Ocp-Apim-Subscription-Key": subscriptionKey } : {}),
-              ...(authorizationToken ? { authorization: `Bearer ${authorizationToken}` } : {}),
-              ...headers
-            },
-            body: audio
-          });
+          const audioBytes = Buffer.concat(buffers);
+          const audio = isRiffWave(audioBytes)
+            ? audioBytes
+            : createPcm16WavBuffer({
+                pcm: audioBytes,
+                sampleRate,
+                channels: 1
+              });
+          if (debugAudioDir) {
+            mkdirSync(debugAudioDir, { recursive: true });
+            const debugAudioPath = join(
+              debugAudioDir,
+              `${new Date().toISOString().replaceAll(":", "-")}-${id}-${sequence}.wav`
+            );
+            writeFileSync(debugAudioPath, audio);
+            emit({
+              type: "stt.debug_audio_saved",
+              path: debugAudioPath,
+              byteLength: audio.length
+            });
+          }
+          const authHeaders = {
+            ...(subscriptionKey ? { "Ocp-Apim-Subscription-Key": subscriptionKey } : {}),
+            ...(authorizationToken ? { authorization: `Bearer ${authorizationToken}` } : {}),
+            ...headers
+          };
+          const response =
+            mode === "fast"
+              ? await fetchImpl(url, {
+                  method: "POST",
+                  headers: {
+                    accept: "application/json",
+                    ...authHeaders
+                  },
+                  body: (() => {
+                    const formData = new FormData();
+                    formData.append("audio", new Blob([audio], { type: "audio/wav" }), "audio.wav");
+                    formData.append(
+                      "definition",
+                      new Blob(
+                        [
+                          JSON.stringify({
+                            locales: [language, ...alternativeLanguages],
+                            channels: [0]
+                          })
+                        ],
+                        { type: "application/json" }
+                      )
+                    );
+                    return formData;
+                  })()
+                })
+              : await fetchImpl(url, {
+                  method: "POST",
+                  headers: {
+                    accept: "application/json;text/xml",
+                    "content-type": contentType,
+                    ...authHeaders
+                  },
+                  body: audio
+                });
           const body = await parseJsonResponse({ response, label: `Azure Speech STT ${id}` });
           const text =
             body.DisplayText ||
+            body.combinedPhrases?.[0]?.text ||
             body.NBest?.[0]?.Display ||
             body.NBest?.[0]?.Lexical ||
             body.Text ||
@@ -2978,6 +3260,36 @@ const normalizeStackChanAudioPayload = (payload) =>
     dataBase64: payload.dataBase64 || payload.audioBase64 || payload.audio_data || ""
   };
 
+const analyzePcm16Audio = (audio = {}, { vadThresholdDb = -38 } = {}) => {
+  const encoding = String(audio.encoding || "pcm16").toLowerCase();
+  const pcm =
+    encoding === "wav"
+      ? Buffer.from(parsePcm16Wav(Buffer.from(audio.dataBase64 || "", "base64")).dataBase64, "base64")
+      : Buffer.from(audio.dataBase64 || "", "base64");
+  const sampleCount = Math.floor(pcm.length / 2);
+  if (sampleCount === 0) {
+    return Object.freeze({
+      bytes: pcm.length,
+      sampleCount,
+      rmsDb: -Infinity,
+      isSpeech: false
+    });
+  }
+  let sumSquares = 0;
+  for (let offset = 0; offset + 1 < pcm.length; offset += 2) {
+    const sample = pcm.readInt16LE(offset);
+    sumSquares += sample * sample;
+  }
+  const rms = Math.sqrt(sumSquares / sampleCount);
+  const rmsDb = rms <= 0 ? -Infinity : 20 * Math.log10(rms / 32768);
+  return Object.freeze({
+    bytes: pcm.length,
+    sampleCount,
+    rmsDb,
+    isSpeech: rmsDb >= vadThresholdDb
+  });
+};
+
 const isAiAvatarStackChanClientMessage = (payload) =>
   ["start", "data"].includes(payload?.type) ||
   Boolean(payload?.session_id) ||
@@ -3002,6 +3314,16 @@ export const createStackChanRealtimeSessionHandler = ({
   createQueue = null,
   deviceToken = null,
   latencyBudgetMs = 1000,
+  sttAutoFinalMs = 0,
+  sttAutoFinalMinBytes = 32000,
+  vadThresholdDb = -38,
+  vadSilenceMs = 700,
+  vadMinSpeechMs = 250,
+  vadMaxSpeechMs = 8000,
+  vadMode = "node",
+  minAudioBytes = 0,
+  speechChunkBytes = 512,
+  immediateAckText = "",
   voice = "iroha"
 } = {}) => {
   if (!harness || typeof harness.receive !== "function") {
@@ -3027,14 +3349,25 @@ export const createStackChanRealtimeSessionHandler = ({
     handleConnection(socket, { deviceId = "stackchan", userId = deviceId, channel = "local", token = null, onEvent = () => {} } = {}) {
       let sequence = 0;
       let sttSession = null;
+      let sttSessionStartedAt = 0;
+      let sttSessionBytes = 0;
+      let vadSpeechStartedAt = 0;
+      let vadLastSpeechAt = 0;
       let protocol = "iroharness";
       let aiAvatarSessionId = id;
       let activeUserId = userId;
       let activeChannel = channel;
+      let messageChain = Promise.resolve();
+      let audioLevelDebugCounter = 0;
+      let speechInFlight = false;
+      let latencyTurnStartedAt = 0;
       const queue =
         typeof createQueue === "function"
           ? createQueue({ deviceId, userId, channel })
           : null;
+      const providerOwnsVad = ["provider", "stt", "aiavatar", "aiavatar-silero-openai"].includes(
+        String(vadMode || "node").toLowerCase()
+      );
 
       const emit = (event) => {
         const nextEvent = createAdapterEvent({
@@ -3085,6 +3418,18 @@ export const createStackChanRealtimeSessionHandler = ({
                 type: "voiced",
                 session_id: aiAvatarSessionId
               };
+        }
+        if (payload.type === "stt.empty") {
+          return {
+            type: "final",
+            session_id: aiAvatarSessionId,
+            text: "",
+            metadata: {
+              text: "",
+              voice_text: "",
+              reason: payload.reason || "empty"
+            }
+          };
         }
         if (payload.type === "response.start") {
           return {
@@ -3164,54 +3509,112 @@ export const createStackChanRealtimeSessionHandler = ({
           }
         });
 
-      const speak = async ({ text }) => {
-        const responseText = String(text || "");
+      const speak = async ({ text, role = "answer", sendFinal = true }) => {
+        const responseText = normalizeSpeechText(text);
+        if (!responseText) {
+          return Object.freeze([]);
+        }
+        const ttsStartedAt = Date.now();
+        let ttsFirstAudioAt = 0;
+        emit({
+          type: "stackchan.speech.started",
+          role,
+          textLength: responseText.length
+        });
         send({
           type: "response.start",
+          role,
           text: responseText
         });
-        const speechEvents = await tts.stream({
-          text: responseText,
-          voice,
-          onEvent(event) {
-            if (event.type !== "tts.audio") {
-              return;
-            }
-            const item = queue?.enqueue
-              ? queue.enqueue({
+        let speechChunkCount = 0;
+        speechInFlight = true;
+        try {
+          const speechEvents = await tts.stream({
+            text: responseText,
+            voice,
+            onEvent(event) {
+              if (event.type !== "tts.audio") {
+                return;
+              }
+              const audio = normalizeStackChanSpeechAudio(event);
+              if (!ttsFirstAudioAt) {
+                ttsFirstAudioAt = Date.now();
+                emit({
+                  type: "stackchan.tts.first_audio",
+                  durationMs: ttsFirstAudioAt - ttsStartedAt,
+                  textLength: responseText.length
+                });
+              }
+              const audioChunks = splitStackChanSpeechAudio(audio, {
+                maxBytes: speechChunkBytes
+              });
+              const item = queue?.enqueue
+                ? queue.enqueue({
+                    text: event.text || responseText,
+                    audio: {
+                      encoding: audio.encoding,
+                      dataBase64: audio.dataBase64,
+                      sampleRate: audio.sampleRate,
+                      channels: audio.channels,
+                      bitsPerSample: audio.bitsPerSample
+                    },
+                    voice,
+                    source: id
+                  })
+                : {
+                    id: `${id}:speech:${sequence}`,
+                    text: event.text || responseText
+                  };
+              audioChunks.forEach((audioChunk, index) => {
+                send({
+                  type: "speech.audio",
+                  itemId: item.id,
+                  chunkIndex: index,
+                  chunkCount: audioChunks.length,
+                  role,
                   text: event.text || responseText,
                   audio: {
-                    encoding: event.encoding || "wav",
-                    dataBase64: event.audio
+                    encoding: audioChunk.encoding,
+                    dataBase64: audioChunk.dataBase64,
+                    sampleRate: audioChunk.sampleRate,
+                    channels: audioChunk.channels,
+                    bitsPerSample: audioChunk.bitsPerSample
                   },
-                  voice,
-                  source: id
-                })
-              : {
-                  id: `${id}:speech:${sequence}`,
-                  text: event.text || responseText
-                };
+                  voice
+                });
+              });
+              speechChunkCount += audioChunks.length;
+              emit({
+                type: "stackchan.speech.audio_sent",
+                role,
+                chunks: audioChunks.length,
+                totalChunks: speechChunkCount,
+                bytes: audio.dataBase64.length
+              });
+            }
+          });
+          const completed = queue?.snapshot?.().current;
+          if (completed?.id && queue?.complete) {
+            queue.complete(completed.id);
+          }
+          if (sendFinal) {
             send({
-              type: "speech.audio",
-              itemId: item.id,
-              text: event.text || responseText,
-              audio: {
-                encoding: event.encoding || "wav",
-                dataBase64: event.audio
-              },
-              voice
+              type: "response.final",
+              role,
+              text: responseText
             });
           }
-        });
-        const completed = queue?.snapshot?.().current;
-        if (completed?.id && queue?.complete) {
-          queue.complete(completed.id);
+          emit({
+            type: "stackchan.speech.completed",
+            role,
+            chunks: speechChunkCount,
+            ttsDurationMs: Date.now() - ttsStartedAt,
+            timeToFirstAudioMs: ttsFirstAudioAt ? ttsFirstAudioAt - ttsStartedAt : null
+          });
+          return Object.freeze(speechEvents);
+        } finally {
+          speechInFlight = false;
         }
-        send({
-          type: "response.final",
-          text: responseText
-        });
-        return Object.freeze(speechEvents);
       };
 
       const handleTurnResult = async (result) => {
@@ -3226,7 +3629,158 @@ export const createStackChanRealtimeSessionHandler = ({
         return speak({ text });
       };
 
+      const resetAudioTurnState = () => {
+        sttSession = null;
+        sttSessionStartedAt = 0;
+        sttSessionBytes = 0;
+        vadSpeechStartedAt = 0;
+        vadLastSpeechAt = 0;
+      };
+
+      const normalizeSttEvents = (events) =>
+        Object.freeze(Array.isArray(events) ? events : [events].filter(Boolean));
+
+      const findFinalTranscriptEvent = (events, { requireText = true } = {}) =>
+        [...normalizeSttEvents(events)]
+          .reverse()
+          .find(
+            (candidate) =>
+              candidate.type === "stt.final" &&
+              (!requireText || String(candidate.text || "").trim())
+          );
+
+      const handleEmptyTranscript = ({ reason, sttDurationMs = 0, sinceSpeechStartMs = null } = {}) => {
+        emit({
+          type: "stackchan.latency.stt_finalized",
+          reason,
+          hasText: false,
+          sttDurationMs,
+          sinceSpeechStartMs
+        });
+        send({
+          type: "stt.empty",
+          reason
+        });
+        return Object.freeze([]);
+      };
+
+      const handleTranscriptTurn = async ({
+        transcriptEvent,
+        payload,
+        reason = "final",
+        sttDurationMs = 0,
+        completedAt = Date.now()
+      }) => {
+        emit({
+          type: "stackchan.latency.stt_finalized",
+          reason,
+          hasText: true,
+          sttDurationMs,
+          sinceSpeechStartMs: latencyTurnStartedAt ? completedAt - latencyTurnStartedAt : null,
+          transcriptLength: transcriptEvent.text.length
+        });
+        const brainStartedAt = Date.now();
+        emit({
+          type: "stackchan.latency.brain_started",
+          transcriptLength: transcriptEvent.text.length
+        });
+        const ackText =
+          typeof immediateAckText === "function"
+            ? immediateAckText({
+                text: transcriptEvent.text,
+                reason,
+                deviceId,
+                channel: activeChannel
+              })
+            : immediateAckText;
+        const ackPromise = normalizeSpeechText(ackText)
+          ? speak({
+              text: ackText,
+              role: "ack",
+              sendFinal: false
+            }).catch((error) => {
+              emit({
+                type: "stackchan.ack.error",
+                message: error.message
+              });
+              return Object.freeze([]);
+            })
+          : null;
+        const result = await receiveTurn({
+          modality: "voice",
+          text: transcriptEvent.text,
+          metadata: {
+            audio: normalizeStackChanAudioPayload(payload),
+            sttFinalizeReason: reason
+          }
+        });
+        emit({
+          type: "stackchan.latency.brain_completed",
+          durationMs: Date.now() - brainStartedAt,
+          resultKind: result?.kind || null,
+          textLength: String(result?.text || result?.output?.summary || "").length
+        });
+        if (ackPromise) {
+          await ackPromise;
+        }
+        return handleTurnResult(result);
+      };
+
+      const finalizeAudioTurn = async ({ pushedEvents = [], payload, reason = "final" }) => {
+        if (!sttSession) {
+          return Object.freeze([]);
+        }
+        const sttFinalizeStartedAt = Date.now();
+        const finalEvents = await sttSession.end();
+        const sttFinalizeCompletedAt = Date.now();
+        resetAudioTurnState();
+        const transcriptEvent = findFinalTranscriptEvent([
+          ...normalizeSttEvents(pushedEvents),
+          ...normalizeSttEvents(finalEvents)
+        ]);
+        if (!transcriptEvent) {
+          return handleEmptyTranscript({
+            reason,
+            sttDurationMs: sttFinalizeCompletedAt - sttFinalizeStartedAt,
+            sinceSpeechStartMs: latencyTurnStartedAt ? sttFinalizeCompletedAt - latencyTurnStartedAt : null
+          });
+        }
+        return handleTranscriptTurn({
+          transcriptEvent,
+          payload,
+          reason,
+          sttDurationMs: sttFinalizeCompletedAt - sttFinalizeStartedAt,
+          completedAt: sttFinalizeCompletedAt
+        });
+      };
+
       const handleAudio = async (payload) => {
+        const audio = normalizeStackChanAudioPayload(payload);
+        const now = Date.now();
+        const vad = analyzePcm16Audio(audio, { vadThresholdDb });
+        const audioLevelDebugEvery = Number(process.env.IROHARNESS_STACKCHAN_AUDIO_LEVEL_DEBUG_EVERY || "0");
+        if (audioLevelDebugEvery > 0 && audioLevelDebugCounter % audioLevelDebugEvery === 0) {
+          emit({
+            type: "stackchan.audio_level",
+            messageType: payload.type || "audio",
+            bytes: vad.bytes,
+            rmsDb: vad.rmsDb,
+            isSpeech: vad.isSpeech,
+            thresholdDb: vadThresholdDb
+          });
+        }
+        audioLevelDebugCounter += 1;
+        if (speechInFlight && !payload.final) {
+          return Object.freeze([]);
+        }
+        if (!providerOwnsVad && vad.bytes < minAudioBytes && !payload.final && !sttSession) {
+          return Object.freeze([]);
+        }
+        const deviceFinal = Boolean(payload.final);
+        const shouldStart = providerOwnsVad ? deviceFinal || vad.bytes > 0 : deviceFinal || vad.isSpeech;
+        if (!sttSession && !shouldStart) {
+          return Object.freeze([]);
+        }
         sttSession =
           sttSession ||
           stt.start({
@@ -3241,35 +3795,88 @@ export const createStackChanRealtimeSessionHandler = ({
               });
             }
           });
+        if (!sttSessionStartedAt) {
+          sttSessionStartedAt = now;
+          sttSessionBytes = 0;
+          if (providerOwnsVad && !latencyTurnStartedAt) {
+            latencyTurnStartedAt = now;
+          }
+        }
+        if (vad.isSpeech) {
+          if (!vadSpeechStartedAt) {
+            vadSpeechStartedAt = now;
+            latencyTurnStartedAt = now;
+            emit({
+              type: "stackchan.stt.speech_started",
+              rmsDb: vad.rmsDb
+            });
+          }
+          vadLastSpeechAt = now;
+        }
+        const dataBytes = vad.bytes;
+        sttSessionBytes += dataBytes;
         const pushedEvents = await sttSession.push({
-          audio: normalizeStackChanAudioPayload(payload),
-          final: Boolean(payload.final)
+          audio,
+          final: deviceFinal
         });
-        if (!payload.final) {
+        if (providerOwnsVad) {
+          const transcriptEvent = findFinalTranscriptEvent(pushedEvents, { requireText: false });
+          if (transcriptEvent) {
+            const completedAt = Date.now();
+            const hasText = String(transcriptEvent.text || "").trim();
+            resetAudioTurnState();
+            if (!hasText) {
+              return handleEmptyTranscript({
+                reason: "provider-vad",
+                sttDurationMs: completedAt - now,
+                sinceSpeechStartMs: latencyTurnStartedAt ? completedAt - latencyTurnStartedAt : null
+              });
+            }
+            return handleTranscriptTurn({
+              transcriptEvent,
+              payload,
+              reason: "provider-vad",
+              sttDurationMs: completedAt - now,
+              completedAt
+            });
+          }
+          if (!deviceFinal) {
+            return Object.freeze(pushedEvents);
+          }
+        }
+        const elapsedSpeechMs = vadSpeechStartedAt ? now - vadSpeechStartedAt : 0;
+        const silenceMs = vadLastSpeechAt ? now - vadLastSpeechAt : 0;
+        const shouldVadFinal =
+          !deviceFinal &&
+          vadSpeechStartedAt > 0 &&
+          !vad.isSpeech &&
+          silenceMs >= vadSilenceMs &&
+          elapsedSpeechMs >= vadMinSpeechMs;
+        const shouldMaxFinal =
+          !deviceFinal &&
+          vadSpeechStartedAt > 0 &&
+          vadMaxSpeechMs > 0 &&
+          elapsedSpeechMs >= vadMaxSpeechMs;
+        const shouldAutoFinal =
+          !deviceFinal &&
+          vadSpeechStartedAt > 0 &&
+          sttAutoFinalMs > 0 &&
+          sttSessionBytes >= sttAutoFinalMinBytes &&
+          elapsedSpeechMs >= sttAutoFinalMs;
+        if (!deviceFinal && !shouldVadFinal && !shouldMaxFinal && !shouldAutoFinal) {
           return Object.freeze(pushedEvents);
         }
-        const finalEvents = await sttSession.end();
-        sttSession = null;
-        const transcriptEvent = [
-          ...(Array.isArray(pushedEvents) ? pushedEvents : [pushedEvents].filter(Boolean)),
-          ...(Array.isArray(finalEvents) ? finalEvents : [finalEvents].filter(Boolean))
-        ]
-          .reverse()
-          .find((candidate) => candidate.type === "stt.final" && candidate.text);
-        if (!transcriptEvent) {
-          send({
-            type: "stt.empty"
-          });
-          return Object.freeze([]);
-        }
-        const result = await receiveTurn({
-          modality: "voice",
-          text: transcriptEvent.text,
-          metadata: {
-            audio: normalizeStackChanAudioPayload(payload)
-          }
+        return finalizeAudioTurn({
+          pushedEvents,
+          payload,
+          reason: deviceFinal
+            ? "device-final"
+            : shouldVadFinal
+              ? "vad-silence"
+              : shouldMaxFinal
+                ? "vad-max-duration"
+                : "auto-final"
         });
-        return handleTurnResult(result);
       };
 
       const handlePayload = async (payload) => {
@@ -3367,7 +3974,7 @@ export const createStackChanRealtimeSessionHandler = ({
       }
 
       attachSocketListener(socket, "message", (event) => {
-        Promise.resolve()
+        messageChain = messageChain
           .then(() => handlePayload(parseSocketMessageData(event)))
           .catch((error) => {
             emit({
@@ -3382,6 +3989,11 @@ export const createStackChanRealtimeSessionHandler = ({
       });
       attachSocketListener(socket, "close", () => {
         sttSession?.cancel?.("socket-closed");
+        sttSession = null;
+        sttSessionStartedAt = 0;
+        sttSessionBytes = 0;
+        vadSpeechStartedAt = 0;
+        vadLastSpeechAt = 0;
         queue?.clear?.("socket-closed");
         emit({
           type: "stackchan.closed"
@@ -3400,6 +4012,7 @@ export const createStackChanRealtimeSessionHandler = ({
       return Object.freeze({
         accepted: true,
         send,
+        speak,
         close() {
           if (typeof socket.close === "function") {
             socket.close();

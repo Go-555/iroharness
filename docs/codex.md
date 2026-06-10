@@ -4,7 +4,7 @@ IroHarness can delegate coding work to Codex through `codex app-server`.
 
 For a Slack-facing runtime that uses the host machine's Codex OAuth session,
 see [slack-codex.md](./slack-codex.md).
-For using Codex OAuth as the main text/deep brain instead of only as a coding
+For using Codex OAuth as the main text brain instead of only as a coding
 worker, see [brains.md](./brains.md#codex-oauth-brain).
 
 Codex OAuth belongs to the local `codex app-server` process on the host where

@@ -316,7 +316,6 @@ export function createIroHarness(input: {
   readonly brains: {
     readonly voice: Brain;
     readonly text: Brain;
-    readonly deep?: Brain;
   };
   readonly devices?: readonly Device[];
   readonly microHarnesses?: readonly MicroHarness[];

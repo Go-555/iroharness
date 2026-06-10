@@ -9,7 +9,7 @@ It is the first trusted device route:
 - IroHarness owns identity, memory, permissions, routing, and Project OS.
 - StackChan is a trusted body/device runtime that renders state and sends local
   mic, touch, button, and vision events.
-- Codex can be added later as a text/deep brain or delegated micro harness.
+- Codex can be added later as a text brain or delegated micro harness.
 
 ## Current Maturity
 
@@ -26,6 +26,7 @@ Good now:
 - IroHarness-owned StackChan firmware runtime under `firmware/stackchan-runtime`
 - shared character state between Slack and StackChan
 - optional Codex OAuth model use through `codex app-server`
+- optional OpenAI Responses API voice brain for AIAvatarStackChan-style low-latency conversation
 
 Still early:
 
@@ -138,6 +139,13 @@ Example:
 }
 ```
 
+By default the gateway registers the local StackChan identity
+`m5stack:stackchan` as a `member`, so the physical device is treated as a
+trusted local body instead of an anonymous public entry point. Override
+`IROHARNESS_STACKCHAN_USER_ID`, `IROHARNESS_STACKCHAN_USER_NAME`,
+`IROHARNESS_STACKCHAN_USER_ROLE`, or `IROHARNESS_STACKCHAN_USER_PLATFORM_ID`
+when a device should map to a different audience identity.
+
 Audio / push-to-talk input can use the same endpoint:
 
 ```json
@@ -170,6 +178,60 @@ AZURE_SPEECH_LANGUAGE=ja-JP \
 npm run example:slack-stackchan
 ```
 
+For the AIAvatarStackChan-derived low-latency voice path, run the IroHarness
+owned Silero/OpenAI STT worker and let the STT provider own VAD finalization.
+This mirrors AIAvatarKit's `SileroStreamSpeechDetector` shape: StackChan sends
+PCM chunks continuously, Silero detects the speech boundary, OpenAI STT returns
+the transcript, and IroHarness turns that final transcript into the voice turn.
+
+```bash
+python3 -m venv ~/.iroharness/venvs/aiavatar-stackchan
+~/.iroharness/venvs/aiavatar-stackchan/bin/pip install -U pip
+~/.iroharness/venvs/aiavatar-stackchan/bin/pip install 'aiavatar>=0.8.17'
+
+OPENAI_API_KEY=... \
+~/.iroharness/venvs/aiavatar-stackchan/bin/python \
+  ~/.iroharness/source/examples/aiavatar-silero-stt-worker.py \
+  --host 127.0.0.1 \
+  --port 4183
+```
+
+Then start the companion with:
+
+```bash
+IROHARNESS_STACKCHAN_STT_PROVIDER=aiavatar-silero-openai \
+IROHARNESS_STACKCHAN_STT_ENDPOINT=http://127.0.0.1:4183/stt \
+IROHARNESS_STACKCHAN_VAD_MODE=provider \
+IROHARNESS_STACKCHAN_SPEECH_CHUNK_BYTES=512 \
+npm run example:slack-stackchan
+```
+
+For the StackChan voice brain, choose the provider per deployment. The Codex
+path uses the host machine's `codex app-server` session, matching the
+OpenClaw-style Codex OAuth boundary. This is useful when you want to avoid a
+separate OpenAI API key and can accept app-server turn latency:
+
+```bash
+IROHARNESS_VOICE_BRAIN_PROVIDER=codex \
+IROHARNESS_VOICE_BRAIN_MODEL=gpt-5.5 \
+npm run example:slack-stackchan
+```
+
+The direct OpenAI path uses the Platform API directly. Use it when voice
+latency matters more than staying inside the Codex OAuth runtime:
+
+```bash
+IROHARNESS_VOICE_BRAIN_PROVIDER=openai \
+IROHARNESS_VOICE_BRAIN_MODEL=gpt-5.5 \
+IROHARNESS_VOICE_BRAIN_MAX_TOKENS=96 \
+OPENAI_API_KEY=... \
+npm run example:slack-stackchan
+```
+
+Keep `IROHARNESS_TEXT_BRAIN_PROVIDER=codex` for text discussion or delegated
+work. Voice can also use `codex`, but direct `openai` remains the lower-latency
+option once an API key is available.
+
 For AivisSpeech TTS on device audio/PTT responses:
 
 ```bash
@@ -178,6 +240,23 @@ AIVIS_SPEECH_BASE_URL=http://127.0.0.1:10101 \
 AIVIS_SPEECH_SPEAKER=888753760 \
 npm run example:slack-stackchan
 ```
+
+For AIAvatarStackChan-style perceived latency, enable a short immediate ack and
+small response chunks. The ack is spoken as soon as STT finalizes, while the
+voice brain continues generating the full answer:
+
+```bash
+IROHARNESS_STACKCHAN_IMMEDIATE_ACK_TEXT=うん。 \
+IROHARNESS_STACKCHAN_SPEECH_CHUNK_BYTES=512 \
+IROHARNESS_STACKCHAN_VAD_SILENCE_MS=650 \
+IROHARNESS_STACKCHAN_VAD_MIN_SPEECH_MS=250 \
+npm run example:slack-stackchan
+```
+
+The realtime StackChan handler normalizes AivisSpeech WAV output to raw PCM16
+before sending AIAvatarStackChan-style `chunk` messages. The firmware can then
+play speech through its existing PCM speaker path without a device-side WAV
+decoder.
 
 This HTTP invoke path is useful for first hardware checks. For the 1-second
 conversation target, use the WebSocket realtime relay in
@@ -278,15 +357,13 @@ macro harness core.
 
 ## Optional Codex OAuth
 
-For normal text/deep replies through Codex OAuth:
+For normal text replies through Codex OAuth:
 
 ```bash
 codex login
 
 IROHARNESS_TEXT_BRAIN_PROVIDER=codex \
-IROHARNESS_TEXT_BRAIN_MODEL=gpt-5.4 \
-IROHARNESS_DEEP_BRAIN_PROVIDER=codex \
-IROHARNESS_DEEP_BRAIN_MODEL=gpt-5.5 \
+IROHARNESS_TEXT_BRAIN_MODEL=gpt-5.5 \
 npm run example:slack-stackchan
 ```
 
@@ -301,7 +378,7 @@ CODEX_MODEL=gpt-5.4 \
 npm run example:slack-stackchan
 ```
 
-The two paths are separate. The text/deep brain is read-only conversation. The
+The two paths are separate. The text brain is read-only conversation. The
 Codex micro harness is where file edits, reviews, and implementation work
 belong.
 

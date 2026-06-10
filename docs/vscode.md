@@ -9,7 +9,7 @@ identity, permissions, PJOS, and micro-harness delegation are decided.
 VS Code Webview
   -> POST /turn source=vscode
   -> IroHarness macro harness
-  -> voice/text/deep brain or micro harness
+  -> voice/text brain or micro harness
   -> SSE /events back into the panel
 ```
 

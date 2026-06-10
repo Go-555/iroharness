@@ -22,7 +22,7 @@ Keep this split:
 | Layer | SSOT |
 |---|---|
 | Core SSOT | character identity, memory, voice style, Project OS, policies, audience registry, connection records |
-| Brain provider config | LLM/STT/TTS provider endpoints, models, credentials, OAuth sessions, routing by voice/text/deep/work slot |
+| Brain provider config | LLM/STT/TTS provider endpoints, models, credentials, OAuth sessions, routing by voice/text/work path |
 | Trusted StackChan gateway | device auth, actor mapping, device events, realtime session admission, redacted trusted view |
 | StackChan device runtime | Wi-Fi, display, touch, mic, speaker, camera, servo, LEDs, local reconnect, local buffering |
 | Wire protocol | start/data/invoke/stop, accepted/final/tool/vision, TTS audio chunks, face/lip-sync state, health |
@@ -128,7 +128,7 @@ Do not create a second LLM/STT/TTS configuration system inside StackChan.
 IroHarness owns provider selection through the existing brain and realtime
 contracts:
 
-- voice/text/deep/work brain slots are documented in [brains.md](./brains.md)
+- voice/text/work routing is documented in [brains.md](./brains.md)
 - streaming STT/TTS and barge-in are documented in [realtime.md](./realtime.md)
 - StackChan uses the same providers through the trusted device gateway
 
@@ -136,7 +136,7 @@ This means:
 
 - firmware sends microphone frames or audio invoke payloads
 - host-side STT converts audio to text
-- IroHarness routes the turn to the selected voice/text/deep brain
+- IroHarness routes the turn to the selected voice/text brain or work runner
 - host-side TTS returns audio chunks
 - firmware plays chunks and renders face/lip-sync state
 

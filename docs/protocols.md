@@ -61,7 +61,7 @@ Resolved turns also produce an `audience` context:
   "role": "developer",
   "relationship": "core-developer",
   "tier": "trusted",
-  "responseDepth": "deep",
+  "responseDepth": "standard",
   "permissions": ["chat_public", "deep_discussion", "delegate_work"],
   "canDeepDiscuss": true,
   "canDelegateWork": true,

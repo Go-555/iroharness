@@ -19,6 +19,7 @@ import {
   createCodexAppServerBrain,
   createCodexAppServerMicroHarness,
   createM5StackBodyBridge,
+  createOpenAiResponsesBrain,
   createStackChanRealtimeSessionHandler,
   createSlackEventsRuntime,
   createSlackMessageAdapter
@@ -250,9 +251,19 @@ const createCharacterFromRuntime = ({ profileDir }) => {
 const createBrainForSlot = ({ slot, codexWorkspace }) => {
   const prefix = `IROHARNESS_${slot.toUpperCase()}_BRAIN`;
   const provider = process.env[`${prefix}_PROVIDER`] || "echo";
+  const model =
+    process.env[`${prefix}_MODEL`] || process.env.CODEX_BRAIN_MODEL || process.env.CODEX_MODEL || "gpt-5.4";
+  if (provider === "openai") {
+    return createOpenAiResponsesBrain({
+      id: `${slot}-openai-${model}`,
+      slot,
+      apiKey: process.env.OPENAI_API_KEY,
+      baseUrl: process.env.OPENAI_BASE_URL || "https://api.openai.com/v1",
+      model,
+      maxOutputTokens: Number(process.env[`${prefix}_MAX_TOKENS`] || (slot === "voice" ? "96" : "700"))
+    });
+  }
   if (provider === "codex") {
-    const model =
-      process.env[`${prefix}_MODEL`] || process.env.CODEX_BRAIN_MODEL || process.env.CODEX_MODEL || "gpt-5.4";
     return createCodexAppServerBrain({
       id: `${slot}-codex-${model}`,
       slot,
@@ -265,6 +276,18 @@ const createBrainForSlot = ({ slot, codexWorkspace }) => {
 
 const createStackChanStt = () => {
   const provider = process.env.IROHARNESS_STACKCHAN_STT_PROVIDER || "http";
+  if (provider === "aiavatar" || provider === "aiavatar-silero-openai") {
+    const endpoint =
+      process.env.IROHARNESS_STACKCHAN_AIAVATAR_STT_ENDPOINT ||
+      process.env.IROHARNESS_STACKCHAN_STT_ENDPOINT ||
+      "http://127.0.0.1:4183/stt";
+    const authorization = process.env.IROHARNESS_STACKCHAN_STT_AUTHORIZATION;
+    return createHttpStreamingStt({
+      id: "stackchan-aiavatar-silero-stt",
+      endpoint,
+      headers: authorization ? { authorization } : {}
+    });
+  }
   if (provider === "mock") {
     const transcript = process.env.IROHARNESS_STACKCHAN_MOCK_TRANSCRIPT || "こんにちは";
     return Object.freeze({
@@ -309,7 +332,9 @@ const createStackChanStt = () => {
       subscriptionKey: process.env.AZURE_SPEECH_KEY || null,
       authorizationToken: process.env.AZURE_SPEECH_AUTHORIZATION_TOKEN || null,
       language: process.env.AZURE_SPEECH_LANGUAGE || "ja-JP",
-      sampleRate: Number(process.env.IROHARNESS_STACKCHAN_AUDIO_SAMPLE_RATE || "16000")
+      mode: process.env.AZURE_SPEECH_STT_MODE || "classic",
+      sampleRate: Number(process.env.IROHARNESS_STACKCHAN_AUDIO_SAMPLE_RATE || "16000"),
+      debugAudioDir: process.env.IROHARNESS_STACKCHAN_STT_DEBUG_AUDIO_DIR || null
     });
   }
   const endpoint = process.env.IROHARNESS_STACKCHAN_STT_ENDPOINT;
@@ -385,8 +410,9 @@ const transcribeStackChanAudio = async ({ stt, audio, fallbackText }) => {
 };
 
 const createSlackStackChanCompanion = () => {
-  const botToken = requireEnv("SLACK_BOT_TOKEN");
-  const signingSecret = requireEnv("SLACK_SIGNING_SECRET");
+  const botToken = process.env.SLACK_BOT_TOKEN || null;
+  const signingSecret = process.env.SLACK_SIGNING_SECRET || null;
+  const slackEnabled = Boolean(botToken && signingSecret);
   const stackchanDeviceToken = requireEnv("STACKCHAN_DEVICE_TOKEN");
   const port = Number(process.env.PORT || "4182");
   const host = process.env.HOST || "127.0.0.1";
@@ -415,6 +441,14 @@ const createSlackStackChanCompanion = () => {
       }
     });
   }
+  userRegistry.registerUser({
+    id: process.env.IROHARNESS_STACKCHAN_USER_ID || "stackchan-device",
+    displayName: process.env.IROHARNESS_STACKCHAN_USER_NAME || "StackChan",
+    role: process.env.IROHARNESS_STACKCHAN_USER_ROLE || "member",
+    identities: {
+      m5stack: process.env.IROHARNESS_STACKCHAN_USER_PLATFORM_ID || stackchan.id
+    }
+  });
 
   const microHarnesses =
     process.env.IROHARNESS_RUN_CODEX === "1"
@@ -440,8 +474,7 @@ const createSlackStackChanCompanion = () => {
     router: createHeuristicRouter(),
     brains: {
       voice: createBrainForSlot({ slot: "voice", codexWorkspace }),
-      text: createBrainForSlot({ slot: "text", codexWorkspace }),
-      deep: createBrainForSlot({ slot: "deep", codexWorkspace })
+      text: createBrainForSlot({ slot: "text", codexWorkspace })
     },
     devices: [stackchan],
     microHarnesses
@@ -456,44 +489,62 @@ const createSlackStackChanCompanion = () => {
           deviceToken: stackchanDeviceToken,
           voice: process.env.IROHARNESS_STACKCHAN_VOICE || "iroha",
           latencyBudgetMs: Number(process.env.IROHARNESS_STACKCHAN_LATENCY_BUDGET_MS || "1000"),
+          sttAutoFinalMs: Number(process.env.IROHARNESS_STACKCHAN_STT_AUTO_FINAL_MS || "1800"),
+          sttAutoFinalMinBytes: Number(process.env.IROHARNESS_STACKCHAN_STT_AUTO_FINAL_MIN_BYTES || "32000"),
+          vadThresholdDb: Number(process.env.IROHARNESS_STACKCHAN_VAD_THRESHOLD_DB || "-38"),
+          vadSilenceMs: Number(process.env.IROHARNESS_STACKCHAN_VAD_SILENCE_MS || "700"),
+          vadMinSpeechMs: Number(process.env.IROHARNESS_STACKCHAN_VAD_MIN_SPEECH_MS || "250"),
+          vadMaxSpeechMs: Number(process.env.IROHARNESS_STACKCHAN_VAD_MAX_SPEECH_MS || "8000"),
+          vadMode:
+            process.env.IROHARNESS_STACKCHAN_VAD_MODE ||
+            (process.env.IROHARNESS_STACKCHAN_STT_PROVIDER === "aiavatar" ||
+            process.env.IROHARNESS_STACKCHAN_STT_PROVIDER === "aiavatar-silero-openai"
+              ? "provider"
+              : "node"),
+          minAudioBytes: Number(process.env.IROHARNESS_STACKCHAN_MIN_AUDIO_BYTES || "320"),
+          speechChunkBytes: Number(process.env.IROHARNESS_STACKCHAN_SPEECH_CHUNK_BYTES || "512"),
+          immediateAckText: process.env.IROHARNESS_STACKCHAN_IMMEDIATE_ACK_TEXT || "",
           createQueue: () =>
             createSpeechPlaybackQueue({
               id: "stackchan-speech-queue"
             })
         })
       : null;
+  let activeRealtimeSession = null;
 
   const seenEventIds = new Set();
-  const runtime = createSlackEventsRuntime({
-    botToken,
-    harness,
-    adapter: createSlackMessageAdapter({
-      mentionOnly: process.env.SLACK_MENTION_ONLY !== "0",
-      botUserId: process.env.SLACK_BOT_USER_ID || null
-    }),
-    responseFormatter({ result }) {
-      if (result.kind === "permission_denied") {
-        return result.text;
-      }
-      return result.text || result.output?.summary || null;
-    },
-    onResult({ turn, result, reply }) {
-      console.log(
-        JSON.stringify({
-          from: turn.actor.displayName,
-          userId: turn.actor.platformUserId,
-          text: turn.text,
-          resultKind: result.kind,
-          route: result.route?.kind || null,
-          stackchan: stackchan.snapshot()?.payload || null,
-          replied: Boolean(reply)
-        })
-      );
-    },
-    onError(error) {
-      console.error(error.stack || error.message);
-    }
-  });
+  const runtime = slackEnabled
+    ? createSlackEventsRuntime({
+        botToken,
+        harness,
+        adapter: createSlackMessageAdapter({
+          mentionOnly: process.env.SLACK_MENTION_ONLY !== "0",
+          botUserId: process.env.SLACK_BOT_USER_ID || null
+        }),
+        responseFormatter({ result }) {
+          if (result.kind === "permission_denied") {
+            return result.text;
+          }
+          return result.text || result.output?.summary || null;
+        },
+        onResult({ turn, result, reply }) {
+          console.log(
+            JSON.stringify({
+              from: turn.actor.displayName,
+              userId: turn.actor.platformUserId,
+              text: turn.text,
+              resultKind: result.kind,
+              route: result.route?.kind || null,
+              stackchan: stackchan.snapshot()?.payload || null,
+              replied: Boolean(reply)
+            })
+          );
+        },
+        onError(error) {
+          console.error(error.stack || error.message);
+        }
+      })
+    : null;
 
   const handleDeviceInvoke = async (payload) => {
     const fallbackText =
@@ -532,18 +583,30 @@ const createSlackStackChanCompanion = () => {
         ...(payload.metadata || {})
       }
     });
+    const outputText = result.text || result.output?.summary || "";
+    const shouldSpeak =
+      stackchanTts &&
+      (payload.type === "audio" || payload.type === "ptt" || payload.speak === true);
+    const realtimeSpeech =
+      shouldSpeak && activeRealtimeSession?.accepted && typeof activeRealtimeSession.speak === "function"
+        ? await activeRealtimeSession.speak({
+            text: outputText
+          })
+        : null;
+    const localSpeech =
+      shouldSpeak && !realtimeSpeech
+        ? await stackchanTts.stream({
+            text: outputText,
+            voice: process.env.IROHARNESS_STACKCHAN_VOICE || "iroha"
+          })
+        : null;
     return {
       ok: true,
       resultKind: result.kind,
-      text: result.text || result.output?.summary || "",
+      text: outputText,
       face: stackchan.snapshot()?.payload || null,
-      speech:
-        stackchanTts && (payload.type === "audio" || payload.type === "ptt")
-          ? await stackchanTts.stream({
-              text: result.text || result.output?.summary || "",
-              voice: process.env.IROHARNESS_STACKCHAN_VOICE || "iroha"
-            })
-          : null
+      deliveredToRealtime: Boolean(realtimeSpeech),
+      speech: realtimeSpeech || localSpeech
     };
   };
 
@@ -628,6 +691,10 @@ const createSlackStackChanCompanion = () => {
       sendJson(response, 404, { ok: false, error: "not_found" });
       return;
     }
+    if (!slackEnabled || !runtime) {
+      sendJson(response, 503, { ok: false, error: "slack_disabled" });
+      return;
+    }
 
     const body = await readBody(request);
     if (!verifySlackSignature({ body, headers: request.headers, signingSecret })) {
@@ -672,7 +739,8 @@ const createSlackStackChanCompanion = () => {
       return;
     }
     const websocket = createWebSocketAdapter(socket);
-    realtimeHandler.handleConnection(websocket, {
+    let session = null;
+    session = realtimeHandler.handleConnection(websocket, {
       deviceId: stackchan.id,
       userId: url.searchParams.get("userId") || stackchan.id,
       channel: url.searchParams.get("channel") || "local",
@@ -683,11 +751,41 @@ const createSlackStackChanCompanion = () => {
             realtime: event.type,
             deviceId: event.deviceId,
             channel: event.channel,
-            sequence: event.sequence
+            sequence: event.sequence,
+            message: event.message || null,
+            messageType: event.messageType || undefined,
+            rmsDb: typeof event.rmsDb === "number" ? event.rmsDb : undefined,
+            bytes: event.bytes || undefined,
+            isSpeech: typeof event.isSpeech === "boolean" ? event.isSpeech : undefined,
+            thresholdDb: typeof event.thresholdDb === "number" ? event.thresholdDb : undefined,
+            hasText:
+              typeof event.hasText === "boolean"
+                ? event.hasText
+                : typeof event.text === "string" && event.text.length > 0
+                  ? true
+                  : undefined,
+            reason: event.reason || undefined,
+            durationMs: typeof event.durationMs === "number" ? event.durationMs : undefined,
+            sttDurationMs: typeof event.sttDurationMs === "number" ? event.sttDurationMs : undefined,
+            sinceSpeechStartMs:
+              typeof event.sinceSpeechStartMs === "number" ? event.sinceSpeechStartMs : undefined,
+            ttsDurationMs: typeof event.ttsDurationMs === "number" ? event.ttsDurationMs : undefined,
+            timeToFirstAudioMs:
+              typeof event.timeToFirstAudioMs === "number" ? event.timeToFirstAudioMs : undefined,
+            textLength: typeof event.textLength === "number" ? event.textLength : undefined,
+            transcriptLength:
+              typeof event.transcriptLength === "number" ? event.transcriptLength : undefined,
+            resultKind: event.resultKind || undefined
           })
         );
+        if (event.type === "stackchan.closed" && activeRealtimeSession === session) {
+          activeRealtimeSession = null;
+        }
       }
     });
+    if (session.accepted) {
+      activeRealtimeSession = session;
+    }
   });
 
   return Object.freeze({

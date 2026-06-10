@@ -20,7 +20,7 @@ micro harnesses.
 - [x] OpenClaw HTTP bridge adapter
 - [x] Hermes gateway bridge adapter
 - [x] AIAvatarKit body bridge adapter
-- [x] voice/text/deep brain switching
+- [x] voice/text brain switching
 - [x] browser avatar demo
 - [x] streaming event endpoint
 - [x] body bridge snapshots and SSE endpoints
@@ -51,7 +51,7 @@ micro harnesses.
 - [x] browser avatar demo
 - [x] streaming event endpoint
 - [x] voice/text model switch demo
-- [x] configurable voice/text/deep HTTP brain slots
+- [x] configurable voice/text HTTP brain slots
 - [x] local HTTP brain gateway demo
 - [x] provider brain gateway recipes for OpenAI, Claude, and local models
 - [x] Codex app-server adapter
