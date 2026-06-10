@@ -1,8 +1,11 @@
 // Silero VAD speech detector (mirrors AIAvatarKit SileroStreamSpeechDetector semantics).
 //
 // createSileroVad({ session, sampleRate = 16000, threshold = 0.5, silenceMs = 650,
-//                   minSpeechMs = 250, frameSamples = 512, ortModule })
+//                   minSpeechMs = 250, maxSpeechMs = 30000, frameSamples = 512, ortModule })
 //   → frozen { async push(int16Frame) → events[], reset() }
+//
+// push() must be awaited serially — never issue concurrent pushes (the recurrent
+// state and the segment state machine assume one frame in flight at a time).
 //
 // session (REQUIRED) is either:
 //   - duck-typed { async process(float32Frame) → probability } — no onnxruntime needed
@@ -86,6 +89,7 @@ export const createSileroVad = ({
   threshold = 0.5,
   silenceMs = 650,
   minSpeechMs = 250,
+  maxSpeechMs = 30000,
   frameSamples = 512,
   ortModule
 } = {}) => {
@@ -105,6 +109,7 @@ export const createSileroVad = ({
 
   const minSpeechSamples = (minSpeechMs * sampleRate) / 1000;
   const silenceSamplesLimit = (silenceMs * sampleRate) / 1000;
+  const maxSpeechSamples = (maxSpeechMs * sampleRate) / 1000;
 
   // idle → tentative (prob ≥ threshold) → speech (≥ minSpeechMs) → idle (end/discard)
   let phase = "idle";
@@ -126,6 +131,14 @@ export const createSileroVad = ({
   };
 
   const push = async (int16Frame) => {
+    if (int16Frame.length !== frameSamples) {
+      throw new Error(
+        `push expects frames of exactly ${frameSamples} samples, got ${int16Frame.length}`
+      );
+    }
+    // Copy-on-push: pre-roll/segment retain frames for seconds — a caller
+    // reusing one buffer (firmware-style pooling) must not corrupt them.
+    int16Frame = int16Frame.slice();
     const probability = await runner.process(int16ToFloat32(int16Frame));
     const events = [];
 
@@ -155,6 +168,14 @@ export const createSileroVad = ({
         started = true;
         phase = "speech";
         events.push({ type: "speech.start" });
+      }
+      // Hard cap (parity with the Python worker's --max-duration): flush the
+      // segment so far and return to idle, ready for a fresh segment.
+      if (elapsedSamples >= maxSpeechSamples) {
+        if (started) {
+          events.push({ type: "speech.end", audio: concatFrames(segment) });
+        }
+        goIdle();
       }
     } else {
       silenceRun += int16Frame.length;

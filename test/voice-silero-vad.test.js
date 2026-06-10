@@ -103,6 +103,98 @@ test("reset() mid-speech abandons the segment — no speech.end later", async ()
   assert.deepEqual(after, []);
 });
 
+test("copy-on-push: mutating a reused caller buffer does not corrupt segment audio", async () => {
+  const probs = [
+    ...Array(3).fill(0.1),
+    ...Array(10).fill(0.9),
+    ...Array(10).fill(0.1)
+  ];
+  const vad = createSileroVad({ session: createMockSession(probs), ...PARAMS });
+  const shared = new Int16Array(PARAMS.frameSamples);
+  const events = [];
+  for (let i = 0; i < probs.length; i += 1) {
+    shared.fill(i + 1); // distinct value at push time
+    events.push(...(await vad.push(shared)));
+    shared.fill(-30000); // firmware-style pool reuse stomps the buffer
+  }
+  const end = events.find((e) => e.type === "speech.end");
+  assert.ok(end);
+  // retained frames are pushes 0..17 (3 pre-roll + 10 speech + 5 trailing)
+  assert.equal(end.audio.length, 18 * PARAMS.frameSamples);
+  for (let j = 0; j < 18; j += 1) {
+    assert.equal(end.audio[j * PARAMS.frameSamples], j + 1);
+  }
+});
+
+test("maxSpeechMs caps a segment and the machine can start a new one", async () => {
+  // 10ms frames, maxSpeechMs 80 → cap after 8 frames of continuous speech
+  const probs = Array(16).fill(0.9);
+  const vad = createSileroVad({
+    session: createMockSession(probs),
+    ...PARAMS,
+    maxSpeechMs: 80
+  });
+  const events = await feed(vad, probs.length);
+  const starts = events.filter((e) => e.type === "speech.start");
+  const ends = events.filter((e) => e.type === "speech.end");
+  assert.equal(starts.length, 2);
+  assert.equal(ends.length, 2);
+  // each capped segment holds exactly 8 frames (no pre-roll, no trailing silence)
+  assert.equal(ends[0].audio.length, 8 * PARAMS.frameSamples);
+  assert.equal(ends[1].audio.length, 8 * PARAMS.frameSamples);
+});
+
+test("ort tensor plumbing: state carried across calls, fed back, and reset", async () => {
+  class FakeTensor {
+    constructor(type, data, dims) {
+      this.type = type;
+      this.data = data;
+      this.dims = dims;
+    }
+  }
+  const calls = [];
+  const nextState = new Float32Array(256).fill(0.5);
+  const session = {
+    async run(feeds) {
+      calls.push(feeds);
+      return { output: { data: [0.1] }, stateN: { data: nextState } };
+    }
+  };
+  const vad = createSileroVad({
+    session,
+    ortModule: { Tensor: FakeTensor },
+    ...PARAMS
+  });
+
+  await vad.push(makeFrame(PARAMS.frameSamples));
+  // input tensor: float32 [1, frameSamples], int16 scaled by /32768
+  assert.equal(calls[0].input.type, "float32");
+  assert.deepEqual(calls[0].input.dims, [1, PARAMS.frameSamples]);
+  assert.ok(Math.abs(calls[0].input.data[0] - 1000 / 32768) < 1e-6);
+  // sr tensor: int64 scalar BigInt
+  assert.equal(calls[0].sr.type, "int64");
+  assert.equal(calls[0].sr.data[0], 16000n);
+  // first call feeds a zeroed recurrent state [2,1,128] = 256 floats
+  assert.deepEqual(calls[0].state.dims, [2, 1, 128]);
+  assert.equal(calls[0].state.data.length, 256);
+  assert.ok(calls[0].state.data.every((v) => v === 0));
+
+  // second call feeds back the returned stateN
+  await vad.push(makeFrame(PARAMS.frameSamples));
+  assert.equal(calls[1].state.data, nextState);
+
+  // reset() re-zeros the recurrent state
+  vad.reset();
+  await vad.push(makeFrame(PARAMS.frameSamples));
+  assert.ok(calls[2].state.data.every((v) => v === 0));
+});
+
+test("push rejects frames that are not exactly frameSamples long", async () => {
+  const vad = createSileroVad({ session: createMockSession([0.1]), ...PARAMS });
+  await assert.rejects(() => vad.push(new Int16Array(159)), /160/);
+  await assert.rejects(() => vad.push(new Int16Array(512)), /160/);
+});
+
 test("throws without a session", () => {
   assert.throws(() => createSileroVad(), /session/);
   assert.throws(() => createSileroVad({}), /session/);

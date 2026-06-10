@@ -10,7 +10,9 @@ reference detector, and how to run the optional real-model smoke test.
 unless `IROHARNESS_SILERO_MODEL` points at a Silero VAD ONNX model:
 
 ```bash
-npm install onnxruntime-node   # optional dependency — consumers opt in
+# onnxruntime-node is an optionalDependency: npm installs it by default, but a
+# failed install is non-fatal. The gated test simply skips when it is absent.
+npm install onnxruntime-node   # only needed if the optional install was skipped
 # model: https://github.com/snakers4/silero-vad (src/silero_vad/data/silero_vad.onnx)
 IROHARNESS_SILERO_MODEL=/path/to/silero_vad.onnx npm test
 ```
