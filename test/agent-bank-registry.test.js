@@ -9,9 +9,10 @@ import { createBankRegistry } from "../src/agent-bank/registry.js";
 
 const makeBank = () => mkdtempSync(join(tmpdir(), "agent-bank-"));
 
-// A genuine passing verdict from the single composite gate.
-const passingVerdict = () =>
+// A genuine passing verdict from the single composite gate, bound to one id.
+const passingVerdict = (recipeId) =>
   evaluatePromotion({
+    recipeId,
     ledgerEntry: { calls: 3, success: 3, avgScore: 4.6 },
     sandboxVerified: true,
     securityReview: { passed: true, by: "bantou" },
@@ -63,7 +64,7 @@ test("move relocates a recipe from staging to active with a passing gate verdict
   writeRecipe(root, "staging", "delta");
   const bank = createBankRegistry({ root });
 
-  bank.move("delta", "active", { promotion: passingVerdict() });
+  bank.move("delta", "active", { promotion: passingVerdict("delta") });
 
   assert.deepEqual(bank.list("staging"), []);
   assert.deepEqual(bank.list("active"), ["delta"]);
@@ -107,6 +108,51 @@ test("move to active rejects a failing verdict from the real gate", () => {
     () => bank.move("delta", "active", { promotion: failing }),
     /promotion|gate/i,
   );
+});
+
+// Bantou re-audit Fix A: a passing verdict is bound to ONE recipe. A verdict
+// legitimately earned for a cheap recipe must not promote a different,
+// un-reviewed recipe.
+test("move to active rejects a verdict issued for a different recipe", () => {
+  const root = makeBank();
+  writeRecipe(root, "staging", "cheap");
+  writeRecipe(root, "staging", "expensive");
+  const bank = createBankRegistry({ root });
+
+  const verdictForCheap = evaluatePromotion({
+    recipeId: "cheap",
+    ledgerEntry: { calls: 3, success: 3, avgScore: 4.6 },
+    sandboxVerified: true,
+    securityReview: { passed: true, by: "bantou" },
+    origin: "builtin",
+  });
+
+  assert.throws(
+    () => bank.move("expensive", "active", { promotion: verdictForCheap }),
+    /recipe|bound|mismatch/i,
+  );
+  assert.deepEqual(bank.list("staging").sort(), ["cheap", "expensive"]);
+  assert.deepEqual(bank.list("active"), []);
+});
+
+// Bantou re-audit Fix A: a passing verdict is single-use. Consumed on the
+// first successful move; a replay (even for the same recipe) throws.
+test("move to active consumes the verdict so it cannot be replayed", () => {
+  const root = makeBank();
+  writeRecipe(root, "staging", "delta");
+  const bank = createBankRegistry({ root });
+  const verdict = passingVerdict("delta");
+
+  bank.move("delta", "active", { promotion: verdict });
+  assert.equal(bank.read("delta").status, "active");
+
+  // demote, then try to replay the already-consumed verdict
+  bank.move("delta", "staging");
+  assert.throws(
+    () => bank.move("delta", "active", { promotion: verdict }),
+    /promotion|gate|consum/i,
+  );
+  assert.deepEqual(bank.list("active"), []);
 });
 
 test("move to non-active statuses keeps working without a verdict", () => {

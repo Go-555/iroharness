@@ -42,7 +42,14 @@ export const isPassingPromotionVerdict = (verdict) =>
   verdict !== null &&
   issuedPassingVerdicts.has(verdict);
 
+// Single-use enforcement: the registry calls this after a successful move so
+// the same verdict can never authorize a second promotion (replay).
+export const consumePromotionVerdict = (verdict) => {
+  issuedPassingVerdicts.delete(verdict);
+};
+
 export const evaluatePromotion = ({
+  recipeId,
   ledgerEntry,
   thresholds = DEFAULT_PROMOTION_THRESHOLDS,
   sandboxVerified = false,
@@ -78,7 +85,19 @@ export const evaluatePromotion = ({
     ...canPromoteToActive({ securityReview, origin, ownerApproval }).reasons,
   );
 
-  const verdict = { promote: reasons.length === 0, reasons };
+  // Bantou re-audit Fix A: a passing verdict must be bound to exactly one
+  // recipe, so it cannot be replayed against a different (un-reviewed) one.
+  // Fail-safe: no recipe id, no passing verdict.
+  if (typeof recipeId !== "string" || recipeId.length === 0) {
+    reasons.push("verdict must be bound to a recipe id");
+  }
+
+  // Frozen so the recipeId binding cannot be rewritten after issuance.
+  const verdict = Object.freeze({
+    promote: reasons.length === 0,
+    recipeId,
+    reasons: Object.freeze(reasons),
+  });
   if (verdict.promote) {
     issuedPassingVerdicts.add(verdict);
   }

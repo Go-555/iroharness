@@ -169,7 +169,7 @@ beads の流儀は「1委譲 = 1 bead」。run を独立レコードとして別
 | 部位 | 状態 |
 |---|---|
 | `ProjectOs` 契約・本体配線 | **実装済み**（`createInMemoryProjectOs` / `createFileProjectOs` ＋ 本体・adapter が契約に依存） |
-| Bank コア（recipe/registry/ledger/seed/昇格ガード/mint/persist-guard） | **実装済み・テスト green**（worktree `feat/agent-bank`） |
+| Bank コア（recipe/registry/ledger/seed/昇格ガード） | **実装済み・テスト green**（worktree `feat/agent-bank`）。mint / persist-guard は Phase 3 の仕掛かり（本トランシェ未収録） |
 | **beads バックエンド（`createBeadsProjectOs`・道A／6メソッド保持）** | **実装済み**（`src/beads-project-os.js`）。ユニット（fake exec）11 green ＋ **実 bd 統合テスト 1 green**、全体 204 green |
 | **本体 `runMicroHarness`** | **無改修**（道A＝6メソッド契約と snapshot 互換を保持したため。既存テスト全 green） |
 | snapshot メモ化（レイテンシ実測の上で） | **未了**（要否を実測で判断＝§9） |

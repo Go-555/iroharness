@@ -11,7 +11,10 @@ import {
 } from "node:fs";
 import { join } from "node:path";
 
-import { isPassingPromotionVerdict } from "./promotion.js";
+import {
+  consumePromotionVerdict,
+  isPassingPromotionVerdict,
+} from "./promotion.js";
 import { parseRecipe } from "./recipe.js";
 
 export const BANK_STATUSES = Object.freeze(["staging", "active", "archived"]);
@@ -67,10 +70,19 @@ export const createBankRegistry = ({ root }) => {
     }
     // Fix 1 (W-5): a raw move into active is not a promotion path. It requires
     // a passing verdict issued by the composite gate (evaluatePromotion).
-    if (toStatus === "active" && !isPassingPromotionVerdict(promotion)) {
-      throw new Error(
-        "moving a recipe to active requires a passing verdict from the composite promotion gate (evaluatePromotion)",
-      );
+    if (toStatus === "active") {
+      if (!isPassingPromotionVerdict(promotion)) {
+        throw new Error(
+          "moving a recipe to active requires a passing verdict from the composite promotion gate (evaluatePromotion); verdicts are single-use",
+        );
+      }
+      // Bantou re-audit Fix A: the verdict only authorizes the recipe it was
+      // evaluated for — a verdict earned by one recipe cannot promote another.
+      if (promotion.recipeId !== id) {
+        throw new Error(
+          `promotion verdict is bound to recipe ${JSON.stringify(promotion.recipeId)}, not ${JSON.stringify(id)}`,
+        );
+      }
     }
     const current = read(id); // throws if missing
     mkdirSync(statusDir(toStatus), { recursive: true });
@@ -78,6 +90,10 @@ export const createBankRegistry = ({ root }) => {
       join(statusDir(current.status), id),
       join(statusDir(toStatus), id),
     );
+    if (toStatus === "active") {
+      // Single-use: the verdict is spent by this successful promotion.
+      consumePromotionVerdict(promotion);
+    }
     return toStatus;
   };
 

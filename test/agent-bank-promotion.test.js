@@ -8,6 +8,7 @@ import {
 } from "../src/agent-bank/promotion.js";
 
 const passingInputs = {
+  recipeId: "demo",
   ledgerEntry: { calls: 3, success: 3, avgScore: 4.6 },
   sandboxVerified: true,
   securityReview: { passed: true, by: "bantou" },
@@ -90,6 +91,21 @@ test("evaluatePromotion blocks a minted recipe without owner approval", () => {
   });
   assert.equal(result.promote, false);
   assert.match(result.reasons.join(" "), /owner/i);
+});
+
+// Bantou re-audit Fix A: the verdict carries the recipe it was evaluated for,
+// and the binding cannot be rewritten after issuance.
+test("evaluatePromotion binds the verdict to the recipe id and freezes it", () => {
+  const verdict = evaluatePromotion(passingInputs);
+  assert.equal(verdict.recipeId, "demo");
+  assert.equal(Object.isFrozen(verdict), true);
+});
+
+test("evaluatePromotion never issues a passing verdict without a recipe id", () => {
+  const { recipeId, ...withoutId } = passingInputs;
+  const verdict = evaluatePromotion(withoutId);
+  assert.equal(verdict.promote, false);
+  assert.match(verdict.reasons.join(" "), /recipe id/i);
 });
 
 test("shouldDecay flags an active recipe idle beyond the window", () => {

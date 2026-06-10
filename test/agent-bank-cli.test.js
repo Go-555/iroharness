@@ -6,6 +6,7 @@ import test from "node:test";
 
 import { createBankRegistry } from "../src/agent-bank/registry.js";
 import { runBankCommand } from "../src/agent-bank/cli.js";
+import { seedHarnessRecipe } from "../src/agent-bank/seed.js";
 
 const makeBank = () => mkdtempSync(join(tmpdir(), "agent-bank-cli-"));
 
@@ -66,7 +67,15 @@ test("bank promote refuses when the composite gate is not satisfied", () => {
 
 test("bank promote moves a recipe to active when the gate passes", () => {
   const root = makeBank();
-  writeRecipe(root, "staging", "tax-v3");
+  // B-1: origin authority is the seed manifest, so a builtin must be
+  // registered through seed (frontmatter `source` claims are ignored).
+  seedHarnessRecipe({
+    root,
+    id: "tax-v3",
+    role: "helper",
+    harness: { capabilities: [] },
+    status: "staging",
+  });
   const runs = [
     {
       harnessId: "tax-v3",
@@ -161,9 +170,48 @@ test("bank promote promotes a minted recipe with --owner-approve", () => {
   });
 
   assert.equal(result.exitCode, 0);
-  assert.deepEqual(createBankRegistry({ root }).list("active"), [
-    "minted-one",
-  ]);
+  assert.deepEqual(createBankRegistry({ root }).list("active"), ["minted-one"]);
+});
+
+// B-1: origin authority lives in the seed manifest at the bank root, NOT in
+// the recipe's own frontmatter. A staged recipe that self-declares
+// `source: builtin-harness` is still treated as minted (fail-safe) unless the
+// manifest lists it, so it cannot skip the owner-in-loop gate.
+test("bank promote treats a self-declared builtin as minted (manifest is the authority)", () => {
+  const root = makeBank();
+  writeRecipe(root, "staging", "impostor", "builtin-harness"); // self-claim only
+
+  const result = runBankCommand({
+    root,
+    argv: ["promote", "impostor"],
+    projectOs: fakeProjectOs(passingRuns("impostor")),
+    promotionContext: passingContext,
+  });
+
+  assert.equal(result.exitCode, 1);
+  assert.match(result.output, /owner/i);
+  assert.deepEqual(createBankRegistry({ root }).list("staging"), ["impostor"]);
+});
+
+test("bank promote allows a manifest-recorded (seeded) builtin without --owner-approve", () => {
+  const root = makeBank();
+  seedHarnessRecipe({
+    root,
+    id: "codex",
+    role: "coder",
+    harness: { capabilities: ["code"] },
+    status: "staging",
+  });
+
+  const result = runBankCommand({
+    root,
+    argv: ["promote", "codex"],
+    projectOs: fakeProjectOs(passingRuns("codex")),
+    promotionContext: passingContext,
+  });
+
+  assert.equal(result.exitCode, 0);
+  assert.deepEqual(createBankRegistry({ root }).list("active"), ["codex"]);
 });
 
 // Fix 3: an argv-supplied id is validated before it reaches the filesystem.

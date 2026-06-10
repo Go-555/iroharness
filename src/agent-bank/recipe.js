@@ -4,8 +4,11 @@
 
 // B-2: security-sensitive fields a recipe might self-declare. These are NEVER
 // trusted from the recipe's own frontmatter; authority lives in the folder
-// position + ledger. The parser quarantines them into `declared` (advisory).
-const SECURITY_FIELDS = ["status", "security_review", "visibility"];
+// position + ledger (and, for origin, the seed manifest at the bank root).
+// The parser quarantines them into `declared` (advisory).
+// B-1: `source` feeds the W-3 origin decision (builtin vs minted), so it is
+// quarantined too — origin authority is the seed manifest, not frontmatter.
+const SECURITY_FIELDS = ["status", "security_review", "visibility", "source"];
 
 const parseScalarOrList = (raw) => {
   if (raw.startsWith("[") && raw.endsWith("]")) {

@@ -1,14 +1,13 @@
 // Agent Bank CLI logic (Phase 2.3). Pure-ish: takes the bank root, parsed argv,
-// and a Project OS handle; returns { output, exitCode }. bin/iroharness.mjs wires
-// `iroharness bank <...>` to this. Promotion always goes through the single
-// composite gate (evaluatePromotion) — the CLI never bypasses it.
+// and a Project OS handle; returns { output, exitCode }. A future
+// `iroharness bank <...>` subcommand in bin/iroharness.mjs is planned to wire
+// to this (not wired yet). Promotion always goes through the single composite
+// gate (evaluatePromotion) — the CLI never bypasses it.
 
 import { computeLedger } from "./ledger.js";
 import { evaluatePromotion } from "./promotion.js";
 import { createBankRegistry } from "./registry.js";
-
-const originOf = (recipe) =>
-  recipe.source === "builtin-harness" ? "builtin" : "minted";
+import { originOf } from "./seed.js";
 
 export const runBankCommand = ({
   root,
@@ -34,16 +33,20 @@ export const runBankCommand = ({
         exitCode: 1,
       };
     }
-    const { recipe } = registry.read(id); // throws if missing or invalid id
+    registry.read(id); // throws if missing or invalid id
     const ledger = computeLedger(
       projectOs ? projectOs.snapshot() : { runs: [] },
     );
 
     const verdict = evaluatePromotion({
+      // Fix A: the verdict is bound to this recipe and is single-use.
+      recipeId: id,
       ledgerEntry: ledger[id],
       sandboxVerified: promotionContext.sandboxVerified === true,
       securityReview: promotionContext.securityReview ?? null,
-      origin: originOf(recipe),
+      // B-1: origin comes from the seed manifest at the bank root (folder-
+      // level authority), never from the recipe's own frontmatter `source`.
+      origin: originOf({ root, id }),
       // Fix 2 (W-3): running the CLI is not owner approval. The owner must
       // state it explicitly.
       ownerApproval: rest.includes("--owner-approve"),

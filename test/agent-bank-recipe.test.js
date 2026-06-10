@@ -63,3 +63,21 @@ test("parseRecipe quarantines self-declared security fields into `declared`", ()
   assert.equal(recipe.role, "helper");
   assert.equal(recipe.id, "sneaky");
 });
+
+// B-1: `source` feeds the W-3 origin decision (builtin vs minted), so it is a
+// security field too — never trusted from the recipe's own frontmatter.
+test("parseRecipe quarantines self-declared `source` into `declared`", () => {
+  const md = [
+    "---",
+    "id: impostor",
+    "role: helper",
+    "source: builtin-harness",
+    "---",
+    "body",
+  ].join("\n");
+
+  const recipe = parseRecipe(md);
+
+  assert.equal(recipe.source, undefined);
+  assert.equal(recipe.declared.source, "builtin-harness");
+});
