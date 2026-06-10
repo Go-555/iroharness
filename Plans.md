@@ -77,7 +77,11 @@
 
 | Task | 内容 | DoD | Depends | Status |
 |------|------|-----|---------|--------|
-| 5.3 | Work Runner 隔離の徹底（work-runner-policy 連携・全経路） | public view は delegate 不可、trusted は許可制、owner のみ runner-scoped で可、を全 delegate 経路で保証するテストが通る | 5.1, 4.1, 3.3 | cc:TODO |
+| 5.3 | Work Runner 隔離の徹底（work-runner-policy 連携・全経路） | public view は delegate 不可、trusted は許可制、owner のみ runner-scoped で可、を全 delegate 経路で保証するテストが通る | 5.1, 4.1, 3.3 | cc:DONE |
+
+> **全 Phase 完了**（2026-06-10）。§6.2 チャネル跨ぎ復帰と §6.3 face graceful recovery は
+> MVP 外として未実装（下表のスコープ判断どおり）。Hanaita の実 micro-harness 配線
+> （`createRunner` / `runTrial` 注入点）と ask_bank は今後の配線課題として docs に明記済み。
 
 ## §6.2 / §6.3 設計要素のスコープ判断（要・親方確認）
 
