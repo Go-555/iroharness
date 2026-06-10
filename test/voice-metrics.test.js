@@ -117,7 +117,6 @@ test("snapshot with zero marks has no NaN values — all null", () => {
   const values = Object.values(s);
   assert.ok(values.length > 0, "snapshot should return at least one key");
   for (const v of values) {
-    assert.notEqual(v, NaN);               // identity check
     assert.ok(v === null || typeof v === "number",
       `unexpected type ${typeof v} for value ${v}`);
     if (typeof v === "number") {
@@ -173,4 +172,7 @@ test("createVoiceTurnMetrics with no args uses default nowFn (no throw)", () => 
     m.snapshot();
     m.reset();
   });
+  const m = createVoiceTurnMetrics();
+  assert.ok(Object.isFrozen(m), "factory result must be frozen");
+  assert.deepEqual(Object.keys(m).sort(), ["mark", "reset", "snapshot"]);
 });

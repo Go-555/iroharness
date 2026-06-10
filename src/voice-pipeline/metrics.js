@@ -17,6 +17,10 @@
 // Any value whose required marks are absent → null (never NaN).
 // Marking the same name twice keeps the FIRST timestamp.
 // Unknown names are stored too (forward-compat) — no throw.
+//
+// NOT built on createRealtimeLatencyTracker (src/index.js): that tracker is
+// last-wins and measure() throws on missing marks; this turn recorder needs
+// first-wins (first audio chunk) and null-tolerant snapshots.
 
 const diff = (marks, start, end) => {
   const s = marks[start];
