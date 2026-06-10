@@ -42,7 +42,16 @@ export const createBankRegistry = ({ root }) => {
     for (const status of BANK_STATUSES) {
       const file = recipeFile(status, id);
       if (existsSync(file)) {
-        return { status, recipe: parseRecipe(readFileSync(file, "utf8")) };
+        const recipe = parseRecipe(readFileSync(file, "utf8"));
+        // mekiki recommendation-7: the FOLDER NAME is the id authority, same
+        // as the folder is the status authority (B-2). A frontmatter id that
+        // disagrees is advisory only — quarantined into `declared` so a
+        // recipe cannot display-spoof another specialist's id.
+        if (recipe.id !== id) {
+          recipe.declared.id = recipe.id;
+        }
+        recipe.id = id;
+        return { status, recipe };
       }
     }
     throw new Error(`recipe not found: ${id}`);
