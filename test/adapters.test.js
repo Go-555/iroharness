@@ -1052,7 +1052,20 @@ test("JSONL realtime core process streams events and keeps local interruption st
   });
   core.finishSpeaking();
 
-  await new Promise((resolve) => setTimeout(resolve, 50));
+  // Poll instead of a fixed 50ms sleep: under a parallel full-suite run the
+  // child node process can take longer than 50ms to spawn and echo its acks,
+  // which made this assertion flaky (load-dependent), while standalone runs
+  // always passed. The deadline keeps a hung child from stalling the suite.
+  const ackDeadline = Date.now() + 5000;
+  while (
+    Date.now() < ackDeadline &&
+    !(
+      received.some((message) => message.op === "publish") &&
+      received.some((message) => message.op === "shouldInterrupt")
+    )
+  ) {
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
   const snapshot = core.snapshot();
   core.close();
 
