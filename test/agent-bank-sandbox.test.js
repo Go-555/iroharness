@@ -276,3 +276,140 @@ test("bank promote accepts a recorded sandbox pass without any self-report", asy
   assert.equal(result.exitCode, 0);
   assert.deepEqual(createBankRegistry({ root }).list("active"), ["earned-it"]);
 });
+
+// ---- A3: the generic smoke trial (default runTrial wiring) -------------------
+
+const fakeRunnerFactory =
+  (behavior) =>
+  ({ id }) => ({
+    id,
+    run: (task, context) => behavior({ id, task, context }),
+  });
+
+test("the smoke trial passes a form-valid reply and records verified:true", async () => {
+  const { createSmokeTrial } = await import("../src/agent-bank/sandbox.js");
+  const root = makeBank();
+  writeRecipe(root, "staging", "fresh");
+  let seen = null;
+
+  const runTrial = createSmokeTrial({
+    createRunner: fakeRunnerFactory(async ({ task, context }) => {
+      seen = { task, context };
+      return { status: "completed", summary: "OK", artifacts: [] };
+    }),
+  });
+  const result = await runSandboxVerification({ root, id: "fresh", runTrial });
+
+  assert.deepEqual(result, { id: "fresh", verified: true });
+  assert.equal(isSandboxVerified({ root, id: "fresh" }), true);
+  // the fixed contract task reached the runner...
+  assert.match(seen.task.purpose, /reply with exactly "OK"/i);
+  // ...inside an ISOLATED scoped workspace (the scoped runner stamped it)
+  assert.equal(typeof seen.context.workRunner.workspace, "string");
+  assert.match(seen.context.workRunner.workspace, /iroharness-smoke-/);
+});
+
+test("a failed runner result records verified:false", async () => {
+  const { createSmokeTrial } = await import("../src/agent-bank/sandbox.js");
+  const root = makeBank();
+  writeRecipe(root, "staging", "broken");
+
+  const runTrial = createSmokeTrial({
+    createRunner: fakeRunnerFactory(async () => ({
+      status: "failed",
+      summary: "boom",
+    })),
+  });
+  const result = await runSandboxVerification({ root, id: "broken", runTrial });
+
+  assert.deepEqual(result, { id: "broken", verified: false });
+});
+
+test("a form-invalid reply (empty summary) fails the smoke", async () => {
+  const { createSmokeTrial } = await import("../src/agent-bank/sandbox.js");
+  const root = makeBank();
+  writeRecipe(root, "staging", "mute");
+
+  const runTrial = createSmokeTrial({
+    createRunner: fakeRunnerFactory(async () => ({
+      status: "completed",
+      summary: "   ",
+    })),
+  });
+  const result = await runSandboxVerification({ root, id: "mute", runTrial });
+
+  assert.deepEqual(result, { id: "mute", verified: false });
+});
+
+test("a throwing runner factory fails closed (no exception escapes the trial)", async () => {
+  const { createSmokeTrial } = await import("../src/agent-bank/sandbox.js");
+  const root = makeBank();
+  writeRecipe(root, "staging", "unwired");
+
+  const runTrial = createSmokeTrial({
+    createRunner: () => {
+      throw new Error("runner_unavailable: no approved runtime");
+    },
+  });
+  const result = await runSandboxVerification({
+    root,
+    id: "unwired",
+    runTrial,
+  });
+
+  assert.deepEqual(result, { id: "unwired", verified: false });
+});
+
+test("a hanging runner times out and fails closed", async () => {
+  const { createSmokeTrial } = await import("../src/agent-bank/sandbox.js");
+  const root = makeBank();
+  writeRecipe(root, "staging", "sleeper");
+
+  const runTrial = createSmokeTrial({
+    timeoutMs: 50,
+    createRunner: fakeRunnerFactory(
+      () => new Promise(() => {}), // never settles
+    ),
+  });
+  const result = await runSandboxVerification({
+    root,
+    id: "sleeper",
+    runTrial,
+  });
+
+  assert.deepEqual(result, { id: "sleeper", verified: false });
+});
+
+test("a denied work-runner policy fails the smoke (the scoped gate is live)", async () => {
+  const { createSmokeTrial } = await import("../src/agent-bank/sandbox.js");
+  const root = makeBank();
+  writeRecipe(root, "staging", "gated");
+  let ran = false;
+
+  const runTrial = createSmokeTrial({
+    workRunnerPolicy: {
+      kind: "iroharness.workRunnerPolicy",
+      zone: "public",
+      delegation: "denied",
+      boundary: "runner-only",
+      runnerAccess: {
+        repositoryWork: "none",
+        browserControl: "none",
+        defaultSandbox: "none",
+      },
+    },
+    createRunner: fakeRunnerFactory(async () => {
+      ran = true;
+      return { status: "completed", summary: "OK" };
+    }),
+  });
+  const result = await runSandboxVerification({ root, id: "gated", runTrial });
+
+  assert.deepEqual(result, { id: "gated", verified: false });
+  assert.equal(ran, false, "the worker never runs behind a denied policy");
+});
+
+test("createSmokeTrial requires a createRunner factory", async () => {
+  const { createSmokeTrial } = await import("../src/agent-bank/sandbox.js");
+  assert.throws(() => createSmokeTrial({}), /createRunner/);
+});
