@@ -4,6 +4,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { homedir, tmpdir } from "node:os";
@@ -88,6 +89,52 @@ test("the host-global deny list overrides an allowedRoots misconfiguration", () 
       ownerApproval: true,
     }),
     true,
+  );
+});
+
+// bantou M-1 (symlink hardening): path.resolve alone does not follow
+// symlinks, so a symlink INSIDE an allowed root pointing at a host-global
+// agent dir would lexically pass the allowlist and skip the deny list. The
+// guard must compare REAL paths. The test builds its own "host-global" dir
+// inside the tmpdir so it never touches the real home directory.
+test("a symlink inside an allowed root pointing at a host-global dir is denied", () => {
+  const base = mkdtempSync(join(tmpdir(), "persist-symlink-"));
+  const workspace = join(base, "workspace");
+  const hostGlobal = join(base, "fake-home", ".claude", "agents");
+  mkdirSync(workspace, { recursive: true });
+  mkdirSync(hostGlobal, { recursive: true });
+  // workspace/agents -> ~/.claude/agents (equivalent)
+  symlinkSync(hostGlobal, join(workspace, "agents"));
+
+  assert.throws(
+    () =>
+      assertPersistTargetAllowed({
+        targetPath: join(workspace, "agents", "x.md"),
+        allowedRoots: [workspace],
+        hostGlobalRoots: [hostGlobal],
+      }),
+    /owner approval/,
+  );
+});
+
+test("a symlink escaping the allowed root is not treated as inside it", () => {
+  const base = mkdtempSync(join(tmpdir(), "persist-symlink-out-"));
+  const workspace = join(base, "workspace");
+  const outside = join(base, "outside");
+  mkdirSync(workspace, { recursive: true });
+  mkdirSync(outside, { recursive: true });
+  // workspace/exit -> a dir outside every allowed root (not host-global):
+  // the allowlist check must follow the link and refuse without approval
+  symlinkSync(outside, join(workspace, "exit"));
+
+  assert.throws(
+    () =>
+      assertPersistTargetAllowed({
+        targetPath: join(workspace, "exit", "x.md"),
+        allowedRoots: [workspace],
+        hostGlobalRoots: [],
+      }),
+    /owner approval/,
   );
 });
 

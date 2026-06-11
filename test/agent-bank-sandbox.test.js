@@ -186,6 +186,22 @@ test("with a bank root and no record, an unverified recipe stays blocked", () =>
   assert.match(verdict.reasons.join(" "), /sandbox/i);
 });
 
+// bantou M-2b / mekiki W-1 (record-or-nothing): when the bank root is given,
+// the verification ledger is the ONLY sandbox authority. With no record, a
+// self-reported pass is worthless — the fallback to self-report is closed.
+test("with a bank root and no record, a self-reported pass is refused (record-or-nothing)", () => {
+  const root = makeBank();
+  writeRecipe(root, "staging", "self-promoter");
+
+  const verdict = evaluatePromotion({
+    ...passingInputs("self-promoter"),
+    root,
+    sandboxVerified: true, // self-report only, no recorded trial
+  });
+  assert.equal(verdict.promote, false);
+  assert.match(verdict.reasons.join(" "), /sandbox/i);
+});
+
 // Compat: without a root, the legacy self-report path still works (existing
 // callers/tests), and absent both record and claim the gate stays closed.
 test("without a bank root, the legacy self-report path is unchanged", () => {

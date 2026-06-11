@@ -58,11 +58,12 @@ export const evaluatePromotion = ({
   securityReview,
   origin,
   ownerApproval = false,
-  // Phase 3.3: when the bank root is provided, sandbox verification is derived
-  // from the authoritative record (verification-ledger.json, written by
-  // runSandboxVerification) — a recorded outcome always beats the caller's
-  // self-reported `sandboxVerified`. Without a root the legacy self-report
-  // path is unchanged (compat).
+  // Phase 3.3 + bantou M-2b / mekiki W-1: when the bank root is provided,
+  // sandbox verification comes EXCLUSIVELY from the authoritative record
+  // (verification-ledger.json, written by runSandboxVerification) —
+  // record-or-nothing. A missing record means NOT verified; the caller's
+  // self-reported `sandboxVerified` is never consulted. Only without a root
+  // does the legacy self-report path apply (compat).
   root,
 } = {}) => {
   const reasons = [];
@@ -88,12 +89,10 @@ export const evaluatePromotion = ({
   let sandboxOk = sandboxVerified === true;
   if (root !== undefined) {
     if (typeof recipeId === "string" && recipeId.length > 0) {
+      // Record-or-nothing: the recorded outcome is the only authority. No
+      // record (null) means not verified — the self-report is NOT a fallback.
       const record = lookupSandboxVerification({ root, id: recipeId });
-      if (record !== null) {
-        // The record is the authority — it overrides the self-report in BOTH
-        // directions (a recorded failure defeats a lying caller).
-        sandboxOk = record.verified === true;
-      }
+      sandboxOk = record !== null && record.verified === true;
     } else {
       // No id to look up: cannot be record-verified.
       sandboxOk = false;

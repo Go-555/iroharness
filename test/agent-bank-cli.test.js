@@ -6,6 +6,7 @@ import test from "node:test";
 
 import { createBankRegistry } from "../src/agent-bank/registry.js";
 import { runBankCommand } from "../src/agent-bank/cli.js";
+import { runSandboxVerification } from "../src/agent-bank/sandbox.js";
 import { seedHarnessRecipe } from "../src/agent-bank/seed.js";
 
 const makeBank = () => mkdtempSync(join(tmpdir(), "agent-bank-cli-"));
@@ -65,7 +66,13 @@ test("bank promote refuses when the composite gate is not satisfied", () => {
   assert.deepEqual(createBankRegistry({ root }).list("staging"), ["weak"]);
 });
 
-test("bank promote moves a recipe to active when the gate passes", () => {
+// Record-or-nothing (bantou M-2b): the CLI always passes the bank root, so a
+// recorded sandbox pass — not the promotionContext self-report — is what
+// satisfies the gate in these passing-path tests.
+const recordSandboxPass = (root, id) =>
+  runSandboxVerification({ root, id, runTrial: () => ({ passed: true }) });
+
+test("bank promote moves a recipe to active when the gate passes", async () => {
   const root = makeBank();
   // B-1: origin authority is the seed manifest, so a builtin must be
   // registered through seed (frontmatter `source` claims are ignored).
@@ -76,6 +83,7 @@ test("bank promote moves a recipe to active when the gate passes", () => {
     harness: { capabilities: [] },
     status: "staging",
   });
+  await recordSandboxPass(root, "tax-v3");
   const runs = [
     {
       harnessId: "tax-v3",
@@ -158,9 +166,10 @@ test("bank promote refuses a minted recipe without --owner-approve", () => {
   ]);
 });
 
-test("bank promote promotes a minted recipe with --owner-approve", () => {
+test("bank promote promotes a minted recipe with --owner-approve", async () => {
   const root = makeBank();
   writeRecipe(root, "staging", "minted-one", "minted");
+  await recordSandboxPass(root, "minted-one");
 
   const result = runBankCommand({
     root,
@@ -193,7 +202,7 @@ test("bank promote treats a self-declared builtin as minted (manifest is the aut
   assert.deepEqual(createBankRegistry({ root }).list("staging"), ["impostor"]);
 });
 
-test("bank promote allows a manifest-recorded (seeded) builtin without --owner-approve", () => {
+test("bank promote allows a manifest-recorded (seeded) builtin without --owner-approve", async () => {
   const root = makeBank();
   seedHarnessRecipe({
     root,
@@ -202,6 +211,7 @@ test("bank promote allows a manifest-recorded (seeded) builtin without --owner-a
     harness: { capabilities: ["code"] },
     status: "staging",
   });
+  await recordSandboxPass(root, "codex");
 
   const result = runBankCommand({
     root,
