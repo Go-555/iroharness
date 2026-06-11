@@ -131,6 +131,19 @@ export const registerCommandManifest = (
     entries.forEach((entry, index) => validateEntry(event, entry, index));
   }
 
+  // An agent entry without an injected judgeBrain is legal (declaration vs
+  // implementation separation) but inert: it fires fail-open until a brain is
+  // injected. Say so once at load — visible, but not an error and not a spam
+  // line per entry.
+  const agentEntryCount = Object.values(hooks)
+    .flat()
+    .filter((entry) => entry.type === "agent").length;
+  if (agentEntryCount > 0 && !judgeBrain) {
+    console.warn(
+      `[hooks] ${agentEntryCount} agent entr${agentEntryCount === 1 ? "y" : "ies"} registered without a judgeBrain — gate is inert (fail-open) until one is injected`,
+    );
+  }
+
   // Pass 2 — register only. Pass 1 has validated the event key, every entry
   // (type/command/prompt/args/matcher), and the realtime invariant, so neither
   // buildGatedHook (createCommandHook/createAgentHook) nor register() can

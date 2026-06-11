@@ -139,6 +139,57 @@ const agentVerdictBrain = (verdict) => ({
   },
 });
 
+const captureWarnings = (run) => {
+  const warnings = [];
+  const original = console.warn;
+  console.warn = (message) => warnings.push(String(message));
+  try {
+    run();
+  } finally {
+    console.warn = original;
+  }
+  return warnings;
+};
+
+test("loading agent entries without a judgeBrain warns once that the gate is inert", () => {
+  const warnings = captureWarnings(() => {
+    registerCommandManifest(
+      reg(),
+      {
+        hooks: {
+          "response:before": [
+            { type: "agent", prompt: "p" },
+            { type: "agent", prompt: "q" },
+          ],
+        },
+      },
+      { baseDir: HOOKS_DIR },
+    );
+  });
+  const hits = warnings.filter((message) => /judgeBrain/.test(message));
+  assert.equal(hits.length, 1); // once per load, not once per entry
+  assert.match(hits[0], /inert/);
+});
+
+test("no inert-gate warning when a judgeBrain is injected or no agent entries exist", () => {
+  const withBrain = captureWarnings(() => {
+    registerCommandManifest(
+      reg(),
+      { hooks: { "response:before": [{ type: "agent", prompt: "p" }] } },
+      { baseDir: HOOKS_DIR, judgeBrain: agentVerdictBrain({ ok: true }) },
+    );
+  });
+  const commandOnly = captureWarnings(() => {
+    registerCommandManifest(
+      reg(),
+      { hooks: { "turn:before": [cmd()] } },
+      { baseDir: HOOKS_DIR },
+    );
+  });
+  assert.equal(withBrain.filter((m) => /judgeBrain/.test(m)).length, 0);
+  assert.equal(commandOnly.filter((m) => /judgeBrain/.test(m)).length, 0);
+});
+
 test("an agent entry registers and a deny verdict blocks when a judgeBrain is injected", async () => {
   const registry = createHookRegistry();
   const judgeBrain = agentVerdictBrain({ ok: false, reasons: ["broke"] });
