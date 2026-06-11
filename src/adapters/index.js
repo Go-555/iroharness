@@ -3521,6 +3521,9 @@ export const createStackChanRealtimeSessionHandler = ({
       let audioLevelDebugCounter = 0;
       let speechInFlight = false;
       let latencyTurnStartedAt = 0;
+      // Streaming mode: whether the current pipeline turn already sent its
+      // response.start (sent right before the turn's first speech.audio).
+      let pipelineTurnStarted = false;
       const queue =
         typeof createQueue === "function"
           ? createQueue({ deviceId, userId, channel })
@@ -4055,6 +4058,8 @@ export const createStackChanRealtimeSessionHandler = ({
       // Streaming mode: decode the frame exactly like the legacy path
       // (base64 → PCM16, WAV unwrapped) and hand it to the injected pipeline.
       // VAD/finalization is the pipeline's job — no in-handler timers here.
+      // The pipeline assumes frames arrive at its configured mic sample rate;
+      // no per-frame resampling happens here.
       const handleStreamingAudio = async (payload) => {
         const audio = normalizeStackChanAudioPayload(payload);
         const encoding = String(audio.encoding || "pcm16").toLowerCase();
@@ -4078,8 +4083,13 @@ export const createStackChanRealtimeSessionHandler = ({
       };
 
       // Streaming mode: ONE translation point from pipeline events to the
-      // existing wire messages. Every send below reuses the legacy shapes —
-      // the firmware cannot tell the two modes apart.
+      // existing wire messages. Guarantees: every message shape sent here is
+      // identical to its legacy counterpart, and each turn's wire sequence
+      // starts with response.start before its first speech.audio (as legacy
+      // speak() does). Known divergence from legacy, by design: stt.event
+      // partials (AIAvatarStackChan "voiced"/"accepted") are not sent in
+      // streaming mode — the pipeline runs STT internally. The streaming
+      // message set is a strict subset plus the additive metrics field.
       const handlePipelineEvent = async (event = {}) => {
         if (event.type === "speech.audio") {
           const role = event.quick ? "ack" : "answer";
@@ -4090,6 +4100,17 @@ export const createStackChanRealtimeSessionHandler = ({
             channels: event.audio?.channels,
             bitsPerSample: event.audio?.bitsPerSample
           });
+          if (!pipelineTurnStarted) {
+            pipelineTurnStarted = true;
+            // Mirrors legacy speak(): firmware maps response.start to its
+            // "start"/processing state before audio arrives. Only the first
+            // sentence's text is known at this point.
+            send({
+              type: "response.start",
+              role,
+              text: event.text || ""
+            });
+          }
           const sentChunks = deliverSpeechAudio({
             audio,
             text: event.text || "",
@@ -4109,6 +4130,7 @@ export const createStackChanRealtimeSessionHandler = ({
           return null;
         }
         if (event.type === "turn.final") {
+          pipelineTurnStarted = false;
           emit({
             type: "stackchan.latency.pipeline_turn",
             firstAudioTotalMs: event.metrics?.first_audio_total_ms ?? null,
@@ -4125,19 +4147,26 @@ export const createStackChanRealtimeSessionHandler = ({
           return null;
         }
         if (event.type === "stt.empty") {
+          pipelineTurnStarted = false;
           return handleEmptyTranscript({ reason: event.reason || "pipeline" });
         }
         if (event.type === "turn.rejected") {
+          pipelineTurnStarted = false;
           // Same wire behavior as the non-streaming path: rejection results
           // (e.g. permission_denied) carry their reply in result.text and are
           // spoken/finalized via handleTurnResult.
           return handleTurnResult(event.result);
         }
         if (event.type === "speech.interrupted") {
-          send({
-            type: "speech.interrupted",
-            reason: event.reason || "interrupted"
-          });
+          pipelineTurnStarted = false;
+          // device-interrupt is already answered directly by the wire
+          // interrupt/stop handler — sending again would double the message.
+          if (event.reason !== "device-interrupt") {
+            send({
+              type: "speech.interrupted",
+              reason: event.reason || "interrupted"
+            });
+          }
           return null;
         }
         if (event.type === "error") {
@@ -4229,6 +4258,7 @@ export const createStackChanRealtimeSessionHandler = ({
           return handleTurnResult(result);
         }
         if (payload.type === "interrupt" || payload.type === "stop") {
+          pipelineTurnStarted = false;
           voicePipeline?.interrupt?.("device-interrupt");
           queue?.interrupt?.("device-interrupt", { clearPending: true });
           send({
@@ -4304,7 +4334,7 @@ export const createStackChanRealtimeSessionHandler = ({
         speak,
         // Streaming-mode entry: the caller wires createVoicePipeline's
         // onEvent to this so pipeline events reach the device wire.
-        handlePipelineEvent,
+        ...(voicePipeline ? { handlePipelineEvent } : {}),
         close() {
           if (typeof socket.close === "function") {
             socket.close();

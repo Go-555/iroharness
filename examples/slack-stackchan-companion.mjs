@@ -439,8 +439,17 @@ const createStackChanVoicePipeline = async ({ harness, stt, tts, stackchanId, ge
     return null;
   }
   const micSampleRate = Number(process.env.IROHARNESS_STACKCHAN_AUDIO_SAMPLE_RATE || "16000");
+  let sileroSession;
+  try {
+    sileroSession = await loadSileroSession({ modelPath, sampleRate: micSampleRate });
+  } catch (error) {
+    throw new Error(
+      `Failed to load Silero VAD (check IROHARNESS_SILERO_MODEL path: ${modelPath}): ${error.message}`,
+      { cause: error }
+    );
+  }
   const vad = createSileroVad({
-    session: await loadSileroSession({ modelPath, sampleRate: micSampleRate }),
+    session: sileroSession,
     sampleRate: micSampleRate,
     threshold: Number(process.env.IROHARNESS_STACKCHAN_VAD_THRESHOLD || "0.5"),
     silenceMs: Number(process.env.IROHARNESS_STACKCHAN_VAD_SILENCE_MS || "650"),

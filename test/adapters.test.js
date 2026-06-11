@@ -1424,6 +1424,69 @@ test("StackChan realtime session handler streaming stt.empty returns the session
   assert.equal(pipeline.pushed.length, 1);
 });
 
+test("StackChan realtime session handler streaming sends response.start once per turn before first audio", async () => {
+  const pipeline = createFakeVoicePipeline();
+  const { sent, session } = createStreamingSessionFixture({ voicePipeline: pipeline });
+  const wav = createPcm16WavBase64();
+
+  await session.handlePipelineEvent({
+    type: "speech.audio",
+    text: "一文目。",
+    audio: { encoding: "wav", dataBase64: wav }
+  });
+  await session.handlePipelineEvent({
+    type: "speech.audio",
+    text: "二文目。",
+    audio: { encoding: "wav", dataBase64: wav }
+  });
+  await session.handlePipelineEvent({
+    type: "turn.final",
+    text: "一文目。二文目。",
+    metrics: null
+  });
+
+  const firstTurnStarts = sent.filter((message) => message.type === "response.start");
+  assert.equal(firstTurnStarts.length, 1);
+  assert.equal(firstTurnStarts[0].text, "一文目。");
+  const startIndex = sent.findIndex((message) => message.type === "response.start");
+  const firstAudioIndex = sent.findIndex((message) => message.type === "speech.audio");
+  assert.equal(startIndex >= 0 && startIndex < firstAudioIndex, true);
+
+  await session.handlePipelineEvent({
+    type: "speech.audio",
+    text: "次のターン。",
+    audio: { encoding: "wav", dataBase64: wav }
+  });
+  const allStarts = sent.filter((message) => message.type === "response.start");
+  assert.equal(allStarts.length, 2);
+  assert.equal(allStarts[1].text, "次のターン。");
+});
+
+test("StackChan realtime session handler streaming device interrupt sends exactly one speech.interrupted", async () => {
+  const pipeline = createFakeVoicePipeline();
+  const { sent, socket, session } = createStreamingSessionFixture({ voicePipeline: pipeline });
+
+  // Mid-turn: a turn is active (response.start already out).
+  await session.handlePipelineEvent({
+    type: "speech.audio",
+    text: "話している途中",
+    audio: { encoding: "wav", dataBase64: createPcm16WavBase64() }
+  });
+  // Wire interrupt → direct reply; the real pipeline also emits a
+  // speech.interrupted event with the same reason — it must be deduped.
+  socket.receive({ type: "interrupt" });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  await session.handlePipelineEvent({ type: "speech.interrupted", reason: "device-interrupt" });
+
+  assert.deepEqual(pipeline.interrupts, ["device-interrupt"]);
+  assert.equal(sent.filter((message) => message.type === "speech.interrupted").length, 1);
+});
+
+test("StackChan realtime session handler legacy mode exposes no handlePipelineEvent", () => {
+  const { session } = createStreamingSessionFixture({ voicePipeline: null });
+  assert.equal("handlePipelineEvent" in session, false);
+});
+
 test("StackChan realtime session handler streaming translates rejection, error and interruption events", async () => {
   const pipeline = createFakeVoicePipeline();
   const { sent, session } = createStreamingSessionFixture({ voicePipeline: pipeline });
