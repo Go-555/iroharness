@@ -414,7 +414,10 @@ const createStackChanTts = () => {
     id: "stackchan-aivis-tts",
     baseUrl: process.env.AIVIS_SPEECH_BASE_URL || "http://127.0.0.1:10101",
     speaker: process.env.AIVIS_SPEECH_SPEAKER,
-    useCancellableSynthesis: process.env.AIVIS_SPEECH_CANCELLABLE === "1"
+    useCancellableSynthesis: process.env.AIVIS_SPEECH_CANCELLABLE === "1",
+    // Engine-side resample so the device payload and the pacer's clock agree
+    // on one rate (44.1kHz passthrough was a cause of choppy playback).
+    outputSamplingRate: Number(process.env.IROHARNESS_STACKCHAN_TTS_SAMPLE_RATE || "24000")
   });
 };
 
