@@ -1517,6 +1517,32 @@ test("StackChan realtime session handler streaming translates rejection, error a
   );
 });
 
+test("StackChan realtime session handler error event resets pipelineTurnStarted so next turn gets response.start", async () => {
+  const pipeline = createFakeVoicePipeline();
+  const { sent, session } = createStreamingSessionFixture({ voicePipeline: pipeline });
+
+  // Start a turn so pipelineTurnStarted becomes true.
+  await session.handlePipelineEvent({
+    type: "speech.audio",
+    text: "一文目。",
+    audio: { encoding: "wav", dataBase64: createPcm16WavBase64() }
+  });
+  const startsBeforeError = sent.filter((m) => m.type === "response.start").length;
+  assert.equal(startsBeforeError, 1);
+
+  // An error mid-turn should reset the flag without a turn.final.
+  await session.handlePipelineEvent({ type: "error", stage: "tts", message: "boom" });
+
+  // The next speech.audio must emit a fresh response.start (flag was reset).
+  await session.handlePipelineEvent({
+    type: "speech.audio",
+    text: "次のターン。",
+    audio: { encoding: "wav", dataBase64: createPcm16WavBase64() }
+  });
+  const startsAfterError = sent.filter((m) => m.type === "response.start").length;
+  assert.equal(startsAfterError, 2);
+});
+
 test("Codex app-server micro harness starts thread and returns assistant deltas", async () => {
   const transport = createFakeCodexTransport();
   const harness = createCodexAppServerMicroHarness({

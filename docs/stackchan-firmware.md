@@ -11,9 +11,13 @@ and AIAvatarKit. It already covers voice conversation, push-to-talk, pluggable
 server-side STT/LLM/TTS, expressions, blinking, mouth animation, vision, touch
 events, and agent harness integration.
 
-IroHarness has not copied source code from AIAvatarStackChan yet. If code is
-imported later, preserve the upstream MIT license notice and keep the copied
-runtime isolated from the macro harness core.
+The firmware runtime under `firmware/stackchan-runtime/` is an IroHarness-owned
+tracked copy derived from AIAvatarStackChan (MIT license). The upstream MIT
+license notice is preserved in `LICENSE.aiavatarstackchan` and
+`THIRD_PARTY_NOTICES.md` inside that directory. The runtime is kept isolated
+from the macro harness core. Per the absorption architecture the plan is to
+split it into a dedicated `iroharness-stackchan-runtime` repository once the
+PlatformIO release cadence diverges from the npm package cadence.
 
 ## Boundary
 

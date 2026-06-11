@@ -4170,6 +4170,9 @@ export const createStackChanRealtimeSessionHandler = ({
           return null;
         }
         if (event.type === "error") {
+          // Reset so the next turn gets a fresh response.start even when no
+          // turn.final follows a doubly-failing turn.
+          pipelineTurnStarted = false;
           emit({
             type: "stackchan.error",
             stage: event.stage || null,

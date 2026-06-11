@@ -173,6 +173,8 @@ const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const createLatencyProbe = ({ budgetMs }) => {
   const startedAt = Date.now();
   const marks = new Map([["started", startedAt]]);
+  // first_audio_total_ms from response.final.metrics (streaming mode only)
+  let pipelineFirstAudioTotalMs = null;
   const mark = (name) => {
     if (!marks.has(name)) {
       marks.set(name, Date.now());
@@ -202,6 +204,15 @@ const createLatencyProbe = ({ budgetMs }) => {
       }
       if (message.type === "response.final" || message.type === "final") {
         mark("response.final");
+        // Capture pipeline-side first_audio_total_ms when streaming mode
+        // sends it in response.final.metrics (absent in legacy mode).
+        if (
+          message.type === "response.final" &&
+          message.metrics?.first_audio_total_ms != null &&
+          pipelineFirstAudioTotalMs === null
+        ) {
+          pipelineFirstAudioTotalMs = message.metrics.first_audio_total_ms;
+        }
       }
       if (message.type === "speech.interrupted" || message.type === "stop") {
         mark("speech.interrupted");
@@ -221,6 +232,12 @@ const createLatencyProbe = ({ budgetMs }) => {
           sttFinal: delta("stt.final"),
           responseStart: delta("response.start"),
           firstAudio: firstAudioMs,
+          // first_audio_total_ms from pipeline metrics (streaming mode).
+          // null means the response.final carried no metrics (legacy mode).
+          firstAudioTotalMs:
+            pipelineFirstAudioTotalMs !== null
+              ? pipelineFirstAudioTotalMs
+              : "n/a (legacy mode)",
           responseFinal: delta("response.final"),
           interrupted: delta("speech.interrupted")
         })

@@ -2,6 +2,41 @@
 
 ## Unreleased
 
+### Streaming Voice Pipeline
+
+A full end-to-end streaming voice pipeline is now built into IroHarness
+(`src/voice-pipeline/`, enabled with `IROHARNESS_STACKCHAN_STREAMING=1`):
+
+- **Sentence-split streaming TTS** — the brain's reply is split on Japanese/EN
+  terminal punctuation (`createSentenceSplitter`) and each sentence is handed to
+  TTS immediately, so the device starts playing the first sentence while the
+  brain is still generating the rest.
+- **Silero VAD in Node** — `createSileroVad` wraps `onnxruntime-node` to detect
+  speech segments from raw PCM frames, with pre-roll buffering, a max-speech
+  cap, and automatic fallback to a mock (always-on) VAD when the model or
+  optional dependency is absent.
+- **`receiveStream` / `abandon`** — `harness.receiveStream()` yields streaming
+  brain deltas through the `respondStream` async-iterator contract and exposes
+  `abandon()` for clean barge-in without double-finalizing harness state.
+- **Streaming brains** — `createOpenAIResponsesBrain` streams via the OpenAI
+  Responses API SSE endpoint; `createCodexAppServerBrain` streams via the Codex
+  app-server `respondStream` path; both implement the `respondStream` contract
+  consumed by `toBrainStream`.
+- **Session handler streaming mode** — `createStackChanRealtimeSessionHandler`
+  accepts a `voicePipeline` option and routes all audio frames through it,
+  translating pipeline events (`speech.audio`, `turn.final`, `speech.interrupted`,
+  `error`, `stt.empty`, `turn.rejected`) to the firmware wire protocol.
+- **Pacer and per-turn metrics** — `createVoicePacer` paces audio delivery by
+  the base64 byte-length / 2 ÷ sampleRate approximation; `createVoiceTurnMetrics`
+  records `first_audio_total_ms` and `total_ms` per turn; these appear in the
+  additive `metrics` field on `response.final`.
+- **Quick-responder** — `createQuickResponder` pre-warms a short ack phrase and
+  fires it before the first brain token, matching AIAvatarStackChan's
+  `ack`/`answer` pattern at the pipeline level.
+- **First audio latency** now scales with the length of the first sentence rather
+  than the full reply; on a 10-sentence reply this can shave several seconds off
+  perceived response time.
+
 ### Behavior Changes
 
 - removed the `deep` brain slot: `createIroHarness({ brains })` now accepts only
