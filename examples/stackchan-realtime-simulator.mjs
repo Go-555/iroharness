@@ -1,7 +1,39 @@
 import { createHash, randomBytes } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { createConnection } from "node:net";
 
 const websocketGuid = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
+
+// Minimal PCM16 WAV reader for --audio-file (16-bit mono expected; fmt/data
+// chunk scan mirrors the host-side parser).
+const readWavPcm16 = (path) => {
+  const buffer = readFileSync(path);
+  if (buffer.toString("ascii", 0, 4) !== "RIFF" || buffer.toString("ascii", 8, 12) !== "WAVE") {
+    throw new Error(`not a RIFF/WAVE file: ${path}`);
+  }
+  let fmt = null;
+  let data = null;
+  let offset = 12;
+  while (offset + 8 <= buffer.length) {
+    const chunkId = buffer.toString("ascii", offset, offset + 4);
+    const chunkSize = buffer.readUInt32LE(offset + 4);
+    const chunkStart = offset + 8;
+    if (chunkId === "fmt ") {
+      fmt = {
+        sampleRate: buffer.readUInt32LE(chunkStart + 4),
+        bitsPerSample: buffer.readUInt16LE(chunkStart + 14)
+      };
+    }
+    if (chunkId === "data") {
+      data = buffer.subarray(chunkStart, chunkStart + chunkSize);
+    }
+    offset = chunkStart + chunkSize + (chunkSize % 2);
+  }
+  if (!fmt || !data || fmt.bitsPerSample !== 16) {
+    throw new Error(`expected PCM16 WAV with fmt/data chunks: ${path}`);
+  }
+  return { pcm: data, sampleRate: fmt.sampleRate };
+};
 
 const parseArgs = (argv) => {
   const pairs = argv.reduce(
@@ -265,6 +297,12 @@ const main = async () => {
   const keepOpenMs = Number(args["keep-open-ms"] || process.env.IROHARNESS_STACKCHAN_SIM_KEEP_OPEN_MS || "1500");
   const budgetMs = Number(args["budget-ms"] || process.env.IROHARNESS_STACKCHAN_SIM_BUDGET_MS || "1000");
   const dryRun = Boolean(args["dry-run"]);
+  // Real-audio measurement mode: stream a WAV in VAD-sized chunks with a
+  // silence tail so the streaming pipeline's VAD can close the utterance.
+  const audioFile = args["audio-file"] || process.env.IROHARNESS_STACKCHAN_SIM_AUDIO_FILE || null;
+  const silenceTailMs = Number(args["silence-tail-ms"] || "800");
+  const chunkSamples = Number(args["chunk-samples"] || "512");
+  const noInvoke = Boolean(args["no-invoke"]);
   const printSummary = Boolean(args.summary || args["json-summary"]);
   const failOverBudget = Boolean(args["fail-over-budget"]);
   const messages =
@@ -304,29 +342,56 @@ const main = async () => {
             wait_in_queue: true
           }
         ]
-      : [
-          {
-            type: "hello",
-            deviceId,
-            userId,
-            latencyBudgetMs: 1000
-          },
-          {
-            type: "invoke",
-            deviceId,
-            userId,
-            text
-          },
-          {
-            type: "audio.chunk",
-            deviceId,
-            userId,
-            encoding: "pcm_s16le",
-            sampleRate: 16000,
-            dataBase64: audioBase64,
-            final: true
+      : (() => {
+          const base = [
+            {
+              type: "hello",
+              deviceId,
+              userId,
+              latencyBudgetMs: 1000
+            }
+          ];
+          if (!noInvoke) {
+            base.push({
+              type: "invoke",
+              deviceId,
+              userId,
+              text
+            });
           }
-        ];
+          if (!audioFile) {
+            base.push({
+              type: "audio.chunk",
+              deviceId,
+              userId,
+              encoding: "pcm_s16le",
+              sampleRate: 16000,
+              dataBase64: audioBase64,
+              final: true
+            });
+            return base;
+          }
+          const { pcm, sampleRate } = readWavPcm16(audioFile);
+          const speechSamples = Math.floor(pcm.length / 2);
+          const silenceSamples = Math.round((silenceTailMs / 1000) * sampleRate);
+          const total = new Int16Array(speechSamples + silenceSamples);
+          for (let index = 0; index < speechSamples; index += 1) {
+            total[index] = pcm.readInt16LE(index * 2);
+          }
+          for (let offset = 0; offset < total.length; offset += chunkSamples) {
+            const slice = total.subarray(offset, Math.min(offset + chunkSamples, total.length));
+            base.push({
+              type: "audio.chunk",
+              deviceId,
+              userId,
+              encoding: "pcm_s16le",
+              sampleRate,
+              dataBase64: Buffer.from(slice.buffer, slice.byteOffset, slice.length * 2).toString("base64"),
+              final: offset + chunkSamples >= total.length
+            });
+          }
+          return base;
+        })();
   const latency = createLatencyProbe({ budgetMs });
   const received = [];
 
