@@ -128,12 +128,146 @@ test("type is required and must be command", () => {
     /type/,
   );
 });
-test("type agent is a Phase 8 load error", () => {
+// ─── Phase 8: type "agent" unlocked ───────────────────────────────────────────
+
+const agentVerdictBrain = (verdict) => ({
+  id: "manifest-judge",
+  calls: [],
+  async respond(context) {
+    this.calls.push(context);
+    return { text: JSON.stringify(verdict) };
+  },
+});
+
+test("an agent entry registers and a deny verdict blocks when a judgeBrain is injected", async () => {
+  const registry = createHookRegistry();
+  const judgeBrain = agentVerdictBrain({ ok: false, reasons: ["broke"] });
+  registerCommandManifest(
+    registry,
+    {
+      hooks: {
+        "response:before": [
+          { type: "agent", prompt: "Is this in character?", timeout: 5000 },
+        ],
+      },
+    },
+    { baseDir: HOOKS_DIR, judgeBrain },
+  );
+  const r = await registry.dispatch("response:before", {
+    route: { kind: "text" },
+    input: { text: "q" },
+    response: { text: "私はそう思います。" },
+  });
+  assert.equal(r.blocked, true);
+  assert.equal(r.reason, "broke");
+  assert.equal(judgeBrain.calls.length, 1);
+});
+
+test("a manifest-declared agent hook without an injected judgeBrain fires fail-open (no LLM is connected by declaration alone)", async () => {
+  const registry = createHookRegistry();
+  registerCommandManifest(
+    registry,
+    { hooks: { "response:before": [{ type: "agent", prompt: "judge" }] } },
+    { baseDir: HOOKS_DIR },
+  );
+  const r = await registry.dispatch("response:before", {
+    route: { kind: "text" },
+    response: { text: "anything" },
+  });
+  assert.equal(r.blocked, false); // fail-open default: the face is never muted
+});
+
+test("an agent entry honors its matcher (route.kind key)", async () => {
+  const registry = createHookRegistry();
+  const judgeBrain = agentVerdictBrain({ ok: false, reasons: ["broke"] });
+  registerCommandManifest(
+    registry,
+    {
+      hooks: {
+        "response:before": [{ type: "agent", prompt: "p", matcher: "deep" }],
+      },
+    },
+    { baseDir: HOOKS_DIR, judgeBrain },
+  );
+  const text = await registry.dispatch("response:before", {
+    route: { kind: "text" },
+    response: { text: "x" },
+  });
+  assert.equal(text.blocked, false); // matcher "deep" skips kind "text"
+  assert.equal(judgeBrain.calls.length, 0);
+  const deep = await registry.dispatch("response:before", {
+    route: { kind: "deep" },
+    response: { text: "x" },
+  });
+  assert.equal(deep.blocked, true);
+});
+
+test("an agent entry without a prompt throws naming event+index", () => {
+  assert.throws(
+    () => load({ hooks: { "response:before": [{ type: "agent" }] } }),
+    /response:before.*\b0\b.*prompt/,
+  );
   assert.throws(
     () =>
-      load({ hooks: { "response:before": [{ type: "agent", prompt: "x" }] } }),
-    /agent/i,
+      load({ hooks: { "response:before": [{ type: "agent", prompt: "" }] } }),
+    /prompt/,
   );
+});
+
+test("an agent entry with a non-string model throws", () => {
+  assert.throws(
+    () =>
+      load({
+        hooks: {
+          "response:before": [{ type: "agent", prompt: "p", model: 42 }],
+        },
+      }),
+    /model/,
+  );
+});
+
+test("an agent entry with a non-number timeout throws", () => {
+  assert.throws(
+    () =>
+      load({
+        hooks: {
+          "response:before": [{ type: "agent", prompt: "p", timeout: "slow" }],
+        },
+      }),
+    /timeout/,
+  );
+});
+
+test("an agent hook on a realtime event is rejected at load (realtime invariant)", () => {
+  for (const event of ["bargein:detect", "speech:before", "device:emit"]) {
+    assert.throws(
+      () => load({ hooks: { [event]: [{ type: "agent", prompt: "p" }] } }),
+      /realtime/,
+    );
+  }
+});
+
+test("a malformed agent entry is atomic: a valid command entry before it registers zero hooks", async () => {
+  const registry = createHookRegistry();
+  assert.throws(
+    () =>
+      registerCommandManifest(
+        registry,
+        {
+          hooks: {
+            "turn:before": [cmd()],
+            "response:before": [{ type: "agent" }],
+          },
+        },
+        { baseDir: HOOKS_DIR },
+      ),
+    /prompt/,
+  );
+  const r = await registry.dispatch("turn:before", {
+    route: { kind: "x" },
+    input: { text: "x" },
+  });
+  assert.equal(r.context.marker, undefined);
 });
 test("command must be a non-empty string", () => {
   assert.throws(

@@ -93,17 +93,32 @@ export interface CommandManifestEntry {
   priority?: number;
 }
 
+// Phase 8: a manifest DECLARES an agent hook (prompt/model/timeout); the
+// judge brain is only ever injected from code via the loader's `judgeBrain`
+// option. Without an injected brain the hook fires fail-open.
+export interface AgentManifestEntry {
+  type: "agent";
+  prompt: string;
+  matcher?: string;
+  model?: string;
+  timeout?: number;
+  priority?: number;
+}
+
+export type HookManifestEntry = CommandManifestEntry | AgentManifestEntry;
+
 export interface CommandManifest {
-  hooks?: Record<string, CommandManifestEntry[]>;
+  hooks?: Record<string, HookManifestEntry[]>;
 }
 
 export function registerCommandManifest(
   registry: HookRegistry,
   manifest: CommandManifest,
-  options?: { baseDir?: string },
+  options?: { baseDir?: string; judgeBrain?: JudgeBrain | null },
 ): HookRegistry;
 
 export function loadCommandManifestFile(
   registry: HookRegistry,
   path: string,
+  options?: { judgeBrain?: JudgeBrain | null },
 ): HookRegistry;

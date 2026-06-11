@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
+import { createAgentHook } from "./agent.js";
 import { createCommandHook } from "./command.js";
 import { isRealtimeEvent } from "../hook-registry.js";
 
@@ -20,13 +21,23 @@ const isPlainObject = (v) =>
 const validateEntry = (event, entry, index) => {
   const at = `hooks["${event}"][${index}]`;
   if (!isPlainObject(entry)) throw new Error(`${at}: entry must be an object`);
-  if (entry.type === "agent")
-    throw new Error(`${at}: agent hooks are not supported until Phase 8`);
-  if (entry.type !== "command")
+  if (entry.type !== "command" && entry.type !== "agent")
     throw new Error(
-      `${at}: type must be "command" (got ${JSON.stringify(entry.type)})`,
+      `${at}: type must be "command" or "agent" (got ${JSON.stringify(entry.type)})`,
     );
-  if (typeof entry.command !== "string" || entry.command.trim().length === 0)
+  if (entry.type === "agent") {
+    // Phase 8: a manifest DECLARES an agent hook; the judge brain itself is
+    // only ever injected from code (registerCommandManifest's `judgeBrain`
+    // option) — a manifest alone never connects an LLM.
+    if (typeof entry.prompt !== "string" || entry.prompt.trim().length === 0)
+      throw new Error(`${at}: prompt must be a non-empty string`);
+    if (entry.model !== undefined && typeof entry.model !== "string")
+      throw new Error(`${at}: model must be a string`);
+  }
+  if (
+    entry.type === "command" &&
+    (typeof entry.command !== "string" || entry.command.trim().length === 0)
+  )
     throw new Error(`${at}: command must be a non-empty string`);
   if (
     entry.args !== undefined &&
@@ -71,19 +82,26 @@ const validateEntry = (event, entry, index) => {
     throw new Error(`${at}: priority must be a finite number`);
   if (isRealtimeEvent(event))
     throw new Error(
-      `${at}: command hooks are not allowed on the realtime event "${event}"`,
+      `${at}: ${entry.type} hooks are not allowed on the realtime event "${event}"`,
     );
 };
 
-const buildGatedHook = (event, entry, index, baseDir) => {
-  const command = resolveCommand(entry.command, baseDir);
-  const hook = createCommandHook({
-    command,
-    args: entry.args,
-    timeout: entry.timeout,
-    cwd: entry.cwd,
-    env: entry.env,
-  });
+const buildGatedHook = (event, entry, index, baseDir, judgeBrain) => {
+  const hook =
+    entry.type === "agent"
+      ? createAgentHook({
+          judgeBrain,
+          prompt: entry.prompt,
+          timeout: entry.timeout,
+          model: entry.model ?? null,
+        })
+      : createCommandHook({
+          command: resolveCommand(entry.command, baseDir),
+          args: entry.args,
+          timeout: entry.timeout,
+          cwd: entry.cwd,
+          env: entry.env,
+        });
   let re = null;
   if (entry.matcher !== undefined) {
     re = new RegExp(entry.matcher);
@@ -94,7 +112,7 @@ const buildGatedHook = (event, entry, index, baseDir) => {
 export const registerCommandManifest = (
   registry,
   manifest,
-  { baseDir = process.cwd() } = {},
+  { baseDir = process.cwd(), judgeBrain = null } = {},
 ) => {
   const hooks = manifest?.hooks ?? {};
   if (!isPlainObject(hooks))
@@ -114,13 +132,14 @@ export const registerCommandManifest = (
   }
 
   // Pass 2 — register only. Pass 1 has validated the event key, every entry
-  // (type/command/args/matcher), and the realtime invariant, so neither
-  // buildGatedHook (createCommandHook) nor register() can throw here.
+  // (type/command/prompt/args/matcher), and the realtime invariant, so neither
+  // buildGatedHook (createCommandHook/createAgentHook) nor register() can
+  // throw here.
   for (const [event, entries] of Object.entries(hooks)) {
     entries.forEach((entry, index) => {
-      const gated = buildGatedHook(event, entry, index, baseDir);
+      const gated = buildGatedHook(event, entry, index, baseDir, judgeBrain);
       registry.register(event, gated, {
-        style: "command",
+        style: entry.type,
         priority: entry.priority ?? 0,
       });
     });
@@ -128,7 +147,7 @@ export const registerCommandManifest = (
   return registry;
 };
 
-export const loadCommandManifestFile = (registry, path) => {
+export const loadCommandManifestFile = (registry, path, options = {}) => {
   let manifest;
   try {
     manifest = JSON.parse(readFileSync(path, "utf8"));
@@ -138,6 +157,7 @@ export const loadCommandManifestFile = (registry, path) => {
     );
   }
   return registerCommandManifest(registry, manifest, {
+    ...options,
     baseDir: dirname(path),
   });
 };
