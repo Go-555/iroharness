@@ -3477,7 +3477,14 @@ export const createStackChanRealtimeSessionHandler = ({
   minAudioBytes = 0,
   speechChunkBytes = 512,
   immediateAckText = "",
-  voice = "iroha"
+  voice = "iroha",
+  // Streaming mode (opt-in): an object built by the caller via
+  // createVoicePipeline — the handler never constructs it. When provided,
+  // audio.chunk/audio/data frames bypass the in-handler VAD/auto-finalize
+  // path and feed voicePipeline.pushAudio; pipeline events come back through
+  // session.handlePipelineEvent. ptt.audio and invoke/vision keep the legacy
+  // receive() path. Wire format is unchanged in both modes.
+  voicePipeline = null
 } = {}) => {
   if (!harness || typeof harness.receive !== "function") {
     throw new Error("createStackChanRealtimeSessionHandler requires harness.receive");
@@ -3662,6 +3669,52 @@ export const createStackChanRealtimeSessionHandler = ({
           }
         });
 
+      // Shared wire delivery for one normalized speech-audio payload:
+      // chunk-split → optional queue enqueue → speech.audio sends. Used by
+      // both the legacy speak() path and streaming-mode pipeline events so
+      // the wire shape stays byte-compatible between the two.
+      const deliverSpeechAudio = ({ audio, text, role = "answer" }) => {
+        const audioChunks = splitStackChanSpeechAudio(audio, {
+          maxBytes: speechChunkBytes
+        });
+        const item = queue?.enqueue
+          ? queue.enqueue({
+              text,
+              audio: {
+                encoding: audio.encoding,
+                dataBase64: audio.dataBase64,
+                sampleRate: audio.sampleRate,
+                channels: audio.channels,
+                bitsPerSample: audio.bitsPerSample
+              },
+              voice,
+              source: id
+            })
+          : {
+              id: `${id}:speech:${sequence}`,
+              text
+            };
+        audioChunks.forEach((audioChunk, index) => {
+          send({
+            type: "speech.audio",
+            itemId: item.id,
+            chunkIndex: index,
+            chunkCount: audioChunks.length,
+            role,
+            text,
+            audio: {
+              encoding: audioChunk.encoding,
+              dataBase64: audioChunk.dataBase64,
+              sampleRate: audioChunk.sampleRate,
+              channels: audioChunk.channels,
+              bitsPerSample: audioChunk.bitsPerSample
+            },
+            voice
+          });
+        });
+        return audioChunks.length;
+      };
+
       const speak = async ({ text, role = "answer", sendFinal = true }) => {
         const responseText = normalizeSpeechText(text);
         if (!responseText) {
@@ -3698,49 +3751,16 @@ export const createStackChanRealtimeSessionHandler = ({
                   textLength: responseText.length
                 });
               }
-              const audioChunks = splitStackChanSpeechAudio(audio, {
-                maxBytes: speechChunkBytes
+              const sentChunks = deliverSpeechAudio({
+                audio,
+                text: event.text || responseText,
+                role
               });
-              const item = queue?.enqueue
-                ? queue.enqueue({
-                    text: event.text || responseText,
-                    audio: {
-                      encoding: audio.encoding,
-                      dataBase64: audio.dataBase64,
-                      sampleRate: audio.sampleRate,
-                      channels: audio.channels,
-                      bitsPerSample: audio.bitsPerSample
-                    },
-                    voice,
-                    source: id
-                  })
-                : {
-                    id: `${id}:speech:${sequence}`,
-                    text: event.text || responseText
-                  };
-              audioChunks.forEach((audioChunk, index) => {
-                send({
-                  type: "speech.audio",
-                  itemId: item.id,
-                  chunkIndex: index,
-                  chunkCount: audioChunks.length,
-                  role,
-                  text: event.text || responseText,
-                  audio: {
-                    encoding: audioChunk.encoding,
-                    dataBase64: audioChunk.dataBase64,
-                    sampleRate: audioChunk.sampleRate,
-                    channels: audioChunk.channels,
-                    bitsPerSample: audioChunk.bitsPerSample
-                  },
-                  voice
-                });
-              });
-              speechChunkCount += audioChunks.length;
+              speechChunkCount += sentChunks;
               emit({
                 type: "stackchan.speech.audio_sent",
                 role,
-                chunks: audioChunks.length,
+                chunks: sentChunks,
                 totalChunks: speechChunkCount,
                 bytes: audio.dataBase64.length
               });
@@ -4032,6 +4052,110 @@ export const createStackChanRealtimeSessionHandler = ({
         });
       };
 
+      // Streaming mode: decode the frame exactly like the legacy path
+      // (base64 → PCM16, WAV unwrapped) and hand it to the injected pipeline.
+      // VAD/finalization is the pipeline's job — no in-handler timers here.
+      const handleStreamingAudio = async (payload) => {
+        const audio = normalizeStackChanAudioPayload(payload);
+        const encoding = String(audio.encoding || "pcm16").toLowerCase();
+        const pcm =
+          encoding === "wav"
+            ? Buffer.from(
+                parsePcm16Wav(Buffer.from(audio.dataBase64 || "", "base64")).dataBase64,
+                "base64"
+              )
+            : Buffer.from(audio.dataBase64 || "", "base64");
+        const sampleCount = Math.floor(pcm.length / 2);
+        if (sampleCount === 0) {
+          return null;
+        }
+        const frame = new Int16Array(sampleCount);
+        for (let index = 0; index < sampleCount; index += 1) {
+          frame[index] = pcm.readInt16LE(index * 2);
+        }
+        await voicePipeline.pushAudio(frame);
+        return null;
+      };
+
+      // Streaming mode: ONE translation point from pipeline events to the
+      // existing wire messages. Every send below reuses the legacy shapes —
+      // the firmware cannot tell the two modes apart.
+      const handlePipelineEvent = async (event = {}) => {
+        if (event.type === "speech.audio") {
+          const role = event.quick ? "ack" : "answer";
+          const audio = normalizeStackChanSpeechAudio({
+            encoding: event.audio?.encoding,
+            audio: event.audio?.dataBase64,
+            sampleRate: event.audio?.sampleRate,
+            channels: event.audio?.channels,
+            bitsPerSample: event.audio?.bitsPerSample
+          });
+          const sentChunks = deliverSpeechAudio({
+            audio,
+            text: event.text || "",
+            role
+          });
+          const completed = queue?.snapshot?.().current;
+          if (completed?.id && queue?.complete) {
+            queue.complete(completed.id);
+          }
+          emit({
+            type: "stackchan.speech.audio_sent",
+            role,
+            chunks: sentChunks,
+            totalChunks: sentChunks,
+            bytes: audio.dataBase64.length
+          });
+          return null;
+        }
+        if (event.type === "turn.final") {
+          emit({
+            type: "stackchan.latency.pipeline_turn",
+            firstAudioTotalMs: event.metrics?.first_audio_total_ms ?? null,
+            totalMs: event.metrics?.total_ms ?? null,
+            textLength: String(event.text || "").length
+          });
+          send({
+            type: "response.final",
+            role: "answer",
+            text: event.text || "",
+            // Additive field — legacy firmware ignores it, hosts can log it.
+            metrics: event.metrics ?? null
+          });
+          return null;
+        }
+        if (event.type === "stt.empty") {
+          return handleEmptyTranscript({ reason: event.reason || "pipeline" });
+        }
+        if (event.type === "turn.rejected") {
+          // Same wire behavior as the non-streaming path: rejection results
+          // (e.g. permission_denied) carry their reply in result.text and are
+          // spoken/finalized via handleTurnResult.
+          return handleTurnResult(event.result);
+        }
+        if (event.type === "speech.interrupted") {
+          send({
+            type: "speech.interrupted",
+            reason: event.reason || "interrupted"
+          });
+          return null;
+        }
+        if (event.type === "error") {
+          emit({
+            type: "stackchan.error",
+            stage: event.stage || null,
+            message: event.message
+          });
+          send({
+            type: "error",
+            stage: event.stage || null,
+            message: event.message || "voice pipeline error"
+          });
+          return null;
+        }
+        return null;
+      };
+
       const handlePayload = async (payload) => {
         if (isAiAvatarStackChanClientMessage(payload)) {
           protocol = "aiavatarstackchan";
@@ -4062,6 +4186,9 @@ export const createStackChanRealtimeSessionHandler = ({
           return null;
         }
         if (payload.type === "data") {
+          if (voicePipeline) {
+            return handleStreamingAudio(payload);
+          }
           return handleAudio({
             ...payload,
             type: "audio.chunk",
@@ -4069,6 +4196,11 @@ export const createStackChanRealtimeSessionHandler = ({
           });
         }
         if (payload.type === "audio.chunk" || payload.type === "audio" || payload.type === "ptt.audio") {
+          // ptt.audio carries a complete utterance with final:true — keep it
+          // on the legacy one-shot path even in streaming mode.
+          if (voicePipeline && payload.type !== "ptt.audio") {
+            return handleStreamingAudio(payload);
+          }
           return handleAudio(payload);
         }
         if (payload.type === "invoke" || payload.type === "vision") {
@@ -4097,6 +4229,7 @@ export const createStackChanRealtimeSessionHandler = ({
           return handleTurnResult(result);
         }
         if (payload.type === "interrupt" || payload.type === "stop") {
+          voicePipeline?.interrupt?.("device-interrupt");
           queue?.interrupt?.("device-interrupt", { clearPending: true });
           send({
             type: "speech.interrupted",
@@ -4141,6 +4274,9 @@ export const createStackChanRealtimeSessionHandler = ({
           });
       });
       attachSocketListener(socket, "close", () => {
+        // spec §6: WS 切断 → abort — the pipeline's interrupt fires the
+        // in-flight brain/tts AbortSignal.
+        voicePipeline?.interrupt?.("disconnect");
         sttSession?.cancel?.("socket-closed");
         sttSession = null;
         sttSessionStartedAt = 0;
@@ -4166,6 +4302,9 @@ export const createStackChanRealtimeSessionHandler = ({
         accepted: true,
         send,
         speak,
+        // Streaming-mode entry: the caller wires createVoicePipeline's
+        // onEvent to this so pipeline events reach the device wire.
+        handlePipelineEvent,
         close() {
           if (typeof socket.close === "function") {
             socket.close();

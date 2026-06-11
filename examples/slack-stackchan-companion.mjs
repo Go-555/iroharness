@@ -24,6 +24,14 @@ import {
   createSlackEventsRuntime,
   createSlackMessageAdapter
 } from "../src/adapters/index.js";
+import {
+  createAudioPacer,
+  createQuickResponder,
+  createSileroVad,
+  createVoicePipeline,
+  createVoiceTurnMetrics,
+  loadSileroSession
+} from "../src/voice-pipeline/index.js";
 
 const requireEnv = (name) => {
   const value = process.env[name];
@@ -409,7 +417,85 @@ const transcribeStackChanAudio = async ({ stt, audio, fallbackText }) => {
   return transcriptEvent?.text || fallbackText;
 };
 
-const createSlackStackChanCompanion = () => {
+// Streaming voice mode (IROHARNESS_STACKCHAN_STREAMING=1): builds the
+// voice pipeline that the realtime session handler consumes via DI.
+// Requires IROHARNESS_SILERO_MODEL (path to silero_vad.onnx) — without it
+// the companion stays on the legacy in-handler VAD path.
+const createStackChanVoicePipeline = async ({ harness, stt, tts, stackchanId, getSession }) => {
+  if (process.env.IROHARNESS_STACKCHAN_STREAMING !== "1") {
+    return null;
+  }
+  if (!stt || !tts) {
+    console.log(
+      "IROHARNESS_STACKCHAN_STREAMING=1 needs StackChan STT and TTS providers; staying on the legacy voice path."
+    );
+    return null;
+  }
+  const modelPath = process.env.IROHARNESS_SILERO_MODEL;
+  if (!modelPath) {
+    console.log(
+      "IROHARNESS_STACKCHAN_STREAMING=1 requires IROHARNESS_SILERO_MODEL (path to silero_vad.onnx); staying on the legacy voice path."
+    );
+    return null;
+  }
+  const micSampleRate = Number(process.env.IROHARNESS_STACKCHAN_AUDIO_SAMPLE_RATE || "16000");
+  const vad = createSileroVad({
+    session: await loadSileroSession({ modelPath, sampleRate: micSampleRate }),
+    sampleRate: micSampleRate,
+    threshold: Number(process.env.IROHARNESS_STACKCHAN_VAD_THRESHOLD || "0.5"),
+    silenceMs: Number(process.env.IROHARNESS_STACKCHAN_VAD_SILENCE_MS || "650"),
+    minSpeechMs: Number(process.env.IROHARNESS_STACKCHAN_VAD_MIN_SPEECH_MS || "250"),
+    maxSpeechMs: Number(process.env.IROHARNESS_STACKCHAN_VAD_MAX_SPEECH_MS || "30000")
+  });
+  const pacer = createAudioPacer({
+    sampleRate: Number(process.env.IROHARNESS_STACKCHAN_TTS_SAMPLE_RATE || "24000"),
+    sleepFn: (ms) => new Promise((resolveSleep) => setTimeout(resolveSleep, ms))
+  });
+  const quickResponder = createQuickResponder({
+    tts,
+    phrases: [process.env.IROHARNESS_STACKCHAN_IMMEDIATE_ACK_TEXT || "うん。"]
+  });
+  const cachedPhrases = await quickResponder.warmup();
+  console.log(`StackChan streaming voice: quick responder warmed (${cachedPhrases} phrase(s) cached)`);
+  const deviceId = stackchanId;
+  return createVoicePipeline({
+    vad,
+    stt,
+    harness,
+    tts,
+    pacer,
+    quickResponder,
+    metrics: createVoiceTurnMetrics(),
+    voice: process.env.IROHARNESS_STACKCHAN_VOICE || "iroha",
+    sampleRate: micSampleRate,
+    maxSentences: Number(process.env.IROHARNESS_VOICE_MAX_SENTENCES || "30"),
+    // Mirrors what the legacy voice-turn path passes to harness.receive.
+    buildInput: (transcript) => ({
+      source: "m5stack",
+      modality: "voice",
+      text: transcript,
+      actor: {
+        platform: "m5stack",
+        platformUserId: process.env.IROHARNESS_STACKCHAN_USER_PLATFORM_ID || deviceId,
+        displayName: deviceId
+      },
+      metadata: {
+        deviceId,
+        channel: process.env.IROHARNESS_STACKCHAN_CHANNEL || "local",
+        realtimeSessionId: "stackchan-realtime"
+      }
+    }),
+    // Translation lives in the session handler — forward pipeline events to
+    // the active realtime session's handlePipelineEvent.
+    onEvent: (event) => {
+      getSession()?.handlePipelineEvent?.(event)?.catch?.((error) => {
+        console.error(error.stack || error.message);
+      });
+    }
+  });
+};
+
+const createSlackStackChanCompanion = async () => {
   const botToken = process.env.SLACK_BOT_TOKEN || null;
   const signingSecret = process.env.SLACK_SIGNING_SECRET || null;
   const slackEnabled = Boolean(botToken && signingSecret);
@@ -479,6 +565,14 @@ const createSlackStackChanCompanion = () => {
     devices: [stackchan],
     microHarnesses
   });
+  let activeRealtimeSession = null;
+  const voicePipeline = await createStackChanVoicePipeline({
+    harness,
+    stt: stackchanStt,
+    tts: stackchanTts,
+    stackchanId: stackchan.id,
+    getSession: () => activeRealtimeSession
+  });
   const realtimeHandler =
     stackchanStt && stackchanTts
       ? createStackChanRealtimeSessionHandler({
@@ -486,6 +580,7 @@ const createSlackStackChanCompanion = () => {
           harness,
           stt: stackchanStt,
           tts: stackchanTts,
+          voicePipeline,
           deviceToken: stackchanDeviceToken,
           voice: process.env.IROHARNESS_STACKCHAN_VOICE || "iroha",
           latencyBudgetMs: Number(process.env.IROHARNESS_STACKCHAN_LATENCY_BUDGET_MS || "1000"),
@@ -510,7 +605,6 @@ const createSlackStackChanCompanion = () => {
             })
         })
       : null;
-  let activeRealtimeSession = null;
 
   const seenEventIds = new Set();
   const runtime = slackEnabled
@@ -772,6 +866,9 @@ const createSlackStackChanCompanion = () => {
             ttsDurationMs: typeof event.ttsDurationMs === "number" ? event.ttsDurationMs : undefined,
             timeToFirstAudioMs:
               typeof event.timeToFirstAudioMs === "number" ? event.timeToFirstAudioMs : undefined,
+            firstAudioTotalMs:
+              typeof event.firstAudioTotalMs === "number" ? event.firstAudioTotalMs : undefined,
+            totalMs: typeof event.totalMs === "number" ? event.totalMs : undefined,
             textLength: typeof event.textLength === "number" ? event.textLength : undefined,
             transcriptLength:
               typeof event.transcriptLength === "number" ? event.transcriptLength : undefined,
@@ -808,7 +905,7 @@ const createSlackStackChanCompanion = () => {
   });
 };
 
-const companion = createSlackStackChanCompanion();
+const companion = await createSlackStackChanCompanion();
 const urls = await companion.listen();
 console.log(`Slack Events URL: ${urls.slackEventsUrl}`);
 console.log(`StackChan face JSON: ${urls.stackchanFaceUrl}`);
