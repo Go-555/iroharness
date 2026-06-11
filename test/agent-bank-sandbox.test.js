@@ -413,3 +413,95 @@ test("createSmokeTrial requires a createRunner factory", async () => {
   const { createSmokeTrial } = await import("../src/agent-bank/sandbox.js");
   assert.throws(() => createSmokeTrial({}), /createRunner/);
 });
+
+// ---- M-1 / M-2: smoke trial lifecycle (workspace cleanup + worker close) -----
+
+const closableRunnerFactory = (behavior) => {
+  const state = { closed: false };
+  const factory = ({ id }) => ({
+    id,
+    run: (task, context) => behavior({ id, task, context }),
+    close: () => {
+      state.closed = true;
+    },
+  });
+  factory.state = state;
+  return factory;
+};
+
+test("the smoke trial removes the temp workspace it created (M-1)", async () => {
+  const { createSmokeTrial } = await import("../src/agent-bank/sandbox.js");
+  const root = makeBank();
+  writeRecipe(root, "staging", "tidy");
+  let seenWorkspace = null;
+
+  const runTrial = createSmokeTrial({
+    createRunner: fakeRunnerFactory(async ({ context }) => {
+      seenWorkspace = context.workRunner.workspace;
+      return { status: "completed", summary: "OK" };
+    }),
+  });
+  const result = await runSandboxVerification({ root, id: "tidy", runTrial });
+
+  assert.equal(result.verified, true);
+  assert.equal(typeof seenWorkspace, "string");
+  assert.equal(
+    existsSync(seenWorkspace),
+    false,
+    "the trial-owned temp workspace is removed afterwards",
+  );
+});
+
+test("a caller-provided workspace is NOT removed by the trial (M-1)", async () => {
+  const { createSmokeTrial } = await import("../src/agent-bank/sandbox.js");
+  const root = makeBank();
+  writeRecipe(root, "staging", "guest");
+  const workspace = mkdtempSync(join(tmpdir(), "caller-ws-"));
+
+  const runTrial = createSmokeTrial({
+    workspace,
+    createRunner: fakeRunnerFactory(async () => ({
+      status: "completed",
+      summary: "OK",
+    })),
+  });
+  await runSandboxVerification({ root, id: "guest", runTrial });
+
+  assert.equal(existsSync(workspace), true, "caller-owned workspace stays");
+});
+
+test("the smoke trial closes the worker it created (M-2)", async () => {
+  const { createSmokeTrial } = await import("../src/agent-bank/sandbox.js");
+  const root = makeBank();
+  writeRecipe(root, "staging", "closing");
+  const factory = closableRunnerFactory(async () => ({
+    status: "completed",
+    summary: "OK",
+  }));
+
+  const runTrial = createSmokeTrial({ createRunner: factory });
+  await runSandboxVerification({ root, id: "closing", runTrial });
+
+  assert.equal(
+    factory.state.closed,
+    true,
+    "worker.close() ran after the trial",
+  );
+});
+
+test("the smoke trial closes the worker on the timeout path too (M-2 / L-2)", async () => {
+  const { createSmokeTrial } = await import("../src/agent-bank/sandbox.js");
+  const root = makeBank();
+  writeRecipe(root, "staging", "hung");
+  const factory = closableRunnerFactory(() => new Promise(() => {}));
+
+  const runTrial = createSmokeTrial({ createRunner: factory, timeoutMs: 50 });
+  const result = await runSandboxVerification({ root, id: "hung", runTrial });
+
+  assert.equal(result.verified, false);
+  assert.equal(
+    factory.state.closed,
+    true,
+    "a hung runner is closed, not leaked",
+  );
+});

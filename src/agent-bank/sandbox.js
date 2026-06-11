@@ -11,7 +11,13 @@
 // unparsable ledger verifies nothing, and tainted entries (invalid id keys,
 // non-boolean `verified`) are dropped so they can never satisfy the gate.
 
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -148,14 +154,17 @@ export const createSmokeTrial = ({
   }
   return async ({ id, recipe }) => {
     let timer = null;
+    let worker = null;
+    let trialWorkspace = null;
+    const ownsWorkspace = workspace === null;
     try {
-      const trialWorkspace =
+      trialWorkspace =
         workspace ?? mkdtempSync(join(tmpdir(), "iroharness-smoke-"));
       // H-1: the trial workspace is the runner's EXECUTION boundary too —
       // passed as the per-call cwd so the child process (and codex's
       // cwd-derived sandboxPolicy.writableRoots) actually runs inside it,
       // not just past the scoped-runner workspace check.
-      const worker = createRunner({ id, recipe, cwd: trialWorkspace });
+      worker = createRunner({ id, recipe, cwd: trialWorkspace });
       const scoped = createScopedWorkRunnerMicroHarness({
         id,
         worker,
@@ -195,6 +204,19 @@ export const createSmokeTrial = ({
     } finally {
       if (timer) {
         clearTimeout(timer);
+      }
+      // M-2 (+ bantou L-2): close the worker on EVERY path — pass, fail,
+      // timeout, throw — so a hung codex app-server child is never leaked.
+      // Best-effort: a throwing close must not mask the trial outcome.
+      try {
+        worker?.close?.();
+      } catch {
+        // fail-closed result already decided; nothing useful to add
+      }
+      // M-1: a trial-owned temp workspace is removed afterwards; a
+      // caller-provided workspace is the caller's to keep.
+      if (ownsWorkspace && trialWorkspace) {
+        rmSync(trialWorkspace, { recursive: true, force: true });
       }
     }
   };
