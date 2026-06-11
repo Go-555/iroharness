@@ -442,6 +442,13 @@ const transcribeStackChanAudio = async ({ stt, audio, fallbackText }) => {
   return transcriptEvent?.text || fallbackText;
 };
 
+// Shared by createSileroVad (frameSamples) AND the session handler
+// (pipelineFrameSamples): the handler re-chunks wire audio into exactly
+// this many samples per frame, so the two must never drift.
+const STACKCHAN_VAD_FRAME_SAMPLES = Number(
+  process.env.IROHARNESS_STACKCHAN_VAD_FRAME_SAMPLES || "512"
+);
+
 // Streaming voice mode (IROHARNESS_STACKCHAN_STREAMING=1): builds the
 // voice pipeline that the realtime session handler consumes via DI.
 // Requires IROHARNESS_SILERO_MODEL (path to silero_vad.onnx) — without it
@@ -479,7 +486,8 @@ const createStackChanVoicePipeline = async ({ harness, stt, tts, stackchanId, ge
     threshold: Number(process.env.IROHARNESS_STACKCHAN_VAD_THRESHOLD || "0.5"),
     silenceMs: Number(process.env.IROHARNESS_STACKCHAN_VAD_SILENCE_MS || "650"),
     minSpeechMs: Number(process.env.IROHARNESS_STACKCHAN_VAD_MIN_SPEECH_MS || "250"),
-    maxSpeechMs: Number(process.env.IROHARNESS_STACKCHAN_VAD_MAX_SPEECH_MS || "30000")
+    maxSpeechMs: Number(process.env.IROHARNESS_STACKCHAN_VAD_MAX_SPEECH_MS || "30000"),
+    frameSamples: STACKCHAN_VAD_FRAME_SAMPLES
   });
   const pacer = createAudioPacer({
     sampleRate: Number(process.env.IROHARNESS_STACKCHAN_TTS_SAMPLE_RATE || "24000"),
@@ -615,6 +623,7 @@ const createSlackStackChanCompanion = async () => {
           stt: stackchanStt,
           tts: stackchanTts,
           voicePipeline,
+          pipelineFrameSamples: STACKCHAN_VAD_FRAME_SAMPLES,
           deviceToken: stackchanDeviceToken,
           voice: process.env.IROHARNESS_STACKCHAN_VOICE || "iroha",
           latencyBudgetMs: Number(process.env.IROHARNESS_STACKCHAN_LATENCY_BUDGET_MS || "1000"),

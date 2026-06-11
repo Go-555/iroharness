@@ -1253,7 +1253,11 @@ const createFakeVoicePipeline = () => {
   };
 };
 
-const createStreamingSessionFixture = ({ voicePipeline = null, ttsWav = null } = {}) => {
+const createStreamingSessionFixture = ({
+  voicePipeline = null,
+  ttsWav = null,
+  pipelineFrameSamples = undefined
+} = {}) => {
   const sent = [];
   const events = [];
   const turns = [];
@@ -1262,6 +1266,7 @@ const createStreamingSessionFixture = ({ voicePipeline = null, ttsWav = null } =
   const handler = createStackChanRealtimeSessionHandler({
     deviceToken: "device-token",
     voicePipeline,
+    ...(pipelineFrameSamples ? { pipelineFrameSamples } : {}),
     harness: {
       async receive(turn) {
         turns.push(turn);
@@ -1323,7 +1328,10 @@ const createStreamingSessionFixture = ({ voicePipeline = null, ttsWav = null } =
 
 test("StackChan realtime session handler streaming mode pushes decoded frames into the voice pipeline", async () => {
   const pipeline = createFakeVoicePipeline();
-  const { sent, sttStarts, socket } = createStreamingSessionFixture({ voicePipeline: pipeline });
+  const { sent, sttStarts, socket } = createStreamingSessionFixture({
+    voicePipeline: pipeline,
+    pipelineFrameSamples: 2
+  });
   socket.receive({
     type: "audio.chunk",
     dataBase64: createPcm16Base64({ samples: [4000, -4000, 1234, -1234] })
@@ -1335,9 +1343,10 @@ test("StackChan realtime session handler streaming mode pushes decoded frames in
   });
   await new Promise((resolve) => setTimeout(resolve, 0));
 
-  assert.equal(pipeline.pushed.length, 2);
-  assert.deepEqual([...pipeline.pushed[0]], [4000, -4000, 1234, -1234]);
-  assert.deepEqual([...pipeline.pushed[1]], [77, -77]);
+  assert.equal(pipeline.pushed.length, 3);
+  assert.deepEqual([...pipeline.pushed[0]], [4000, -4000]);
+  assert.deepEqual([...pipeline.pushed[1]], [1234, -1234]);
+  assert.deepEqual([...pipeline.pushed[2]], [77, -77]);
   assert.equal(sttStarts.length, 0);
   assert.equal(sent.some((message) => message.type === "stt.event"), false);
 });
@@ -1411,7 +1420,10 @@ test("StackChan realtime session handler streaming turn.final sends response.fin
 
 test("StackChan realtime session handler streaming stt.empty returns the session to listening", async () => {
   const pipeline = createFakeVoicePipeline();
-  const { sent, socket, session } = createStreamingSessionFixture({ voicePipeline: pipeline });
+  const { sent, socket, session } = createStreamingSessionFixture({
+    voicePipeline: pipeline,
+    pipelineFrameSamples: 2
+  });
   await session.handlePipelineEvent({ type: "stt.empty" });
 
   assert.equal(sent.some((message) => message.type === "stt.empty"), true);
@@ -1422,6 +1434,81 @@ test("StackChan realtime session handler streaming stt.empty returns the session
   });
   await new Promise((resolve) => setTimeout(resolve, 0));
   assert.equal(pipeline.pushed.length, 1);
+});
+
+test("StackChan realtime session handler streaming re-chunks wire audio into VAD-sized frames", async () => {
+  const pipeline = createFakeVoicePipeline();
+  const { socket } = createStreamingSessionFixture({ voicePipeline: pipeline });
+
+  const first = Array.from({ length: 1300 }, (_, index) => index);
+  socket.receive({
+    type: "audio.chunk",
+    dataBase64: createPcm16Base64({ samples: first })
+  });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  assert.deepEqual(
+    pipeline.pushed.map((frame) => frame.length),
+    [512, 512]
+  );
+  assert.deepEqual([...pipeline.pushed[0]], first.slice(0, 512));
+  assert.deepEqual([...pipeline.pushed[1]], first.slice(512, 1024));
+
+  // 276 samples retained; +300 → 576 → one more 512 frame, 64 left over.
+  const second = Array.from({ length: 300 }, (_, index) => 2000 + index);
+  socket.receive({
+    type: "audio.chunk",
+    dataBase64: createPcm16Base64({ samples: second })
+  });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  assert.deepEqual(
+    pipeline.pushed.map((frame) => frame.length),
+    [512, 512, 512]
+  );
+  assert.deepEqual([...pipeline.pushed[2]], [...first.slice(1024), ...second.slice(0, 236)]);
+});
+
+test("StackChan realtime session handler streaming buffers sub-frame wire audio until a frame fills", async () => {
+  const pipeline = createFakeVoicePipeline();
+  const { socket } = createStreamingSessionFixture({ voicePipeline: pipeline });
+
+  socket.receive({
+    type: "audio.chunk",
+    dataBase64: createPcm16Base64({ samples: Array.from({ length: 100 }, () => 7) })
+  });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(pipeline.pushed.length, 0);
+
+  socket.receive({
+    type: "audio.chunk",
+    dataBase64: createPcm16Base64({ samples: Array.from({ length: 412 }, () => 9) })
+  });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.deepEqual(
+    pipeline.pushed.map((frame) => frame.length),
+    [512]
+  );
+});
+
+test("StackChan realtime session handler streaming interrupt clears the residual audio buffer", async () => {
+  const pipeline = createFakeVoicePipeline();
+  const { socket } = createStreamingSessionFixture({ voicePipeline: pipeline });
+
+  socket.receive({
+    type: "audio.chunk",
+    dataBase64: createPcm16Base64({ samples: Array.from({ length: 300 }, () => 1) })
+  });
+  socket.receive({ type: "interrupt" });
+  socket.receive({
+    type: "audio.chunk",
+    dataBase64: createPcm16Base64({ samples: Array.from({ length: 300 }, () => 2) })
+  });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  // 300 + 300 would have crossed 512 — the interrupt must drop the stale
+  // tail, so no combined frame is ever pushed.
+  assert.equal(pipeline.pushed.length, 0);
 });
 
 test("StackChan realtime session handler streaming sends response.start once per turn before first audio", async () => {

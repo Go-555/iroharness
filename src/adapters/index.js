@@ -3484,7 +3484,10 @@ export const createStackChanRealtimeSessionHandler = ({
   // path and feed voicePipeline.pushAudio; pipeline events come back through
   // session.handlePipelineEvent. ptt.audio and invoke/vision keep the legacy
   // receive() path. Wire format is unchanged in both modes.
-  voicePipeline = null
+  voicePipeline = null,
+  // Streaming mode frame size: MUST match the VAD's frameSamples — the
+  // pipeline's vad.push rejects frames of any other length.
+  pipelineFrameSamples = 512
 } = {}) => {
   if (!harness || typeof harness.receive !== "function") {
     throw new Error("createStackChanRealtimeSessionHandler requires harness.receive");
@@ -4055,11 +4058,14 @@ export const createStackChanRealtimeSessionHandler = ({
         });
       };
 
-      // Streaming mode: decode the frame exactly like the legacy path
-      // (base64 → PCM16, WAV unwrapped) and hand it to the injected pipeline.
-      // VAD/finalization is the pipeline's job — no in-handler timers here.
-      // The pipeline assumes frames arrive at its configured mic sample rate;
-      // no per-frame resampling happens here.
+      // Streaming mode: decode the samples exactly like the legacy path
+      // (base64 → PCM16, WAV unwrapped) and re-chunk them into exact
+      // pipelineFrameSamples frames — the pipeline's VAD rejects any other
+      // length. A residual tail is kept across messages and dropped on
+      // interrupt/stop and disconnect. VAD/finalization is the pipeline's
+      // job — no in-handler timers here. The pipeline assumes samples arrive
+      // at its configured mic sample rate; no per-frame resampling happens.
+      let pipelineResidual = new Int16Array(0);
       const handleStreamingAudio = async (payload) => {
         const audio = normalizeStackChanAudioPayload(payload);
         const encoding = String(audio.encoding || "pcm16").toLowerCase();
@@ -4074,11 +4080,19 @@ export const createStackChanRealtimeSessionHandler = ({
         if (sampleCount === 0) {
           return null;
         }
-        const frame = new Int16Array(sampleCount);
+        const combined = new Int16Array(pipelineResidual.length + sampleCount);
+        combined.set(pipelineResidual, 0);
         for (let index = 0; index < sampleCount; index += 1) {
-          frame[index] = pcm.readInt16LE(index * 2);
+          combined[pipelineResidual.length + index] = pcm.readInt16LE(index * 2);
         }
-        await voicePipeline.pushAudio(frame);
+        let offset = 0;
+        // Messages are handled serially per connection (messageChain), so
+        // awaiting inside the loop cannot interleave with another decode.
+        while (combined.length - offset >= pipelineFrameSamples) {
+          await voicePipeline.pushAudio(combined.subarray(offset, offset + pipelineFrameSamples));
+          offset += pipelineFrameSamples;
+        }
+        pipelineResidual = combined.slice(offset);
         return null;
       };
 
@@ -4262,6 +4276,9 @@ export const createStackChanRealtimeSessionHandler = ({
         }
         if (payload.type === "interrupt" || payload.type === "stop") {
           pipelineTurnStarted = false;
+          // Drop buffered samples — a stale tail must not leak into the
+          // next utterance.
+          pipelineResidual = new Int16Array(0);
           voicePipeline?.interrupt?.("device-interrupt");
           queue?.interrupt?.("device-interrupt", { clearPending: true });
           send({
@@ -4310,6 +4327,7 @@ export const createStackChanRealtimeSessionHandler = ({
         // spec §6: WS 切断 → abort — the pipeline's interrupt fires the
         // in-flight brain/tts AbortSignal.
         voicePipeline?.interrupt?.("disconnect");
+        pipelineResidual = new Int16Array(0);
         sttSession?.cancel?.("socket-closed");
         sttSession = null;
         sttSessionStartedAt = 0;
