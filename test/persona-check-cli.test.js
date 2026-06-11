@@ -178,6 +178,21 @@ test("persona-check --rich without a judge brain configuration exits 1 with an e
   assert.doesNotMatch(result.stdout, /echo brain/); // it never silently probed
 });
 
+test("persona-check --rich without --responses exits 1 instead of billing for echo-probe verdicts (W2)", () => {
+  const dir = companionDir();
+  const result = runCli(["persona-check", dir, "--rich"], {
+    // endpoint configured (never called): the refusal is about --responses
+    env: {
+      ...process.env,
+      IROHARNESS_JUDGE_BRAIN_ENDPOINT: "http://127.0.0.1:9/never-called",
+    },
+  });
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /--responses/);
+  assert.match(result.stderr, /echo/i); // explains WHY: judging the echo probe is meaningless
+  assert.doesNotMatch(result.stdout, /echo brain/); // it never probed
+});
+
 // The server-backed tests use ASYNC spawn: spawnSync would block the parent
 // event loop, deadlocking against the in-process judge HTTP server.
 const runCliAsync = (args, env) =>

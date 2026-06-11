@@ -161,10 +161,14 @@ CI.
 
 ### Rich tier (LLM cost ⚠️) — implemented (`--rich`)
 
-1. The fixed question set (including provocation-style questions in the
-   spirit of source #4) is sent to the specified slot's brain through the
-   normal brain contract — or an operator-supplied transcript is read via
-   `--responses` (no probe calls).
+1. Responses come from an operator-supplied transcript via `--responses`
+   (e.g. captured before/after a model swap). **The CLI requires
+   `--responses` for `--rich`**: its only built-in probe is the zero-cost
+   echo brain, and paying a judge to score canned echo replies would be
+   meaningless cost — `--rich` without `--responses` exits 1 with that
+   explanation. (The `runPersonaCheck` API can still probe a real injected
+   brain with the fixed question set, including the provocation-style
+   questions in the spirit of source #4.)
 2. A scoring rubric is extracted from `SOUL.md`, `IDENTITY.md`, and `VOICE.md`
    (`extractRubric` in `src/persona-check/judge.js`) — the "setting
    extraction" stage of source #2. It is a superset of the cheap tier's

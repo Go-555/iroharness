@@ -2389,6 +2389,17 @@ const judgeBrainFromEnv = () => {
 
 const personaCheck = async (args) => {
   const judgeBrain = args.rich ? judgeBrainFromEnv() : null;
+  // W2: without --responses the CLI's only response source is the built-in
+  // echo probe, and paying a judge to score canned echo replies is meaningless
+  // cost. Refuse loudly instead of billing for nothing.
+  if (args.rich && !args.responses) {
+    throw new Error(
+      "persona-check --rich requires --responses <file>: without it the only response source is " +
+        "the built-in echo probe, and judging canned echo replies would issue LLM calls (cost) for a " +
+        "meaningless verdict. Capture real brain transcripts (e.g. before/after a model swap) and pass " +
+        "them via --responses.",
+    );
+  }
   const result = await runPersonaCheck({
     dir: args.dir,
     soulPath: args.soul,
