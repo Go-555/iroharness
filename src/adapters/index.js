@@ -2030,9 +2030,18 @@ export const createSlackSocketModeBridge = ({
         }`,
       );
     }
+    if (!String(payload.url).startsWith("wss://")) {
+      throw new Error(
+        `Slack apps.connections.open returned a non-wss url: ${payload.url}`,
+      );
+    }
     return payload.url;
   };
 
+  // Known limitation: onClose/onError fired synchronously inside
+  // openConnection (before connect() resolves) are not reconnected because
+  // the connection is not active yet. Injected transports should emit
+  // asynchronously, as real WebSockets do.
   const connect = async () => {
     const url = await openSocketUrl();
     const connection = { settled: false, transport: null };
@@ -2042,7 +2051,12 @@ export const createSlackSocketModeBridge = ({
         log("info", "slack socket mode: connection open");
       },
       onMessage: (data) => {
-        void handleMessage(connection, data);
+        handleMessage(connection, data).catch((error) => {
+          log(
+            "error",
+            `slack socket mode: message handling failed (${error.message})`,
+          );
+        });
       },
       onClose: () => {
         handleClose(connection);
@@ -2071,7 +2085,14 @@ export const createSlackSocketModeBridge = ({
           return;
         }
         try {
-          activeConnection = await connect();
+          const next = await connect();
+          // close() may have arrived while apps.connections.open was in
+          // flight; the late connection must not be left open.
+          if (closed) {
+            closeConnection(next);
+            return;
+          }
+          activeConnection = next;
           return;
         } catch (error) {
           log(
@@ -2082,6 +2103,18 @@ export const createSlackSocketModeBridge = ({
       }
     } finally {
       reconnecting = false;
+    }
+  };
+
+  const closeConnection = (connection) => {
+    if (!connection) {
+      return;
+    }
+    connection.settled = true;
+    try {
+      connection.transport?.close();
+    } catch {
+      // ignore: transport already gone
     }
   };
 
@@ -2109,16 +2142,39 @@ export const createSlackSocketModeBridge = ({
 
   // Slack asks for a periodic refresh: open the replacement first, then
   // close the old connection so no envelope window is left uncovered.
+  // settled is taken synchronously up front so duplicate disconnect frames
+  // on the same connection cannot start parallel refreshes.
   const refreshConnection = async (connection) => {
-    log("info", "slack socket mode: refresh requested, rotating connection");
-    const next = await connect();
-    activeConnection = next;
+    if (connection.settled) {
+      return;
+    }
     connection.settled = true;
+    log("info", "slack socket mode: refresh requested, rotating connection");
+    let next = null;
+    try {
+      next = await connect();
+    } catch (error) {
+      log(
+        "warn",
+        `slack socket mode: refresh failed (${error.message}), falling back to reconnect`,
+      );
+    }
     try {
       connection.transport?.close();
     } catch {
       // ignore: old transport already gone
     }
+    // close() may have arrived while apps.connections.open was in flight;
+    // the late connection must not be left open.
+    if (closed) {
+      closeConnection(next);
+      return;
+    }
+    if (next) {
+      activeConnection = next;
+      return;
+    }
+    void scheduleReconnect();
   };
 
   const handleMessage = async (connection, data) => {
@@ -2135,29 +2191,23 @@ export const createSlackSocketModeBridge = ({
       return;
     }
     if (message.type === "disconnect") {
-      try {
-        await refreshConnection(connection);
-      } catch (error) {
-        log(
-          "warn",
-          `slack socket mode: refresh failed (${error.message}), falling back to reconnect`,
-        );
-        try {
-          connection.transport?.close();
-        } catch {
-          // ignore: transport already gone
-        }
-        handleClose(connection);
-      }
+      await refreshConnection(connection);
       return;
     }
     if (!message.envelope_id) {
       return;
     }
-    // Ack first (Slack requires it within 3 seconds), process after.
-    connection.transport.send(
-      JSON.stringify({ envelope_id: message.envelope_id }),
-    );
+    // Ack first (Slack requires it within 3 seconds), process after. If the
+    // ack cannot be sent the connection is broken and Slack will redeliver,
+    // so skip processing instead of double-handling the event later.
+    try {
+      connection.transport.send(
+        JSON.stringify({ envelope_id: message.envelope_id }),
+      );
+    } catch (error) {
+      log("error", `slack socket mode: ack send failed (${error.message})`);
+      return;
+    }
     if (message.type !== "events_api") {
       return;
     }
@@ -2181,20 +2231,20 @@ export const createSlackSocketModeBridge = ({
         throw new Error("Slack Socket Mode bridge already closed");
       }
       started = true;
-      activeConnection = await connect();
+      const connection = await connect();
+      // close() may have arrived while apps.connections.open was in
+      // flight; the late connection must not be left open.
+      if (closed) {
+        closeConnection(connection);
+        return;
+      }
+      activeConnection = connection;
     },
     close() {
       closed = true;
       const connection = activeConnection;
       activeConnection = null;
-      if (connection) {
-        connection.settled = true;
-        try {
-          connection.transport?.close();
-        } catch {
-          // ignore: transport already gone
-        }
-      }
+      closeConnection(connection);
     },
     state() {
       return Object.freeze({
