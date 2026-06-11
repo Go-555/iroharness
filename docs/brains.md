@@ -163,7 +163,9 @@ npm run example:slack-codex
 
 The important invariant is that each brain receives the same macro context:
 character profile, actor, audience permissions, route, current state, and PJOS.
-Only the engine changes.
+Only the engine changes. Because each engine also brings its own default
+personality, run `iroharness persona-check` before and after swapping a slot's
+model to regression-test the character (see [persona-guard.md](./persona-guard.md)).
 
 The gateway endpoint is intentionally thin. In production, keep this protocol
 shape and replace the demo response logic with calls to your preferred voice or

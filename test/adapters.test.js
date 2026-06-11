@@ -1952,13 +1952,20 @@ test("JSONL realtime core process streams events and keeps local interruption st
   });
   core.finishSpeaking();
 
-  // Poll until the last expected message from the child process arrives.
-  // shouldInterrupt is sent after publish, so waiting for it guarantees
-  // all earlier messages are already in `received` too.
+  // Poll instead of a fixed 50ms sleep: under a parallel full-suite run the
+  // child node process can take longer than 50ms to spawn and echo its acks,
+  // which made this assertion flaky (load-dependent), while standalone runs
+  // always passed. The deadline keeps a hung child from stalling the suite.
   assert.ok(
-    await waitFor(() => received.some((m) => m.op === "shouldInterrupt")),
-    "child process did not echo shouldInterrupt within timeout"
+    await waitFor(
+      () =>
+        received.some((message) => message.op === "publish") &&
+        received.some((message) => message.op === "shouldInterrupt"),
+      { timeoutMs: 5000 }
+    ),
+    "child process did not echo publish/shouldInterrupt within timeout"
   );
+
 
   const snapshot = core.snapshot();
   core.close();

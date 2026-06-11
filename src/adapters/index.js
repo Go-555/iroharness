@@ -14,14 +14,14 @@ const normalizeMicroHarnessOutput = (value, fallbackSummary) => {
       status: value.status || "completed",
       summary: value.summary || fallbackSummary,
       artifacts: Object.freeze([...(value.artifacts || [])]),
-      raw: value.raw === undefined ? value : value.raw
+      raw: value.raw === undefined ? value : value.raw,
     });
   }
   return Object.freeze({
     status: "completed",
     summary: String(value || fallbackSummary),
     artifacts: Object.freeze([]),
-    raw: value
+    raw: value,
   });
 };
 
@@ -39,7 +39,8 @@ const tryParseJsonLine = (stdout) => {
 };
 
 const truncateForPrompt = (value, maxLength = 8000) => {
-  const text = typeof value === "string" ? value : JSON.stringify(value, null, 2);
+  const text =
+    typeof value === "string" ? value : JSON.stringify(value, null, 2);
   if (text.length <= maxLength) {
     return text;
   }
@@ -53,7 +54,9 @@ const normalizeSpeechText = (text) =>
     .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
     .replace(/[*_#>|~-]+/g, "")
     .replace(/\b(?:OK|okay)\b/g, "うん")
-    .replace(/\b(?:Yes|No)\b/g, (match) => (match === "Yes" ? "はい" : "いいえ"))
+    .replace(/\b(?:Yes|No)\b/g, (match) =>
+      match === "Yes" ? "はい" : "いいえ",
+    )
     .replace(/[ \t]+\n/g, "\n")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
@@ -69,8 +72,10 @@ const buildDefaultMicroHarnessPrompt = ({ task, context = {}, label }) =>
       ? `Character:\n${truncateForPrompt(context.character, 2000)}`
       : "",
     context.actor ? `Actor:\n${truncateForPrompt(context.actor, 2000)}` : "",
-    context.projectOs ? `Project OS:\n${truncateForPrompt(context.projectOs)}` : "",
-    "Return either natural language or a final JSON line with status, summary, and artifacts."
+    context.projectOs
+      ? `Project OS:\n${truncateForPrompt(context.projectOs)}`
+      : "",
+    "Return either natural language or a final JSON line with status, summary, and artifacts.",
   ]
     .filter(Boolean)
     .join("\n\n");
@@ -94,7 +99,7 @@ const createTimeoutSignal = (timeoutMs) => {
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   return Object.freeze({
     signal: controller.signal,
-    clear: () => clearTimeout(timeout)
+    clear: () => clearTimeout(timeout),
   });
 };
 
@@ -106,7 +111,7 @@ const createAdapterEvent = ({ adapterId, sequence, event, extra = {} }) =>
     ...extra,
     adapterId,
     sequence,
-    timestamp: nowIso()
+    timestamp: nowIso(),
   });
 
 const parseJsonResponse = async ({ response, label }) => {
@@ -148,7 +153,11 @@ const isRiffWave = (buffer) =>
   buffer.toString("ascii", 0, 4) === "RIFF" &&
   buffer.toString("ascii", 8, 12) === "WAVE";
 
-const createPcm16WavBuffer = ({ pcm, sampleRate = 16000, channels = 1 } = {}) => {
+const createPcm16WavBuffer = ({
+  pcm,
+  sampleRate = 16000,
+  channels = 1,
+} = {}) => {
   const data = Buffer.isBuffer(pcm) ? pcm : Buffer.from(pcm || []);
   const wav = Buffer.alloc(44 + data.length);
   wav.write("RIFF", 0, "ascii");
@@ -190,7 +199,7 @@ const parsePcm16Wav = (audio) => {
         audioFormat: buffer.readUInt16LE(chunkStart),
         channels: buffer.readUInt16LE(chunkStart + 2),
         sampleRate: buffer.readUInt32LE(chunkStart + 4),
-        bitsPerSample: buffer.readUInt16LE(chunkStart + 14)
+        bitsPerSample: buffer.readUInt16LE(chunkStart + 14),
       };
     }
     if (chunkId === "data") {
@@ -203,14 +212,16 @@ const parsePcm16Wav = (audio) => {
     throw new Error("WAV audio is missing fmt or data chunk");
   }
   if (fmt.audioFormat !== 1 || fmt.bitsPerSample !== 16) {
-    throw new Error(`unsupported WAV format=${fmt.audioFormat} bits=${fmt.bitsPerSample}`);
+    throw new Error(
+      `unsupported WAV format=${fmt.audioFormat} bits=${fmt.bitsPerSample}`,
+    );
   }
   return Object.freeze({
     encoding: "pcm16",
     dataBase64: data.toString("base64"),
     sampleRate: fmt.sampleRate,
     channels: fmt.channels,
-    bitsPerSample: 16
+    bitsPerSample: 16,
   });
 };
 
@@ -223,7 +234,7 @@ const normalizeStackChanSpeechAudio = (event) => {
       dataBase64: parsed.dataBase64,
       sampleRate: parsed.sampleRate,
       channels: parsed.channels,
-      bitsPerSample: parsed.bitsPerSample
+      bitsPerSample: parsed.bitsPerSample,
     });
   }
   return Object.freeze({
@@ -231,30 +242,37 @@ const normalizeStackChanSpeechAudio = (event) => {
     dataBase64: event?.audio || event?.dataBase64 || "",
     sampleRate: event?.sampleRate || event?.sample_rate || 24000,
     channels: event?.channels || 1,
-    bitsPerSample: event?.bitsPerSample || event?.bits_per_sample || 16
+    bitsPerSample: event?.bitsPerSample || event?.bits_per_sample || 16,
   });
 };
 
 const splitStackChanSpeechAudio = (audio, { maxBytes = 8192 } = {}) => {
   const data = Buffer.from(audio?.dataBase64 || "", "base64");
-  if (data.length === 0 || data.length <= maxBytes || audio?.encoding !== "pcm16") {
+  if (
+    data.length === 0 ||
+    data.length <= maxBytes ||
+    audio?.encoding !== "pcm16"
+  ) {
     return Object.freeze([audio]);
   }
   const bytesPerSampleFrame = Math.max(
     1,
-    Number(audio.channels || 1) * Math.max(1, Number(audio.bitsPerSample || 16) / 8)
+    Number(audio.channels || 1) *
+      Math.max(1, Number(audio.bitsPerSample || 16) / 8),
   );
   const chunkBytes = Math.max(
     bytesPerSampleFrame,
-    Math.floor(maxBytes / bytesPerSampleFrame) * bytesPerSampleFrame
+    Math.floor(maxBytes / bytesPerSampleFrame) * bytesPerSampleFrame,
   );
   const chunks = [];
   for (let offset = 0; offset < data.length; offset += chunkBytes) {
     chunks.push(
       Object.freeze({
         ...audio,
-        dataBase64: data.subarray(offset, offset + chunkBytes).toString("base64")
-      })
+        dataBase64: data
+          .subarray(offset, offset + chunkBytes)
+          .toString("base64"),
+      }),
     );
   }
   return Object.freeze(chunks);
@@ -263,7 +281,7 @@ const splitStackChanSpeechAudio = (audio, { maxBytes = 8192 } = {}) => {
 const sendJson = (response, status, value) => {
   response.writeHead(status, {
     "content-type": "application/json; charset=utf-8",
-    "cache-control": "no-store"
+    "cache-control": "no-store",
   });
   response.end(`${JSON.stringify(value)}\n`);
 };
@@ -293,7 +311,7 @@ const mimeTypes = Object.freeze({
   ".js": "text/javascript; charset=utf-8",
   ".css": "text/css; charset=utf-8",
   ".json": "application/json; charset=utf-8",
-  ".svg": "image/svg+xml; charset=utf-8"
+  ".svg": "image/svg+xml; charset=utf-8",
 });
 
 const defaultPublicDir = () =>
@@ -301,16 +319,22 @@ const defaultPublicDir = () =>
 
 const readOpenApiSpec = () =>
   JSON.parse(
-    readFileSync(fileURLToPath(new URL("../../protocols/openapi.json", import.meta.url)), "utf8")
+    readFileSync(
+      fileURLToPath(new URL("../../protocols/openapi.json", import.meta.url)),
+      "utf8",
+    ),
   );
 
 const readPackageInfo = () => {
   const pkg = JSON.parse(
-    readFileSync(fileURLToPath(new URL("../../package.json", import.meta.url)), "utf8")
+    readFileSync(
+      fileURLToPath(new URL("../../package.json", import.meta.url)),
+      "utf8",
+    ),
   );
   return Object.freeze({
     name: pkg.name || "iroharness",
-    version: pkg.version || "0.0.0"
+    version: pkg.version || "0.0.0",
   });
 };
 
@@ -332,8 +356,9 @@ const serveStatic = (response, publicDir, pathname) => {
       return;
     }
     response.writeHead(200, {
-      "content-type": mimeTypes[extname(fullPath)] || "application/octet-stream",
-      "cache-control": "no-store"
+      "content-type":
+        mimeTypes[extname(fullPath)] || "application/octet-stream",
+      "cache-control": "no-store",
     });
     response.end(readFileSync(fullPath));
   } catch {
@@ -348,17 +373,26 @@ const pathInside = ({ root, candidate }) => {
   const resolvedRoot = resolve(root);
   const resolvedCandidate = resolve(candidate);
   const relativePath = relative(resolvedRoot, resolvedCandidate);
-  return Boolean(relativePath) && !relativePath.startsWith("..") && !relativePath.startsWith("/");
+  return (
+    Boolean(relativePath) &&
+    !relativePath.startsWith("..") &&
+    !relativePath.startsWith("/")
+  );
 };
 
 const pathSameOrInside = ({ root, candidate }) => {
   const resolvedRoot = resolve(root);
   const resolvedCandidate = resolve(candidate);
-  return resolvedRoot === resolvedCandidate || pathInside({ root: resolvedRoot, candidate: resolvedCandidate });
+  return (
+    resolvedRoot === resolvedCandidate ||
+    pathInside({ root: resolvedRoot, candidate: resolvedCandidate })
+  );
 };
 
 const normalizeWorkspaceRoots = (roots) =>
-  Object.freeze([...(roots || [])].filter(Boolean).map((root) => resolve(String(root))));
+  Object.freeze(
+    [...(roots || [])].filter(Boolean).map((root) => resolve(String(root))),
+  );
 
 const resolveRequestedWorkspace = ({ task, context, defaultWorkspace }) =>
   task?.metadata?.workspace ||
@@ -375,15 +409,15 @@ const failedWorkRunnerOutput = ({ summary, reason, raw = {} }) =>
     artifacts: Object.freeze([]),
     raw: Object.freeze({
       reason,
-      ...raw
-    })
+      ...raw,
+    }),
   });
 
 const normalizeActor = ({ platform, platformUserId, displayName }) =>
   Object.freeze({
     platform,
     platformUserId: String(platformUserId || "unknown"),
-    displayName: normalizeText(displayName) || "Anonymous"
+    displayName: normalizeText(displayName) || "Anonymous",
   });
 
 const buildTurn = ({ source, text, actor, metadata = {}, raw }) =>
@@ -393,10 +427,11 @@ const buildTurn = ({ source, text, actor, metadata = {}, raw }) =>
     text: normalizeText(text),
     actor,
     metadata: Object.freeze(metadata),
-    raw
+    raw,
   });
 
-const safeInlineJson = (value) => JSON.stringify(value).replace(/</g, "\\u003c");
+const safeInlineJson = (value) =>
+  JSON.stringify(value).replace(/</g, "\\u003c");
 const escapeHtmlText = (value) =>
   String(value || "")
     .replace(/&/g, "&amp;")
@@ -406,19 +441,23 @@ const escapeHtmlText = (value) =>
 export const createVsCodeCompanionAdapter = ({
   platformUserId = "vscode-local",
   displayName = "VS Code Developer",
-  metadata = {}
+  metadata = {},
 } = {}) => {
   const actor = normalizeActor({
     platform: "vscode",
     platformUserId,
-    displayName
+    displayName,
   });
 
   return Object.freeze({
     id: "vscode-companion",
     platform: "vscode",
     actor,
-    capabilities: Object.freeze(["text-chat", "developer-discussion", "micro-harness-delegation"]),
+    capabilities: Object.freeze([
+      "text-chat",
+      "developer-discussion",
+      "micro-harness-delegation",
+    ]),
     createTurn({ text, modality = "text", workspace = null, raw = null } = {}) {
       return freezeTurn({
         source: "vscode",
@@ -427,11 +466,11 @@ export const createVsCodeCompanionAdapter = ({
         actor,
         metadata: {
           ...metadata,
-          workspace
+          workspace,
         },
-        raw
+        raw,
       });
-    }
+    },
   });
 };
 
@@ -442,7 +481,7 @@ const freezeTurn = ({ source, modality, text, actor, metadata = {}, raw }) =>
     text: normalizeText(text),
     actor,
     metadata: Object.freeze(metadata),
-    raw
+    raw,
   });
 
 export const createVsCodeCompanionWebviewHtml = ({
@@ -451,12 +490,12 @@ export const createVsCodeCompanionWebviewHtml = ({
   actor = {
     platform: "vscode",
     platformUserId: "vscode-local",
-    displayName: "VS Code Developer"
-  }
+    displayName: "VS Code Developer",
+  },
 } = {}) => {
   const config = safeInlineJson({
     serverUrl: String(serverUrl || "http://127.0.0.1:4178").replace(/\/+$/, ""),
-    actor
+    actor,
   });
 
   return `<!doctype html>
@@ -564,9 +603,7 @@ const createObsAuthentication = ({ password, salt, challenge }) => {
   const secret = createHash("sha256")
     .update(`${password}${salt}`)
     .digest("base64");
-  return createHash("sha256")
-    .update(`${secret}${challenge}`)
-    .digest("base64");
+  return createHash("sha256").update(`${secret}${challenge}`).digest("base64");
 };
 
 export const createCodexAppServerTransport = ({
@@ -576,10 +613,10 @@ export const createCodexAppServerTransport = ({
   clientInfo = {
     name: "iroharness",
     title: "IroHarness",
-    version: "0.1.0"
+    version: "0.1.0",
   },
   onStderr = () => {},
-  onExit = () => {}
+  onExit = () => {},
 } = {}) => {
   let processRef = null;
   let nextId = 1;
@@ -597,7 +634,7 @@ export const createCodexAppServerTransport = ({
     }
     processRef = spawn(command, args, {
       cwd,
-      stdio: ["pipe", "pipe", "pipe"]
+      stdio: ["pipe", "pipe", "pipe"],
     });
     const lines = createInterface({ input: processRef.stdout });
     lines.on("line", (line) => {
@@ -607,7 +644,11 @@ export const createCodexAppServerTransport = ({
           const entry = pending.get(message.id);
           pending.delete(message.id);
           if (message.error) {
-            entry.reject(new Error(message.error.message || "Codex app-server request failed"));
+            entry.reject(
+              new Error(
+                message.error.message || "Codex app-server request failed",
+              ),
+            );
           } else {
             entry.resolve(message.result);
           }
@@ -618,8 +659,8 @@ export const createCodexAppServerTransport = ({
           method: "transport/error",
           params: {
             message: error.message,
-            line
-          }
+            line,
+          },
         });
       }
     });
@@ -678,7 +719,7 @@ export const createCodexAppServerTransport = ({
     sendRequest,
     sendNotification,
     subscribe,
-    close
+    close,
   });
 };
 
@@ -697,13 +738,13 @@ export const createCodexAppServerMicroHarness = ({
   sandboxPolicy = {
     type: "workspaceWrite",
     writableRoots: [cwd],
-    networkAccess: false
+    networkAccess: false,
   },
   threadSandbox = "workspace-write",
   serviceName = "iroharness",
   timeoutMs = 10 * 60_000,
   capabilities = ["code", "files", "review"],
-  transport = createCodexAppServerTransport({ cwd })
+  transport = createCodexAppServerTransport({ cwd }),
 } = {}) => {
   let threadId = null;
 
@@ -717,7 +758,7 @@ export const createCodexAppServerMicroHarness = ({
       cwd,
       approvalPolicy,
       sandbox: threadSandbox,
-      serviceName
+      serviceName,
     });
     const nextThreadId = result?.thread?.id;
     if (!nextThreadId) {
@@ -735,7 +776,7 @@ export const createCodexAppServerMicroHarness = ({
       context.actor
         ? `Actor: ${context.actor.user?.displayName || context.actor.identity?.displayName || "unknown"}`
         : "",
-      `Ticket: ${task.id}`
+      `Ticket: ${task.id}`,
     ]
       .filter(Boolean)
       .join("\n");
@@ -757,12 +798,12 @@ export const createCodexAppServerMicroHarness = ({
         input: [{ type: "text", text: inputText }],
         cwd,
         approvalPolicy,
-        sandboxPolicy
+        sandboxPolicy,
       });
       await withTimeout(
         waitForCompletion,
         timeoutMs,
-        `Codex app-server turn timed out after ${timeoutMs}ms`
+        `Codex app-server turn timed out after ${timeoutMs}ms`,
       );
       const summary = extractCodexText(events) || "Codex turn completed.";
       return Object.freeze({
@@ -772,14 +813,14 @@ export const createCodexAppServerMicroHarness = ({
           {
             kind: "codex-events",
             uri: `memory://codex/${task.id}`,
-            title: "Codex app-server events"
-          }
+            title: "Codex app-server events",
+          },
         ]),
         raw: Object.freeze({
           threadId: nextThreadId,
           turn,
-          events
-        })
+          events,
+        }),
       });
     } catch (error) {
       return Object.freeze({
@@ -788,8 +829,8 @@ export const createCodexAppServerMicroHarness = ({
         artifacts: Object.freeze([]),
         raw: Object.freeze({
           threadId: nextThreadId,
-          events
-        })
+          events,
+        }),
       });
     } finally {
       unsubscribe?.();
@@ -803,8 +844,30 @@ export const createCodexAppServerMicroHarness = ({
     close() {
       transport.close?.();
       threadId = null;
-    }
+    },
   });
+};
+
+// Phase 5b (5.3): the SINGLE delegation judgment for every delegate path.
+// Speaks the exact vocabulary `iroharness view export` writes to
+// work-runner-policy.json (public: "denied" / trusted: "permission-required"
+// / owner: "allowed"). Fail-closed: a missing policy, an unknown delegation
+// value, or a non-boolean canDelegateWork never passes. Used by
+// createScopedWorkRunnerMicroHarness below, by the Hanaita delegate_goal
+// gate (src/agent-bank/hanaita.js re-exports it as evaluateDelegationGate),
+// and by createIroHarness's work route when a workRunnerPolicy is configured.
+export const evaluateWorkRunnerDelegation = ({ policy, audience } = {}) => {
+  const delegation = policy?.delegation;
+  if (delegation === "allowed") {
+    return { ok: true, reason: null };
+  }
+  if (delegation === "permission-required") {
+    return audience?.canDelegateWork === true
+      ? { ok: true, reason: null }
+      : { ok: false, reason: "permission_required" };
+  }
+  // "denied", missing, or unknown vocabulary: never pass.
+  return { ok: false, reason: "delegation_denied" };
 };
 
 export const createScopedWorkRunnerMicroHarness = ({
@@ -818,74 +881,76 @@ export const createScopedWorkRunnerMicroHarness = ({
     runnerAccess: {
       repositoryWork: "scoped-workspace",
       browserControl: "scoped-session",
-      defaultSandbox: "workspace-write"
-    }
+      defaultSandbox: "workspace-write",
+    },
   },
   allowedWorkspaces = [],
   defaultWorkspace = null,
-  capabilities = null
+  capabilities = null,
 } = {}) => {
   if (!worker || typeof worker.run !== "function") {
     throw new Error("createScopedWorkRunnerMicroHarness requires worker.run");
   }
   const runnerId = id || worker.id || "work-runner";
   const workspaceRoots = normalizeWorkspaceRoots(allowedWorkspaces);
-  const resolvedDefaultWorkspace = defaultWorkspace ? resolve(defaultWorkspace) : null;
-  const policyDelegation = policy?.delegation || "denied";
+  const resolvedDefaultWorkspace = defaultWorkspace
+    ? resolve(defaultWorkspace)
+    : null;
   const repositoryWork = policy?.runnerAccess?.repositoryWork || "none";
 
   const scopeWorkspace = ({ task, context }) => {
     const requested = resolveRequestedWorkspace({
       task,
       context,
-      defaultWorkspace: resolvedDefaultWorkspace
+      defaultWorkspace: resolvedDefaultWorkspace,
     });
     if (!requested) {
       return {
         ok: false,
         reason: "workspace_required",
-        summary: "Work Runner requires an explicit workspace."
+        summary: "Work Runner requires an explicit workspace.",
       };
     }
     const resolvedWorkspace = resolve(String(requested));
     const matchedRoot = workspaceRoots.find((root) =>
-      pathSameOrInside({ root, candidate: resolvedWorkspace })
+      pathSameOrInside({ root, candidate: resolvedWorkspace }),
     );
     if (!matchedRoot) {
       return {
         ok: false,
         reason: "workspace_out_of_scope",
         summary: `Workspace is outside the allowed Work Runner scope: ${resolvedWorkspace}`,
-        workspace: resolvedWorkspace
+        workspace: resolvedWorkspace,
       };
     }
     return {
       ok: true,
       workspace: resolvedWorkspace,
-      root: matchedRoot
+      root: matchedRoot,
     };
   };
 
   const run = async (task, context = {}) => {
-    if (policyDelegation === "denied") {
+    // Phase 5b (5.3): one shared judgment for every delegate path.
+    const gate = evaluateWorkRunnerDelegation({
+      policy,
+      audience: context.audience,
+    });
+    if (!gate.ok) {
       return failedWorkRunnerOutput({
-        summary: "Work Runner delegation is denied for this view.",
-        reason: "delegation_denied",
-        raw: { policy }
-      });
-    }
-    if (policyDelegation === "permission-required" && !context.audience?.canDelegateWork) {
-      return failedWorkRunnerOutput({
-        summary: "Work Runner delegation requires delegate_work permission.",
-        reason: "permission_required",
-        raw: { policy }
+        summary:
+          gate.reason === "permission_required"
+            ? "Work Runner delegation requires delegate_work permission."
+            : "Work Runner delegation is denied for this view.",
+        reason: gate.reason,
+        raw: { policy },
       });
     }
     if (repositoryWork === "none") {
       return failedWorkRunnerOutput({
         summary: "Repository work is not enabled for this Work Runner policy.",
         reason: "repository_work_disabled",
-        raw: { policy }
+        raw: { policy },
       });
     }
     const scoped = scopeWorkspace({ task, context });
@@ -896,8 +961,8 @@ export const createScopedWorkRunnerMicroHarness = ({
         raw: {
           policy,
           workspace: scoped.workspace || null,
-          allowedWorkspaces: workspaceRoots
-        }
+          allowedWorkspaces: workspaceRoots,
+        },
       });
     }
     const scopedTask = Object.freeze({
@@ -905,8 +970,8 @@ export const createScopedWorkRunnerMicroHarness = ({
       metadata: Object.freeze({
         ...(task.metadata || {}),
         workspace: scoped.workspace,
-        workRunnerRoot: scoped.root
-      })
+        workRunnerRoot: scoped.root,
+      }),
     });
     return worker.run(scopedTask, {
       ...context,
@@ -915,18 +980,20 @@ export const createScopedWorkRunnerMicroHarness = ({
         policy,
         workspace: scoped.workspace,
         root: scoped.root,
-        allowedWorkspaces: workspaceRoots
-      })
+        allowedWorkspaces: workspaceRoots,
+      }),
     });
   };
 
   return Object.freeze({
     id: runnerId,
-    capabilities: Object.freeze([...(capabilities || worker.capabilities || [])]),
+    capabilities: Object.freeze([
+      ...(capabilities || worker.capabilities || []),
+    ]),
     run,
     close() {
       worker.close?.();
-    }
+    },
   });
 };
 
@@ -960,7 +1027,7 @@ const formatCodexBrainContext = ({ slot, model, context }) =>
     JSON.stringify(context.projectOs || {}, null, 2),
     "",
     "User message:",
-    context.input?.text || ""
+    context.input?.text || "",
   ].join("\n");
 
 export const createCodexAppServerBrain = ({
@@ -972,13 +1039,13 @@ export const createCodexAppServerBrain = ({
   sandboxPolicy = {
     type: "readOnly",
     writableRoots: [],
-    networkAccess: false
+    networkAccess: false,
   },
   threadSandbox = "read-only",
   serviceName = "iroharness-brain",
   timeoutMs = 2 * 60_000,
   transport = createCodexAppServerTransport({ cwd }),
-  formatContext = formatCodexBrainContext
+  formatContext = formatCodexBrainContext,
 } = {}) => {
   let threadId = null;
 
@@ -992,7 +1059,7 @@ export const createCodexAppServerBrain = ({
       cwd,
       approvalPolicy,
       sandbox: threadSandbox,
-      serviceName
+      serviceName,
     });
     const nextThreadId = result?.thread?.id;
     if (!nextThreadId) {
@@ -1024,27 +1091,30 @@ export const createCodexAppServerBrain = ({
           input: [
             {
               type: "text",
-              text: formatContext({ slot, model, context })
-            }
+              text: formatContext({ slot, model, context }),
+            },
           ],
           cwd,
           approvalPolicy,
-          sandboxPolicy
+          sandboxPolicy,
         });
         await withTimeout(
           waitForCompletion,
           timeoutMs,
-          `Codex app-server brain ${id} timed out after ${timeoutMs}ms`
+          `Codex app-server brain ${id} timed out after ${timeoutMs}ms`,
         );
         return Object.freeze({
           text: extractCodexText(events) || "受け取ったよ。",
-          emotion: context.audience?.responseDepth === "standard" ? "focused" : "attentive",
+          emotion:
+            context.audience?.responseDepth === "standard"
+              ? "focused"
+              : "attentive",
           raw: Object.freeze({
             provider: "codex",
             model,
             threadId: nextThreadId,
-            events
-          })
+            events,
+          }),
         });
       } finally {
         unsubscribe?.();
@@ -1083,7 +1153,10 @@ export const createCodexAppServerBrain = ({
       };
 
       const unsubscribe = transport.subscribe?.((event) => {
-        if (event.method === "item/agentMessage/delta" || event.method === "turn/completed") {
+        if (
+          event.method === "item/agentMessage/delta" ||
+          event.method === "turn/completed"
+        ) {
           push(event);
         }
       });
@@ -1094,12 +1167,12 @@ export const createCodexAppServerBrain = ({
           input: [
             {
               type: "text",
-              text: formatContext({ slot, model, context })
-            }
+              text: formatContext({ slot, model, context }),
+            },
           ],
           cwd,
           approvalPolicy,
-          sandboxPolicy
+          sandboxPolicy,
         });
 
         let deltaCount = 0;
@@ -1115,7 +1188,9 @@ export const createCodexAppServerBrain = ({
             // Wait for the next event, an abort, or the turn timeout.
             const remaining = deadline - Date.now();
             if (remaining <= 0) {
-              throw new Error(`Codex app-server brain ${id} timed out after ${timeoutMs}ms`);
+              throw new Error(
+                `Codex app-server brain ${id} timed out after ${timeoutMs}ms`,
+              );
             }
             let timer = null;
             let onAbort = null;
@@ -1127,17 +1202,21 @@ export const createCodexAppServerBrain = ({
                 new Promise((_, reject) => {
                   timer = setTimeout(
                     () =>
-                      reject(new Error(`Codex app-server brain ${id} timed out after ${timeoutMs}ms`)),
-                    remaining
+                      reject(
+                        new Error(
+                          `Codex app-server brain ${id} timed out after ${timeoutMs}ms`,
+                        ),
+                      ),
+                    remaining,
                   );
-                })
+                }),
               ];
               if (signal) {
                 racers.push(
                   new Promise((resolve) => {
                     onAbort = resolve;
                     signal.addEventListener("abort", onAbort, { once: true });
-                  })
+                  }),
                 );
               }
               await Promise.race(racers);
@@ -1173,7 +1252,7 @@ export const createCodexAppServerBrain = ({
     close() {
       transport.close?.();
       threadId = null;
-    }
+    },
   });
 };
 
@@ -1206,7 +1285,7 @@ const formatOpenAiBrainPrompt = ({ slot, context }) => {
     character.soul ? `SOUL:\n${character.soul}` : null,
     character.identity ? `IDENTITY:\n${character.identity}` : null,
     character.memory ? `MEMORY:\n${character.memory}` : null,
-    character.voiceStyle ? `VOICE:\n${character.voiceStyle}` : null
+    character.voiceStyle ? `VOICE:\n${character.voiceStyle}` : null,
   ]
     .filter(Boolean)
     .join("\n\n");
@@ -1216,7 +1295,7 @@ const formatOpenAiBrainPrompt = ({ slot, context }) => {
     `relationship: ${audience.relationship || "public"}`,
     `modality: ${input.modality || "text"}`,
     "",
-    input.text || ""
+    input.text || "",
   ].join("\n");
 
   return Object.freeze({ system, user });
@@ -1229,7 +1308,7 @@ export const createOpenAiResponsesBrain = ({
   baseUrl = process.env.OPENAI_BASE_URL || "https://api.openai.com/v1",
   model = "gpt-5.5",
   maxOutputTokens = slot === "voice" ? 96 : 700,
-  fetchImpl = globalThis.fetch
+  fetchImpl = globalThis.fetch,
 } = {}) => {
   if (!apiKey) {
     throw new Error("createOpenAiResponsesBrain requires OPENAI_API_KEY");
@@ -1246,16 +1325,19 @@ export const createOpenAiResponsesBrain = ({
         method: "POST",
         headers: {
           authorization: `Bearer ${apiKey}`,
-          "content-type": "application/json"
+          "content-type": "application/json",
         },
         body: JSON.stringify({
           model,
           instructions: prompt.system,
           input: prompt.user,
-          max_output_tokens: maxOutputTokens
-        })
+          max_output_tokens: maxOutputTokens,
+        }),
       });
-      const payload = await parseJsonResponse({ response, label: `OpenAI brain ${id}` });
+      const payload = await parseJsonResponse({
+        response,
+        label: `OpenAI brain ${id}`,
+      });
       const text = normalizeSpeechText(extractOpenAiResponsesText(payload));
       return Object.freeze({
         text: text || "うん、聞いてるよ。",
@@ -1263,8 +1345,8 @@ export const createOpenAiResponsesBrain = ({
         raw: Object.freeze({
           provider: "openai",
           model,
-          payload
-        })
+          payload,
+        }),
       });
     },
     async *respondStream(context, { signal } = {}) {
@@ -1273,34 +1355,36 @@ export const createOpenAiResponsesBrain = ({
         method: "POST",
         headers: {
           authorization: `Bearer ${apiKey}`,
-          "content-type": "application/json"
+          "content-type": "application/json",
         },
         body: JSON.stringify({
           model,
           instructions: prompt.system,
           input: prompt.user,
           max_output_tokens: maxOutputTokens,
-          stream: true
+          stream: true,
         }),
-        signal
+        signal,
       });
       if (!response.ok) {
         const errorText = await response.text();
-        throw new Error(`OpenAI brain ${id} failed: ${response.status} ${errorText}`);
+        throw new Error(
+          `OpenAI brain ${id} failed: ${response.status} ${errorText}`,
+        );
       }
       for await (const obj of parseSseStream(response.body)) {
         if (obj.type === "response.output_text.delta") {
           yield Object.freeze({ delta: obj.delta });
         }
       }
-    }
+    },
   });
 };
 
 export const createDiscordMessageAdapter = ({
   ignoreBots = true,
   mentionOnly = false,
-  botUserId = null
+  botUserId = null,
 } = {}) =>
   Object.freeze({
     id: "discord-message-adapter",
@@ -1313,7 +1397,8 @@ export const createDiscordMessageAdapter = ({
       const content = normalizeText(payload.content);
       const mentions = Array.isArray(payload.mentions) ? payload.mentions : [];
       const mentionsBot =
-        botUserId && mentions.some((mention) => String(mention.id) === String(botUserId));
+        botUserId &&
+        mentions.some((mention) => String(mention.id) === String(botUserId));
       if (mentionOnly && !mentionsBot) {
         return null;
       }
@@ -1323,18 +1408,19 @@ export const createDiscordMessageAdapter = ({
         actor: normalizeActor({
           platform: "discord",
           platformUserId: author.id || payload.userId,
-          displayName: author.global_name || author.username || payload.displayName
+          displayName:
+            author.global_name || author.username || payload.displayName,
         }),
         metadata: {
           channelId: payload.channel_id || payload.channelId || null,
           guildId: payload.guild_id || payload.guildId || null,
           messageId: payload.id || payload.messageId || null,
           mentionOnly,
-          mentionsBot
+          mentionsBot,
         },
-        raw: payload
+        raw: payload,
       });
-    }
+    },
   });
 
 export const createYouTubeLiveChatAdapter = () =>
@@ -1353,26 +1439,27 @@ export const createYouTubeLiveChatAdapter = () =>
           payload.text,
         actor: normalizeActor({
           platform: "youtube",
-          platformUserId: author.channelId || payload.authorChannelId || payload.userId,
-          displayName: author.displayName || payload.displayName
+          platformUserId:
+            author.channelId || payload.authorChannelId || payload.userId,
+          displayName: author.displayName || payload.displayName,
         }),
         metadata: {
           liveChatId: snippet.liveChatId || payload.liveChatId || null,
           messageId: payload.id || payload.messageId || null,
           isChatOwner: Boolean(author.isChatOwner),
           isChatModerator: Boolean(author.isChatModerator),
-          isChatSponsor: Boolean(author.isChatSponsor)
+          isChatSponsor: Boolean(author.isChatSponsor),
         },
-        raw: payload
+        raw: payload,
       });
-    }
+    },
   });
 
 export const createSlackMessageAdapter = ({
   ignoreBots = true,
   mentionOnly = false,
   botUserId = null,
-  stripMention = true
+  stripMention = true,
 } = {}) =>
   Object.freeze({
     id: "slack-message-adapter",
@@ -1386,7 +1473,9 @@ export const createSlackMessageAdapter = ({
         return null;
       }
       const rawText = normalizeText(event.text);
-      const mentionsBot = botUserId ? rawText.includes(`<@${botUserId}>`) : false;
+      const mentionsBot = botUserId
+        ? rawText.includes(`<@${botUserId}>`)
+        : false;
       if (mentionOnly && event.type !== "app_mention" && !mentionsBot) {
         return null;
       }
@@ -1406,7 +1495,7 @@ export const createSlackMessageAdapter = ({
             profile.real_name ||
             event.username ||
             payload.displayName ||
-            event.user
+            event.user,
         }),
         metadata: {
           teamId: payload.team_id || event.team || null,
@@ -1415,15 +1504,17 @@ export const createSlackMessageAdapter = ({
           threadTs: event.thread_ts || event.ts || payload.threadTs || null,
           eventType: event.type,
           mentionOnly,
-          mentionsBot
+          mentionsBot,
         },
-        raw: payload
+        raw: payload,
       });
-    }
+    },
   });
 
 export const createPlatformAdapterRegistry = (adapters = []) => {
-  const byPlatform = new Map(adapters.map((adapter) => [adapter.platform, adapter]));
+  const byPlatform = new Map(
+    adapters.map((adapter) => [adapter.platform, adapter]),
+  );
   return Object.freeze({
     normalize(platform, payload) {
       const adapter = byPlatform.get(platform);
@@ -1434,14 +1525,18 @@ export const createPlatformAdapterRegistry = (adapters = []) => {
     },
     platforms() {
       return Object.freeze([...byPlatform.keys()]);
-    }
+    },
   });
 };
 
-const normalizeSessionPlatform = (session) => session.platform || session.source || null;
+const normalizeSessionPlatform = (session) =>
+  session.platform || session.source || null;
 
 const normalizeSessionChannelId = (session) =>
-  session.platformChannelId || session.platform_channel_id || session.channelId || null;
+  session.platformChannelId ||
+  session.platform_channel_id ||
+  session.channelId ||
+  null;
 
 const candidateTurnChannelIds = (turn) =>
   Object.freeze(
@@ -1450,22 +1545,23 @@ const candidateTurnChannelIds = (turn) =>
       turn.metadata?.liveChatId,
       turn.metadata?.channelId,
       turn.metadata?.guildId,
-      turn.metadata?.teamId
+      turn.metadata?.teamId,
     ]
       .filter(Boolean)
-      .map((value) => String(value))
+      .map((value) => String(value)),
   );
 
 export const createSnapshotStreamSessionResolver = ({
   snapshot,
-  includeStatuses = ["live", "paused"]
+  includeStatuses = ["live", "paused"],
 }) => {
   if (!snapshot) {
     throw new Error("createSnapshotStreamSessionResolver requires snapshot");
   }
 
   return async (turn) => {
-    const currentSnapshot = typeof snapshot === "function" ? await snapshot() : snapshot;
+    const currentSnapshot =
+      typeof snapshot === "function" ? await snapshot() : snapshot;
     const sessions = Array.isArray(currentSnapshot?.streamSessions)
       ? currentSnapshot.streamSessions
       : [];
@@ -1487,7 +1583,9 @@ export const createSnapshotStreamSessionResolver = ({
 
 export const createStreamContextEnricher = ({ resolveStreamSession }) => {
   if (typeof resolveStreamSession !== "function") {
-    throw new Error("createStreamContextEnricher requires resolveStreamSession");
+    throw new Error(
+      "createStreamContextEnricher requires resolveStreamSession",
+    );
   }
 
   return async (turn) => {
@@ -1502,8 +1600,8 @@ export const createStreamContextEnricher = ({ resolveStreamSession }) => {
         streamSessionId: session.id,
         streamPlatform: normalizeSessionPlatform(session),
         streamChannelId: normalizeSessionChannelId(session),
-        streamTitle: session.title || null
-      })
+        streamTitle: session.title || null,
+      }),
     });
   };
 };
@@ -1518,11 +1616,12 @@ export const createDiscordBotRuntime = ({
   intents = 33280,
   adapter = createDiscordMessageAdapter(),
   respond = true,
-  responseFormatter = ({ result }) => result.text || result.output?.summary || null,
+  responseFormatter = ({ result }) =>
+    result.text || result.output?.summary || null,
   turnEnricher = async (turn) => turn,
   onReady = () => {},
   onResult = () => {},
-  onError = () => {}
+  onError = () => {},
 }) => {
   if (!token) {
     throw new Error("createDiscordBotRuntime requires token");
@@ -1554,7 +1653,7 @@ export const createDiscordBotRuntime = ({
   const sendHeartbeat = () => {
     sendGateway({
       op: 1,
-      d: sequence
+      d: sequence,
     });
   };
 
@@ -1567,30 +1666,39 @@ export const createDiscordBotRuntime = ({
         properties: {
           os: "iroharness",
           browser: "iroharness",
-          device: "iroharness"
-        }
-      }
+          device: "iroharness",
+        },
+      },
     });
   };
 
-  const createMessage = async ({ channelId, content, messageReference = null }) => {
+  const createMessage = async ({
+    channelId,
+    content,
+    messageReference = null,
+  }) => {
     const body = {
-      content: truncateDiscordMessage(content)
+      content: truncateDiscordMessage(content),
     };
     if (messageReference) {
       body.message_reference = messageReference;
     }
-    const response = await fetchImpl(`${apiBaseUrl}/channels/${channelId}/messages`, {
-      method: "POST",
-      headers: {
-        authorization: `Bot ${token}`,
-        "content-type": "application/json"
+    const response = await fetchImpl(
+      `${apiBaseUrl}/channels/${channelId}/messages`,
+      {
+        method: "POST",
+        headers: {
+          authorization: `Bot ${token}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(body),
       },
-      body: JSON.stringify(body)
-    });
+    );
     const responseText = await response.text();
     if (!response.ok) {
-      throw new Error(`Discord Create Message ${response.status}: ${responseText}`);
+      throw new Error(
+        `Discord Create Message ${response.status}: ${responseText}`,
+      );
     }
     return responseText.trim() ? JSON.parse(responseText) : {};
   };
@@ -1626,8 +1734,8 @@ export const createDiscordBotRuntime = ({
             message_id: message.d.id,
             channel_id: message.d.channel_id,
             guild_id: message.d.guild_id,
-            fail_if_not_exists: false
-          }
+            fail_if_not_exists: false,
+          },
         });
       }
     }
@@ -1635,7 +1743,8 @@ export const createDiscordBotRuntime = ({
   };
 
   const handleMessage = async (raw) => {
-    const text = typeof raw === "string" ? raw : raw?.data || raw?.toString("utf8");
+    const text =
+      typeof raw === "string" ? raw : raw?.data || raw?.toString("utf8");
     const message = JSON.parse(text);
     if (typeof message.s === "number") {
       sequence = message.s;
@@ -1709,9 +1818,9 @@ export const createDiscordBotRuntime = ({
         active,
         sessionId,
         botUserId,
-        sequence
+        sequence,
       });
-    }
+    },
   });
 };
 
@@ -1722,10 +1831,11 @@ export const createSlackEventsRuntime = ({
   fetchImpl = globalThis.fetch,
   apiBaseUrl = "https://slack.com/api",
   respond = true,
-  responseFormatter = ({ result }) => result.text || result.output?.summary || null,
+  responseFormatter = ({ result }) =>
+    result.text || result.output?.summary || null,
   turnEnricher = async (turn) => turn,
   onResult = () => {},
-  onError = () => {}
+  onError = () => {},
 }) => {
   if (!botToken) {
     throw new Error("createSlackEventsRuntime requires botToken");
@@ -1742,18 +1852,20 @@ export const createSlackEventsRuntime = ({
       method: "POST",
       headers: {
         authorization: `Bearer ${botToken}`,
-        "content-type": "application/json"
+        "content-type": "application/json",
       },
       body: JSON.stringify({
         channel: channelId,
         text: truncateSlackMessage(text),
-        ...(threadTs ? { thread_ts: threadTs } : {})
-      })
+        ...(threadTs ? { thread_ts: threadTs } : {}),
+      }),
     });
     const responseText = await response.text();
     const payload = responseText.trim() ? JSON.parse(responseText) : {};
     if (!response.ok || payload.ok === false) {
-      throw new Error(`Slack chat.postMessage failed: ${response.status} ${responseText}`);
+      throw new Error(
+        `Slack chat.postMessage failed: ${response.status} ${responseText}`,
+      );
     }
     return payload;
   };
@@ -1762,20 +1874,20 @@ export const createSlackEventsRuntime = ({
     if (payload?.type === "url_verification") {
       return Object.freeze({
         kind: "challenge",
-        challenge: payload.challenge || ""
+        challenge: payload.challenge || "",
       });
     }
     if (payload?.type && payload.type !== "event_callback") {
       return Object.freeze({
         kind: "ignored",
-        reason: `unsupported Slack payload type: ${payload.type}`
+        reason: `unsupported Slack payload type: ${payload.type}`,
       });
     }
     const turn = adapter.normalize(payload);
     if (!turn || !turn.text) {
       return Object.freeze({
         kind: "ignored",
-        reason: "adapter ignored payload"
+        reason: "adapter ignored payload",
       });
     }
     try {
@@ -1789,11 +1901,16 @@ export const createSlackEventsRuntime = ({
           posted = await postMessage({
             channelId: enrichedTurn.metadata.channelId,
             text: reply,
-            threadTs: enrichedTurn.metadata.threadTs
+            threadTs: enrichedTurn.metadata.threadTs,
           });
         }
       }
-      const event = Object.freeze({ turn: enrichedTurn, result, reply, posted });
+      const event = Object.freeze({
+        turn: enrichedTurn,
+        result,
+        reply,
+        posted,
+      });
       onResult(event);
       return event;
     } catch (error) {
@@ -1804,7 +1921,7 @@ export const createSlackEventsRuntime = ({
 
   return Object.freeze({
     handlePayload,
-    postMessage
+    postMessage,
   });
 };
 
@@ -1819,13 +1936,17 @@ export const createYouTubeLiveChatPollingRuntime = ({
   pageToken = null,
   turnEnricher = async (turn) => turn,
   onResult = () => {},
-  onError = () => {}
+  onError = () => {},
 }) => {
   if (!apiKey || !liveChatId) {
-    throw new Error("createYouTubeLiveChatPollingRuntime requires apiKey and liveChatId");
+    throw new Error(
+      "createYouTubeLiveChatPollingRuntime requires apiKey and liveChatId",
+    );
   }
   if (!harness || typeof harness.receive !== "function") {
-    throw new Error("createYouTubeLiveChatPollingRuntime requires harness.receive");
+    throw new Error(
+      "createYouTubeLiveChatPollingRuntime requires harness.receive",
+    );
   }
   if (typeof fetchImpl !== "function") {
     throw new Error("createYouTubeLiveChatPollingRuntime requires fetchImpl");
@@ -1838,7 +1959,9 @@ export const createYouTubeLiveChatPollingRuntime = ({
   const seenIds = new Set();
 
   const buildUrl = () => {
-    const url = new URL("https://www.googleapis.com/youtube/v3/liveChat/messages");
+    const url = new URL(
+      "https://www.googleapis.com/youtube/v3/liveChat/messages",
+    );
     url.searchParams.set("liveChatId", liveChatId);
     url.searchParams.set("part", "snippet,authorDetails");
     url.searchParams.set("key", apiKey);
@@ -1853,7 +1976,9 @@ export const createYouTubeLiveChatPollingRuntime = ({
     const response = await fetchImpl(buildUrl());
     const responseText = await response.text();
     if (!response.ok) {
-      throw new Error(`YouTube Live Chat API ${response.status}: ${responseText}`);
+      throw new Error(
+        `YouTube Live Chat API ${response.status}: ${responseText}`,
+      );
     }
     const payload = responseText.trim() ? JSON.parse(responseText) : {};
     nextPageToken = payload.nextPageToken || nextPageToken;
@@ -1881,7 +2006,7 @@ export const createYouTubeLiveChatPollingRuntime = ({
     return Object.freeze({
       nextPageToken,
       pollingIntervalMillis: nextIntervalMs,
-      results: Object.freeze(results)
+      results: Object.freeze(results),
     });
   };
 
@@ -1925,9 +2050,9 @@ export const createYouTubeLiveChatPollingRuntime = ({
         active,
         nextPageToken,
         nextIntervalMs,
-        seenCount: seenIds.size
+        seenCount: seenIds.size,
       });
-    }
+    },
   });
 };
 
@@ -1935,7 +2060,7 @@ export const createObsWebSocketAdapter = ({
   url = "ws://127.0.0.1:4455",
   password = null,
   WebSocketImpl = globalThis.WebSocket,
-  timeoutMs = 10_000
+  timeoutMs = 10_000,
 } = {}) => {
   if (typeof WebSocketImpl !== "function") {
     throw new Error("createObsWebSocketAdapter requires WebSocketImpl");
@@ -1965,8 +2090,9 @@ export const createObsWebSocketAdapter = ({
     if (requestStatus.result === false) {
       entry.reject(
         new Error(
-          requestStatus.comment || `OBS request failed: ${message.d?.requestType || requestId}`
-        )
+          requestStatus.comment ||
+            `OBS request failed: ${message.d?.requestType || requestId}`,
+        ),
       );
       return;
     }
@@ -1974,21 +2100,22 @@ export const createObsWebSocketAdapter = ({
   };
 
   const handleMessage = (raw) => {
-    const text = typeof raw === "string" ? raw : raw?.data || raw?.toString("utf8");
+    const text =
+      typeof raw === "string" ? raw : raw?.data || raw?.toString("utf8");
     const message = JSON.parse(text);
     if (message.op === 0) {
       const auth = message.d?.authentication;
       const identify = {
         op: 1,
         d: {
-          rpcVersion: message.d?.rpcVersion || 1
-        }
+          rpcVersion: message.d?.rpcVersion || 1,
+        },
       };
       if (password && auth?.salt && auth?.challenge) {
         identify.d.authentication = createObsAuthentication({
           password,
           salt: auth.salt,
-          challenge: auth.challenge
+          challenge: auth.challenge,
         });
       }
       send(identify);
@@ -2010,7 +2137,9 @@ export const createObsWebSocketAdapter = ({
     connectPromise = new Promise((resolve, reject) => {
       socket = new WebSocketImpl(url);
       const timer = setTimeout(() => {
-        reject(new Error(`OBS WebSocket connection timed out after ${timeoutMs}ms`));
+        reject(
+          new Error(`OBS WebSocket connection timed out after ${timeoutMs}ms`),
+        );
       }, timeoutMs);
       const cleanup = () => clearTimeout(timer);
       socket.addEventListener?.("message", (event) => {
@@ -2062,8 +2191,8 @@ export const createObsWebSocketAdapter = ({
       d: {
         requestType,
         requestId,
-        requestData
-      }
+        requestData,
+      },
     });
     return response;
   };
@@ -2087,13 +2216,13 @@ export const createObsWebSocketAdapter = ({
       return request("SetInputSettings", {
         inputName,
         inputSettings,
-        overlay
+        overlay,
       });
     },
     setInputMute(inputName, inputMuted) {
       return request("SetInputMute", {
         inputName,
-        inputMuted
+        inputMuted,
       });
     },
     close,
@@ -2101,9 +2230,9 @@ export const createObsWebSocketAdapter = ({
       return Object.freeze({
         url,
         identified,
-        pending: pending.size
+        pending: pending.size,
       });
-    }
+    },
   });
 
   return api;
@@ -2115,13 +2244,15 @@ const inferObsStreamAction = ({
   overlayUrl,
   overlayWidth,
   overlayHeight,
-  defaultSceneName
+  defaultSceneName,
 }) => {
   const metadata = input.metadata || {};
   const text = normalizeText(input.text).toLowerCase();
   const requestedAction = metadata.obsAction || metadata.streamAction || null;
-  const sceneName = metadata.obsSceneName || metadata.sceneName || defaultSceneName;
-  const inputName = metadata.obsInputName || metadata.inputName || overlayInputName;
+  const sceneName =
+    metadata.obsSceneName || metadata.sceneName || defaultSceneName;
+  const inputName =
+    metadata.obsInputName || metadata.inputName || overlayInputName;
   const inputMuted =
     typeof metadata.inputMuted === "boolean"
       ? metadata.inputMuted
@@ -2139,16 +2270,20 @@ const inferObsStreamAction = ({
       inputSettings: Object.freeze({
         url: metadata.overlayUrl || metadata.obsOverlayUrl || overlayUrl,
         width: Number(metadata.overlayWidth || overlayWidth),
-        height: Number(metadata.overlayHeight || overlayHeight)
-      })
+        height: Number(metadata.overlayHeight || overlayHeight),
+      }),
     });
   }
 
-  if (requestedAction === "mute" || text.includes("mute") || text.includes("ミュート")) {
+  if (
+    requestedAction === "mute" ||
+    text.includes("mute") ||
+    text.includes("ミュート")
+  ) {
     return Object.freeze({
       kind: "mute",
       inputName,
-      inputMuted
+      inputMuted,
     });
   }
 
@@ -2160,12 +2295,12 @@ const inferObsStreamAction = ({
   ) {
     return Object.freeze({
       kind: "scene",
-      sceneName
+      sceneName,
     });
   }
 
   return Object.freeze({
-    kind: "unknown"
+    kind: "unknown",
   });
 };
 
@@ -2176,7 +2311,7 @@ export const createObsStreamController = ({
   overlayUrl = "http://127.0.0.1:4178/?view=overlay",
   overlayWidth = 1280,
   overlayHeight = 720,
-  defaultSceneName = null
+  defaultSceneName = null,
 } = {}) => {
   if (!obs || typeof obs.setCurrentProgramScene !== "function") {
     throw new Error("createObsStreamController requires an OBS adapter");
@@ -2189,7 +2324,7 @@ export const createObsStreamController = ({
       overlayUrl,
       overlayWidth,
       overlayHeight,
-      defaultSceneName
+      defaultSceneName,
     });
 
     if (action.kind === "scene") {
@@ -2198,7 +2333,7 @@ export const createObsStreamController = ({
           status: "failed",
           summary: "OBS scene action requires sceneName or defaultSceneName.",
           action,
-          artifacts: Object.freeze([])
+          artifacts: Object.freeze([]),
         });
       }
       const raw = await obs.setCurrentProgramScene(action.sceneName);
@@ -2207,18 +2342,21 @@ export const createObsStreamController = ({
         summary: `OBS scene switched to ${action.sceneName}.`,
         action,
         raw,
-        artifacts: Object.freeze([])
+        artifacts: Object.freeze([]),
       });
     }
 
     if (action.kind === "overlay") {
-      const raw = await obs.setInputSettings(action.inputName, action.inputSettings);
+      const raw = await obs.setInputSettings(
+        action.inputName,
+        action.inputSettings,
+      );
       return Object.freeze({
         status: "completed",
         summary: `OBS overlay updated for ${action.inputName}.`,
         action,
         raw,
-        artifacts: Object.freeze([])
+        artifacts: Object.freeze([]),
       });
     }
 
@@ -2229,7 +2367,7 @@ export const createObsStreamController = ({
         summary: `OBS input ${action.inputName} mute=${action.inputMuted}.`,
         action,
         raw,
-        artifacts: Object.freeze([])
+        artifacts: Object.freeze([]),
       });
     }
 
@@ -2239,9 +2377,9 @@ export const createObsStreamController = ({
       action: Object.freeze({
         ...action,
         route,
-        actorUserId: actor?.user?.id || null
+        actorUserId: actor?.user?.id || null,
       }),
-      artifacts: Object.freeze([])
+      artifacts: Object.freeze([]),
     });
   };
 
@@ -2251,7 +2389,7 @@ export const createObsStreamController = ({
     execute,
     close() {
       obs.close?.();
-    }
+    },
   });
 };
 
@@ -2278,25 +2416,35 @@ export const createEventStreamDevice = (id = "event-stream") => {
         "content-type": "text/event-stream; charset=utf-8",
         "cache-control": "no-cache, no-transform",
         connection: "keep-alive",
-        "x-accel-buffering": "no"
+        "x-accel-buffering": "no",
       });
       response.write(": connected\n\n");
       events.slice(-20).forEach((event) => writeEvent(response, event));
       clients = Object.freeze([...clients, response]);
       request.on("close", () => {
-        clients = Object.freeze(clients.filter((client) => client !== response));
+        clients = Object.freeze(
+          clients.filter((client) => client !== response),
+        );
       });
     },
     events() {
       return Object.freeze([...events]);
-    }
+    },
   });
 };
 
-const createBodyPayload = ({ id, kind, event, latestState, mapper, mapPayload }) => {
+const createBodyPayload = ({
+  id,
+  kind,
+  event,
+  latestState,
+  mapper,
+  mapPayload,
+}) => {
   const state = event.state || latestState || null;
   const mapped = state ? mapper.mapState(state) : null;
-  const speechText = event.text || event.state?.speechText || state?.speechText || null;
+  const speechText =
+    event.text || event.state?.speechText || state?.speechText || null;
   return Object.freeze({
     id,
     kind,
@@ -2308,8 +2456,8 @@ const createBodyPayload = ({ id, kind, event, latestState, mapper, mapPayload })
       event,
       state,
       mapped,
-      speechText
-    })
+      speechText,
+    }),
   });
 };
 
@@ -2318,10 +2466,12 @@ export const createMappedBodyBridgeDevice = ({
   kind = "body",
   mapper,
   capabilities = ["state", "speech", "task", "body-state"],
-  mapPayload = ({ mapped }) => mapped
+  mapPayload = ({ mapped }) => mapped,
 }) => {
   if (!id || !mapper || typeof mapper.mapState !== "function") {
-    throw new Error("createMappedBodyBridgeDevice requires id and mapper.mapState");
+    throw new Error(
+      "createMappedBodyBridgeDevice requires id and mapper.mapState",
+    );
   }
 
   let latestState = null;
@@ -2348,7 +2498,7 @@ export const createMappedBodyBridgeDevice = ({
         event,
         latestState,
         mapper,
-        mapPayload
+        mapPayload,
       });
       latestPayload = payload;
       payloads = Object.freeze([...payloads.slice(-199), payload]);
@@ -2365,15 +2515,17 @@ export const createMappedBodyBridgeDevice = ({
         "content-type": "text/event-stream; charset=utf-8",
         "cache-control": "no-cache, no-transform",
         connection: "keep-alive",
-        "x-accel-buffering": "no"
+        "x-accel-buffering": "no",
       });
       response.write(": connected\n\n");
       payloads.slice(-20).forEach((payload) => writePayload(response, payload));
       clients = Object.freeze([...clients, response]);
       request.on("close", () => {
-        clients = Object.freeze(clients.filter((client) => client !== response));
+        clients = Object.freeze(
+          clients.filter((client) => client !== response),
+        );
       });
-    }
+    },
   });
 };
 
@@ -2386,25 +2538,35 @@ export const createIroHarnessDevServerHandler = ({
   platformAdapters = createPlatformAdapterRegistry([
     createDiscordMessageAdapter(),
     createSlackMessageAdapter(),
-    createYouTubeLiveChatAdapter()
+    createYouTubeLiveChatAdapter(),
   ]),
   turnEnricher = async (turn) => turn,
   runtimeStatus = () => [],
-  publicDir = defaultPublicDir()
+  publicDir = defaultPublicDir(),
 }) => {
   if (!harness || !eventStream) {
-    throw new Error("createIroHarnessDevServer requires harness and eventStream");
+    throw new Error(
+      "createIroHarnessDevServer requires harness and eventStream",
+    );
   }
   const audienceRegistry = userRegistry;
   const requireAudienceRegistry = (methodName) => {
-    if (!audienceRegistry || typeof audienceRegistry[methodName] !== "function") {
+    if (
+      !audienceRegistry ||
+      typeof audienceRegistry[methodName] !== "function"
+    ) {
       throw new Error(`audience registry does not support ${methodName}`);
     }
     return audienceRegistry;
   };
   const headerValue = (request, name) => {
     const headers = request.headers || {};
-    return headers[name] || headers[name.toLowerCase()] || headers[name.toUpperCase()] || null;
+    return (
+      headers[name] ||
+      headers[name.toLowerCase()] ||
+      headers[name.toUpperCase()] ||
+      null
+    );
   };
   const hasAdminAccess = (request) => {
     if (!adminToken) {
@@ -2425,7 +2587,7 @@ export const createIroHarnessDevServerHandler = ({
     bodyDevices.map((body) => ({
       id: body.id,
       kind: body.kind,
-      capabilities: body.capabilities || []
+      capabilities: body.capabilities || [],
     }));
   const brainSummary = () =>
     typeof harness.brains === "function" ? harness.brains() : [];
@@ -2448,7 +2610,7 @@ export const createIroHarnessDevServerHandler = ({
           service: {
             ...packageInfo,
             startedAt,
-            uptimeMs: Math.max(0, Date.now() - startedAtMs)
+            uptimeMs: Math.max(0, Date.now() - startedAtMs),
           },
           characterId: state.characterId,
           mode: state.mode,
@@ -2459,10 +2621,14 @@ export const createIroHarnessDevServerHandler = ({
           platforms: platformAdapters.platforms(),
           runtimes: runtimeStatus(),
           projectOs: {
-            tickets: Array.isArray(projectOs.tickets) ? projectOs.tickets.length : 0,
+            tickets: Array.isArray(projectOs.tickets)
+              ? projectOs.tickets.length
+              : 0,
             runs: Array.isArray(projectOs.runs) ? projectOs.runs.length : 0,
-            artifacts: Array.isArray(projectOs.artifacts) ? projectOs.artifacts.length : 0
-          }
+            artifacts: Array.isArray(projectOs.artifacts)
+              ? projectOs.artifacts.length
+              : 0,
+          },
         });
         return;
       }
@@ -2490,15 +2656,22 @@ export const createIroHarnessDevServerHandler = ({
               ? await harness.users()
               : null;
         if (!snapshot) {
-          sendJson(response, 404, { error: "audience_registry_not_configured" });
+          sendJson(response, 404, {
+            error: "audience_registry_not_configured",
+          });
           return;
         }
         sendJson(response, 200, snapshot);
         return;
       }
       if (request.method === "GET" && url.pathname === "/audience/resolve") {
-        if (!audienceRegistry || typeof audienceRegistry.resolveActor !== "function") {
-          sendJson(response, 404, { error: "audience_registry_not_configured" });
+        if (
+          !audienceRegistry ||
+          typeof audienceRegistry.resolveActor !== "function"
+        ) {
+          sendJson(response, 404, {
+            error: "audience_registry_not_configured",
+          });
           return;
         }
         const platform = url.searchParams.get("platform");
@@ -2506,53 +2679,64 @@ export const createIroHarnessDevServerHandler = ({
         if (!platform || !platformUserId) {
           sendJson(response, 400, {
             error: "invalid_audience_identity",
-            message: "platform and platformUserId query parameters are required"
+            message:
+              "platform and platformUserId query parameters are required",
           });
           return;
         }
         const actor = await audienceRegistry.resolveActor({
           platform,
           platformUserId,
-          displayName: url.searchParams.get("displayName") || ""
+          displayName: url.searchParams.get("displayName") || "",
         });
         sendJson(response, 200, {
           known: actor.known,
           user: actor.user,
-          identity: actor.identity
+          identity: actor.identity,
         });
         return;
       }
       if (request.method === "POST" && url.pathname === "/audience/users") {
         const payload = await readRequestJson(request);
-        const user = await requireAudienceRegistry("registerUser").registerUser(payload);
+        const user =
+          await requireAudienceRegistry("registerUser").registerUser(payload);
         sendJson(response, 201, { user });
         return;
       }
       const userMatch = url.pathname.match(/^\/audience\/users\/([^/]+)$/);
       if (request.method === "PATCH" && userMatch) {
         const payload = await readRequestJson(request);
-        const user = await requireAudienceRegistry("updateUser").updateUser(userMatch[1], payload);
+        const user = await requireAudienceRegistry("updateUser").updateUser(
+          userMatch[1],
+          payload,
+        );
         sendJson(response, 200, { user });
         return;
       }
-      const identityMatch = url.pathname.match(/^\/audience\/users\/([^/]+)\/identities$/);
+      const identityMatch = url.pathname.match(
+        /^\/audience\/users\/([^/]+)\/identities$/,
+      );
       if (request.method === "POST" && identityMatch) {
         const payload = await readRequestJson(request);
-        const identity = await requireAudienceRegistry("linkIdentity").linkIdentity({
+        const identity = await requireAudienceRegistry(
+          "linkIdentity",
+        ).linkIdentity({
           ...payload,
-          userId: identityMatch[1]
+          userId: identityMatch[1],
         });
         sendJson(response, 201, { identity });
         return;
       }
-      const permissionMatch = url.pathname.match(/^\/audience\/users\/([^/]+)\/permissions$/);
+      const permissionMatch = url.pathname.match(
+        /^\/audience\/users\/([^/]+)\/permissions$/,
+      );
       if (request.method === "POST" && permissionMatch) {
         const payload = await readRequestJson(request);
         const permissionOverride = await requireAudienceRegistry(
-          "setPermissionOverride"
+          "setPermissionOverride",
         ).setPermissionOverride({
           ...payload,
-          userId: permissionMatch[1]
+          userId: permissionMatch[1],
         });
         sendJson(response, 201, { permissionOverride });
         return;
@@ -2563,45 +2747,53 @@ export const createIroHarnessDevServerHandler = ({
         if (!permission) {
           sendJson(response, 400, {
             error: "invalid_permission_override",
-            message: "permission query parameter is required"
+            message: "permission query parameter is required",
           });
           return;
         }
         const result = await requireAudienceRegistry(
-          "deletePermissionOverride"
+          "deletePermissionOverride",
         ).deletePermissionOverride({
           userId: permissionMatch[1],
           permission,
-          scope
+          scope,
         });
         sendJson(response, 200, { permissionOverride: result });
         return;
       }
-      if (request.method === "POST" && url.pathname === "/audience/stream-sessions") {
+      if (
+        request.method === "POST" &&
+        url.pathname === "/audience/stream-sessions"
+      ) {
         const payload = await readRequestJson(request);
-        const streamSession =
-          await requireAudienceRegistry("createStreamSession").createStreamSession(payload);
+        const streamSession = await requireAudienceRegistry(
+          "createStreamSession",
+        ).createStreamSession(payload);
         sendJson(response, 201, { streamSession });
         return;
       }
-      const streamMatch = url.pathname.match(/^\/audience\/stream-sessions\/([^/]+)$/);
+      const streamMatch = url.pathname.match(
+        /^\/audience\/stream-sessions\/([^/]+)$/,
+      );
       if (request.method === "PATCH" && streamMatch) {
         const payload = await readRequestJson(request);
         const streamSession = await requireAudienceRegistry(
-          "updateStreamSession"
+          "updateStreamSession",
         ).updateStreamSession(streamMatch[1], payload);
         sendJson(response, 200, { streamSession });
         return;
       }
       if (request.method === "GET" && url.pathname === "/bodies") {
         sendJson(response, 200, {
-          bodies: bodySummary()
+          bodies: bodySummary(),
         });
         return;
       }
       const bodyMatch = url.pathname.match(/^\/body\/([^/]+)(\/events)?$/);
       if (request.method === "GET" && bodyMatch) {
-        const body = bodyDevices.find((candidate) => candidate.id === bodyMatch[1]);
+        const body = bodyDevices.find(
+          (candidate) => candidate.id === bodyMatch[1],
+        );
         if (!body) {
           sendJson(response, 404, { error: "body_not_found" });
           return;
@@ -2617,7 +2809,7 @@ export const createIroHarnessDevServerHandler = ({
         sendJson(response, 200, {
           id: body.id,
           kind: body.kind,
-          state: typeof body.snapshot === "function" ? body.snapshot() : null
+          state: typeof body.snapshot === "function" ? body.snapshot() : null,
         });
         return;
       }
@@ -2630,13 +2822,15 @@ export const createIroHarnessDevServerHandler = ({
           actor: payload.actor || {
             platform: payload.source || "browser",
             platformUserId: payload.userId || "browser-guest",
-            displayName: payload.displayName || "Browser Guest"
-          }
+            displayName: payload.displayName || "Browser Guest",
+          },
         });
         sendJson(response, 200, result);
         return;
       }
-      const platformMatch = url.pathname.match(/^\/platform\/([^/]+)\/message$/);
+      const platformMatch = url.pathname.match(
+        /^\/platform\/([^/]+)\/message$/,
+      );
       if (request.method === "POST" && platformMatch) {
         const payload = await readRequestJson(request);
         const turn = platformAdapters.normalize(platformMatch[1], payload);
@@ -2648,7 +2842,7 @@ export const createIroHarnessDevServerHandler = ({
         const result = await harness.receive(enrichedTurn);
         sendJson(response, 200, {
           turn: enrichedTurn,
-          result
+          result,
         });
         return;
       }
@@ -2664,7 +2858,7 @@ export const createIroHarnessDevServerHandler = ({
     } catch (error) {
       sendJson(response, 500, {
         error: "internal_error",
-        message: error.message
+        message: error.message,
       });
     }
   };
@@ -2681,7 +2875,7 @@ export const createIroHarnessDevServer = (options) => {
           resolve({
             port: server.address().port,
             host,
-            url: `http://${host}:${server.address().port}`
+            url: `http://${host}:${server.address().port}`,
           });
         });
       });
@@ -2690,7 +2884,7 @@ export const createIroHarnessDevServer = (options) => {
       return new Promise((resolve, reject) => {
         server.close((error) => (error ? reject(error) : resolve()));
       });
-    }
+    },
   });
 };
 
@@ -2702,7 +2896,7 @@ export const createHttpMicroHarness = ({
   fetchImpl = globalThis.fetch,
   buildRequest = ({ task, context }) => ({ task, context }),
   parseResponse = (payload) => payload,
-  timeoutMs = 60_000
+  timeoutMs = 60_000,
 }) => {
   if (!id || !endpoint) {
     throw new Error("createHttpMicroHarness requires id and endpoint");
@@ -2721,10 +2915,10 @@ export const createHttpMicroHarness = ({
           method: "POST",
           headers: {
             "content-type": "application/json",
-            ...headers
+            ...headers,
           },
           body: JSON.stringify(buildRequest({ task, context })),
-          signal: timeout.signal
+          signal: timeout.signal,
         });
         const responseText = await response.text();
         if (!response.ok) {
@@ -2733,17 +2927,20 @@ export const createHttpMicroHarness = ({
               status: "failed",
               summary: `${id} HTTP ${response.status}: ${responseText}`,
               artifacts: [],
-              raw: responseText
+              raw: responseText,
             },
-            `${id} failed`
+            `${id} failed`,
           );
         }
         const parsed = responseText.trim() ? JSON.parse(responseText) : {};
-        return normalizeMicroHarnessOutput(parseResponse(parsed), `${id} completed`);
+        return normalizeMicroHarnessOutput(
+          parseResponse(parsed),
+          `${id} completed`,
+        );
       } finally {
         timeout.clear();
       }
-    }
+    },
   });
 };
 
@@ -2755,7 +2952,7 @@ export const createOpenClawMicroHarness = ({
   sessionId = null,
   capabilities = ["assistant", "tools", "memory", "automation"],
   fetchImpl = globalThis.fetch,
-  timeoutMs = 120_000
+  timeoutMs = 120_000,
 }) =>
   createHttpMicroHarness({
     id,
@@ -2764,7 +2961,7 @@ export const createOpenClawMicroHarness = ({
     fetchImpl,
     timeoutMs,
     headers: {
-      ...(apiKey ? { authorization: `Bearer ${apiKey}` } : {})
+      ...(apiKey ? { authorization: `Bearer ${apiKey}` } : {}),
     },
     buildRequest({ task, context }) {
       return {
@@ -2776,8 +2973,8 @@ export const createOpenClawMicroHarness = ({
         context: {
           character: context.character,
           actor: context.actor,
-          projectOs: context.projectOs
-        }
+          projectOs: context.projectOs,
+        },
       };
     },
     parseResponse(payload) {
@@ -2791,9 +2988,9 @@ export const createOpenClawMicroHarness = ({
           payload.result?.reply ||
           "OpenClaw completed.",
         artifacts: payload.artifacts || payload.result?.artifacts || [],
-        raw: payload
+        raw: payload,
       };
-    }
+    },
   });
 
 export const createHermesGatewayMicroHarness = ({
@@ -2803,7 +3000,7 @@ export const createHermesGatewayMicroHarness = ({
   conversationId = null,
   capabilities = ["learning", "skills", "memory", "messaging"],
   fetchImpl = globalThis.fetch,
-  timeoutMs = 120_000
+  timeoutMs = 120_000,
 }) =>
   createHttpMicroHarness({
     id,
@@ -2812,7 +3009,7 @@ export const createHermesGatewayMicroHarness = ({
     fetchImpl,
     timeoutMs,
     headers: {
-      ...(apiKey ? { authorization: `Bearer ${apiKey}` } : {})
+      ...(apiKey ? { authorization: `Bearer ${apiKey}` } : {}),
     },
     buildRequest({ task, context }) {
       return {
@@ -2823,8 +3020,8 @@ export const createHermesGatewayMicroHarness = ({
           task,
           character: context.character,
           actor: context.actor,
-          projectOs: context.projectOs
-        }
+          projectOs: context.projectOs,
+        },
       };
     },
     parseResponse(payload) {
@@ -2839,9 +3036,9 @@ export const createHermesGatewayMicroHarness = ({
           payload.result?.text ||
           "Hermes completed.",
         artifacts: payload.artifacts || payload.result?.artifacts || [],
-        raw: payload
+        raw: payload,
       };
-    }
+    },
   });
 
 export const createAIAvatarKitBridgeDevice = ({
@@ -2851,10 +3048,12 @@ export const createAIAvatarKitBridgeDevice = ({
   speechEndpoint = null,
   headers = {},
   fetchImpl = globalThis.fetch,
-  timeoutMs = 15_000
+  timeoutMs = 15_000,
 } = {}) => {
   if (!eventEndpoint && !stateEndpoint && !speechEndpoint) {
-    throw new Error("createAIAvatarKitBridgeDevice requires at least one endpoint");
+    throw new Error(
+      "createAIAvatarKitBridgeDevice requires at least one endpoint",
+    );
   }
   if (typeof fetchImpl !== "function") {
     throw new Error("createAIAvatarKitBridgeDevice requires fetchImpl");
@@ -2870,14 +3069,16 @@ export const createAIAvatarKitBridgeDevice = ({
         method: "POST",
         headers: {
           "content-type": "application/json",
-          ...headers
+          ...headers,
         },
         body: JSON.stringify(payload),
-        signal: timeout.signal
+        signal: timeout.signal,
       });
       const responseText = await response.text();
       if (!response.ok) {
-        throw new Error(`AIAvatarKit bridge ${response.status}: ${responseText}`);
+        throw new Error(
+          `AIAvatarKit bridge ${response.status}: ${responseText}`,
+        );
       }
       return responseText.trim() ? JSON.parse(responseText) : {};
     } finally {
@@ -2894,7 +3095,7 @@ export const createAIAvatarKitBridgeDevice = ({
         source: "iroharness",
         event,
         state: event.state || null,
-        speechText: event.text || event.state?.speechText || null
+        speechText: event.text || event.state?.speechText || null,
       };
       post(eventEndpoint, payload).catch(() => {});
       if (event.type === "state") {
@@ -2903,7 +3104,7 @@ export const createAIAvatarKitBridgeDevice = ({
       if (event.type === "speech") {
         post(speechEndpoint, payload).catch(() => {});
       }
-    }
+    },
   });
 };
 
@@ -2921,13 +3122,15 @@ export const createAzureSpeechStt = ({
   contentType = `audio/wav; codecs=audio/pcm; samplerate=${sampleRate}`,
   debugAudioDir = null,
   headers = {},
-  fetchImpl = globalThis.fetch
+  fetchImpl = globalThis.fetch,
 } = {}) => {
   if (!endpoint && !region) {
     throw new Error("createAzureSpeechStt requires region or endpoint");
   }
   if (!subscriptionKey && !authorizationToken) {
-    throw new Error("createAzureSpeechStt requires subscriptionKey or authorizationToken");
+    throw new Error(
+      "createAzureSpeechStt requires subscriptionKey or authorizationToken",
+    );
   }
   if (typeof fetchImpl !== "function") {
     throw new Error("createAzureSpeechStt requires fetchImpl");
@@ -2941,13 +3144,21 @@ export const createAzureSpeechStt = ({
   return Object.freeze({
     id,
     kind: "stt",
-    capabilities: Object.freeze(["azure-speech", "short-audio-stt", "final-transcript"]),
+    capabilities: Object.freeze([
+      "azure-speech",
+      "short-audio-stt",
+      "final-transcript",
+    ]),
     start({ onEvent = () => {} } = {}) {
       let sequence = 0;
       let closed = false;
       const buffers = [];
       const emit = (event) => {
-        const nextEvent = createAdapterEvent({ adapterId: id, sequence, event });
+        const nextEvent = createAdapterEvent({
+          adapterId: id,
+          sequence,
+          event,
+        });
         sequence += 1;
         onEvent(nextEvent);
         return nextEvent;
@@ -2964,7 +3175,7 @@ export const createAzureSpeechStt = ({
           return emit({
             type: "stt.audio_buffered",
             byteLength: buffer.length,
-            final: false
+            final: false,
           });
         },
         async end() {
@@ -2978,25 +3189,29 @@ export const createAzureSpeechStt = ({
             : createPcm16WavBuffer({
                 pcm: audioBytes,
                 sampleRate,
-                channels: 1
+                channels: 1,
               });
           if (debugAudioDir) {
             mkdirSync(debugAudioDir, { recursive: true });
             const debugAudioPath = join(
               debugAudioDir,
-              `${new Date().toISOString().replaceAll(":", "-")}-${id}-${sequence}.wav`
+              `${new Date().toISOString().replaceAll(":", "-")}-${id}-${sequence}.wav`,
             );
             writeFileSync(debugAudioPath, audio);
             emit({
               type: "stt.debug_audio_saved",
               path: debugAudioPath,
-              byteLength: audio.length
+              byteLength: audio.length,
             });
           }
           const authHeaders = {
-            ...(subscriptionKey ? { "Ocp-Apim-Subscription-Key": subscriptionKey } : {}),
-            ...(authorizationToken ? { authorization: `Bearer ${authorizationToken}` } : {}),
-            ...headers
+            ...(subscriptionKey
+              ? { "Ocp-Apim-Subscription-Key": subscriptionKey }
+              : {}),
+            ...(authorizationToken
+              ? { authorization: `Bearer ${authorizationToken}` }
+              : {}),
+            ...headers,
           };
           const response =
             mode === "fast"
@@ -3004,36 +3219,43 @@ export const createAzureSpeechStt = ({
                   method: "POST",
                   headers: {
                     accept: "application/json",
-                    ...authHeaders
+                    ...authHeaders,
                   },
                   body: (() => {
                     const formData = new FormData();
-                    formData.append("audio", new Blob([audio], { type: "audio/wav" }), "audio.wav");
+                    formData.append(
+                      "audio",
+                      new Blob([audio], { type: "audio/wav" }),
+                      "audio.wav",
+                    );
                     formData.append(
                       "definition",
                       new Blob(
                         [
                           JSON.stringify({
                             locales: [language, ...alternativeLanguages],
-                            channels: [0]
-                          })
+                            channels: [0],
+                          }),
                         ],
-                        { type: "application/json" }
-                      )
+                        { type: "application/json" },
+                      ),
                     );
                     return formData;
-                  })()
+                  })(),
                 })
               : await fetchImpl(url, {
                   method: "POST",
                   headers: {
                     accept: "application/json;text/xml",
                     "content-type": contentType,
-                    ...authHeaders
+                    ...authHeaders,
                   },
-                  body: audio
+                  body: audio,
                 });
-          const body = await parseJsonResponse({ response, label: `Azure Speech STT ${id}` });
+          const body = await parseJsonResponse({
+            response,
+            label: `Azure Speech STT ${id}`,
+          });
           const text =
             body.DisplayText ||
             body.combinedPhrases?.[0]?.text ||
@@ -3047,8 +3269,8 @@ export const createAzureSpeechStt = ({
               text,
               delta: text,
               final: true,
-              raw: body
-            })
+              raw: body,
+            }),
           ]);
         },
         cancel(reason = "cancelled") {
@@ -3060,11 +3282,11 @@ export const createAzureSpeechStt = ({
             type: "stt.cancelled",
             text: "",
             reason,
-            final: false
+            final: false,
           });
-        }
+        },
       });
-    }
+    },
   });
 };
 
@@ -3075,7 +3297,7 @@ export const createAivisSpeechTts = ({
   headers = {},
   fetchImpl = globalThis.fetch,
   useCancellableSynthesis = false,
-  outputSamplingRate = null
+  outputSamplingRate = null,
 } = {}) => {
   if (speaker === undefined || speaker === null || speaker === "") {
     throw new Error("createAivisSpeechTts requires speaker");
@@ -3087,8 +3309,18 @@ export const createAivisSpeechTts = ({
   return Object.freeze({
     id,
     kind: "tts",
-    capabilities: Object.freeze(["aivisspeech", "voicevox-compatible", "audio-query", "wav"]),
-    async stream({ text, voice = null, onEvent = () => {}, signal = null } = {}) {
+    capabilities: Object.freeze([
+      "aivisspeech",
+      "voicevox-compatible",
+      "audio-query",
+      "wav",
+    ]),
+    async stream({
+      text,
+      voice = null,
+      onEvent = () => {},
+      signal = null,
+    } = {}) {
       const chunks = [];
       let sequence = 0;
       const emit = (event) => {
@@ -3096,7 +3328,7 @@ export const createAivisSpeechTts = ({
           adapterId: id,
           sequence,
           event,
-          extra: { voice: voice || speaker }
+          extra: { voice: voice || speaker },
         });
         sequence += 1;
         chunks.push(nextEvent);
@@ -3107,7 +3339,7 @@ export const createAivisSpeechTts = ({
         emit({
           type: "tts.interrupted",
           text: String(text || ""),
-          reason: signal.reason || "aborted"
+          reason: signal.reason || "aborted",
         });
         return Object.freeze(chunks);
       }
@@ -3117,13 +3349,13 @@ export const createAivisSpeechTts = ({
         method: "POST",
         headers: {
           accept: "application/json",
-          ...headers
+          ...headers,
         },
-        signal
+        signal,
       });
       const audioQuery = await parseJsonResponse({
         response: queryResponse,
-        label: `AivisSpeech audio_query ${id}`
+        label: `AivisSpeech audio_query ${id}`,
       });
       if (outputSamplingRate) {
         audioQuery.outputSamplingRate = outputSamplingRate;
@@ -3132,12 +3364,14 @@ export const createAivisSpeechTts = ({
         emit({
           type: "tts.interrupted",
           text: String(text || ""),
-          reason: signal.reason || "aborted"
+          reason: signal.reason || "aborted",
         });
         return Object.freeze(chunks);
       }
 
-      const synthesisPath = useCancellableSynthesis ? "cancellable_synthesis" : "synthesis";
+      const synthesisPath = useCancellableSynthesis
+        ? "cancellable_synthesis"
+        : "synthesis";
       const synthesisResponse = await fetchImpl(
         `${root}/${synthesisPath}?speaker=${encodeURIComponent(speaker)}`,
         {
@@ -3145,15 +3379,17 @@ export const createAivisSpeechTts = ({
           headers: {
             accept: "audio/wav",
             "content-type": "application/json",
-            ...headers
+            ...headers,
           },
           body: JSON.stringify(audioQuery),
-          signal
-        }
+          signal,
+        },
       );
       if (!synthesisResponse.ok) {
         const responseText = await synthesisResponse.text();
-        throw new Error(`AivisSpeech synthesis ${id} failed: ${synthesisResponse.status} ${responseText}`);
+        throw new Error(
+          `AivisSpeech synthesis ${id} failed: ${synthesisResponse.status} ${responseText}`,
+        );
       }
       const audio = arrayBufferToBase64(await synthesisResponse.arrayBuffer());
       emit({
@@ -3161,16 +3397,16 @@ export const createAivisSpeechTts = ({
         text: String(text || ""),
         audio,
         encoding: "wav",
-        final: false
+        final: false,
       });
       emit({
         type: "tts.completed",
         text: String(text || ""),
         audio: "",
-        final: true
+        final: true,
       });
       return Object.freeze(chunks);
-    }
+    },
   });
 };
 
@@ -3181,7 +3417,7 @@ export const createStackChanRealtimeRelay = ({
   stt = null,
   tts = null,
   queue = null,
-  latencyBudgetMs = 1000
+  latencyBudgetMs = 1000,
 } = {}) => {
   if (!url) {
     throw new Error("createStackChanRealtimeRelay requires url");
@@ -3192,20 +3428,33 @@ export const createStackChanRealtimeRelay = ({
   return Object.freeze({
     id,
     kind: "device-realtime-relay",
-    capabilities: Object.freeze(["stackchan", "websocket", "audio-chunks", "ptt", "speech-playback"]),
+    capabilities: Object.freeze([
+      "stackchan",
+      "websocket",
+      "audio-chunks",
+      "ptt",
+      "speech-playback",
+    ]),
     connect({ onEvent = () => {}, onTurn = () => {} } = {}) {
       const socket = new WebSocketImpl(url);
       let sequence = 0;
       let sttSession = null;
       const emit = (event) => {
-        const nextEvent = createAdapterEvent({ adapterId: id, sequence, event });
+        const nextEvent = createAdapterEvent({
+          adapterId: id,
+          sequence,
+          event,
+        });
         sequence += 1;
         onEvent(nextEvent);
         return nextEvent;
       };
       const send = (payload) => {
         const raw = JSON.stringify(payload);
-        if (socket.readyState === 1 || socket.readyState === WebSocketImpl.OPEN) {
+        if (
+          socket.readyState === 1 ||
+          socket.readyState === WebSocketImpl.OPEN
+        ) {
           socket.send(raw);
         }
         return raw;
@@ -3213,19 +3462,20 @@ export const createStackChanRealtimeRelay = ({
       const openHandler = () => {
         emit({
           type: "stackchan.connected",
-          latencyBudgetMs
+          latencyBudgetMs,
         });
         send({
           type: "hello",
           relayId: id,
-          latencyBudgetMs
+          latencyBudgetMs,
         });
       };
       const messageHandler = async (event) => {
-        const payload = typeof event.data === "string" ? JSON.parse(event.data) : event.data;
+        const payload =
+          typeof event.data === "string" ? JSON.parse(event.data) : event.data;
         emit({
           type: "stackchan.message",
-          messageType: payload.type || "unknown"
+          messageType: payload.type || "unknown",
         });
         if (payload.type === "invoke") {
           await onTurn({
@@ -3235,21 +3485,25 @@ export const createStackChanRealtimeRelay = ({
             actor: {
               platform: "m5stack",
               platformUserId: payload.userId || payload.deviceId || "stackchan",
-              displayName: payload.deviceId || "StackChan"
+              displayName: payload.deviceId || "StackChan",
             },
             metadata: {
               deviceId: payload.deviceId || "stackchan",
               channel: payload.channel || "local",
-              realtimeRelayId: id
-            }
+              realtimeRelayId: id,
+            },
           });
           return;
         }
-        if (payload.type === "audio" || payload.type === "audio.chunk" || payload.type === "ptt.audio") {
+        if (
+          payload.type === "audio" ||
+          payload.type === "audio.chunk" ||
+          payload.type === "ptt.audio"
+        ) {
           if (!stt) {
             emit({
               type: "stackchan.audio.unhandled",
-              reason: "stt_not_configured"
+              reason: "stt_not_configured",
             });
             return;
           }
@@ -3259,29 +3513,34 @@ export const createStackChanRealtimeRelay = ({
               onEvent(event) {
                 emit({
                   ...event,
-                  type: `stackchan.${event.type}`
+                  type: `stackchan.${event.type}`,
                 });
-              }
+              },
             });
           const pushedEvents = await sttSession.push({
-            audio:
-              payload.audio || {
-                encoding: payload.encoding || "pcm_s16le",
-                sampleRate: payload.sampleRate || 16000,
-                dataBase64: payload.dataBase64 || payload.audioBase64 || ""
-              },
-            final: Boolean(payload.final)
+            audio: payload.audio || {
+              encoding: payload.encoding || "pcm_s16le",
+              sampleRate: payload.sampleRate || 16000,
+              dataBase64: payload.dataBase64 || payload.audioBase64 || "",
+            },
+            final: Boolean(payload.final),
           });
           if (payload.final) {
             const finalEvents = await sttSession.end();
             sttSession = null;
             const allEvents = [
-              ...(Array.isArray(pushedEvents) ? pushedEvents : [pushedEvents].filter(Boolean)),
-              ...(Array.isArray(finalEvents) ? finalEvents : [finalEvents].filter(Boolean))
+              ...(Array.isArray(pushedEvents)
+                ? pushedEvents
+                : [pushedEvents].filter(Boolean)),
+              ...(Array.isArray(finalEvents)
+                ? finalEvents
+                : [finalEvents].filter(Boolean)),
             ];
             const transcriptEvent = allEvents
               .reverse()
-              .find((candidate) => candidate.type === "stt.final" && candidate.text);
+              .find(
+                (candidate) => candidate.type === "stt.final" && candidate.text,
+              );
             if (transcriptEvent) {
               await onTurn({
                 source: "m5stack",
@@ -3289,14 +3548,15 @@ export const createStackChanRealtimeRelay = ({
                 text: transcriptEvent.text,
                 actor: {
                   platform: "m5stack",
-                  platformUserId: payload.userId || payload.deviceId || "stackchan",
-                  displayName: payload.deviceId || "StackChan"
+                  platformUserId:
+                    payload.userId || payload.deviceId || "stackchan",
+                  displayName: payload.deviceId || "StackChan",
                 },
                 metadata: {
                   deviceId: payload.deviceId || "stackchan",
                   channel: payload.channel || "local",
-                  realtimeRelayId: id
-                }
+                  realtimeRelayId: id,
+                },
               });
             }
           }
@@ -3328,7 +3588,7 @@ export const createStackChanRealtimeRelay = ({
             itemId: item.id,
             text: String(text || ""),
             audio,
-            voice
+            voice,
           });
           return item;
         },
@@ -3344,9 +3604,9 @@ export const createStackChanRealtimeRelay = ({
                 text: event.text || text,
                 audio: {
                   encoding: event.encoding || "wav",
-                  dataBase64: event.audio
+                  dataBase64: event.audio,
                 },
-                voice
+                voice,
               });
             });
           return Object.freeze(events);
@@ -3356,9 +3616,9 @@ export const createStackChanRealtimeRelay = ({
             socket.close();
           }
           emit({ type: "stackchan.closed" });
-        }
+        },
       });
-    }
+    },
   });
 };
 
@@ -3410,14 +3670,19 @@ const normalizeStackChanAudioPayload = (payload) =>
       payload.metadata?.audio_format?.bits_per_sample ||
       payload.metadata?.pcm_format?.bits_per_sample ||
       16,
-    dataBase64: payload.dataBase64 || payload.audioBase64 || payload.audio_data || ""
+    dataBase64:
+      payload.dataBase64 || payload.audioBase64 || payload.audio_data || "",
   };
 
 const analyzePcm16Audio = (audio = {}, { vadThresholdDb = -38 } = {}) => {
   const encoding = String(audio.encoding || "pcm16").toLowerCase();
   const pcm =
     encoding === "wav"
-      ? Buffer.from(parsePcm16Wav(Buffer.from(audio.dataBase64 || "", "base64")).dataBase64, "base64")
+      ? Buffer.from(
+          parsePcm16Wav(Buffer.from(audio.dataBase64 || "", "base64"))
+            .dataBase64,
+          "base64",
+        )
       : Buffer.from(audio.dataBase64 || "", "base64");
   const sampleCount = Math.floor(pcm.length / 2);
   if (sampleCount === 0) {
@@ -3425,7 +3690,7 @@ const analyzePcm16Audio = (audio = {}, { vadThresholdDb = -38 } = {}) => {
       bytes: pcm.length,
       sampleCount,
       rmsDb: -Infinity,
-      isSpeech: false
+      isSpeech: false,
     });
   }
   let sumSquares = 0;
@@ -3439,7 +3704,7 @@ const analyzePcm16Audio = (audio = {}, { vadThresholdDb = -38 } = {}) => {
     bytes: pcm.length,
     sampleCount,
     rmsDb,
-    isSpeech: rmsDb >= vadThresholdDb
+    isSpeech: rmsDb >= vadThresholdDb,
   });
 };
 
@@ -3456,7 +3721,7 @@ const toAiAvatarAudioFormat = (audio = {}) =>
         : audio.encoding || "pcm16",
     sample_rate: audio.sampleRate || 24000,
     channels: audio.channels || 1,
-    bits_per_sample: audio.bitsPerSample || 16
+    bits_per_sample: audio.bitsPerSample || 16,
   });
 
 export const createStackChanRealtimeSessionHandler = ({
@@ -3487,10 +3752,12 @@ export const createStackChanRealtimeSessionHandler = ({
   voicePipeline = null,
   // Streaming mode frame size: MUST match the VAD's frameSamples — the
   // pipeline's vad.push rejects frames of any other length.
-  pipelineFrameSamples = 512
+  pipelineFrameSamples = 512,
 } = {}) => {
   if (!harness || typeof harness.receive !== "function") {
-    throw new Error("createStackChanRealtimeSessionHandler requires harness.receive");
+    throw new Error(
+      "createStackChanRealtimeSessionHandler requires harness.receive",
+    );
   }
   if (!stt || typeof stt.start !== "function") {
     throw new Error("createStackChanRealtimeSessionHandler requires stt");
@@ -3507,9 +3774,18 @@ export const createStackChanRealtimeSessionHandler = ({
       "aiavatarstackchan-style",
       "websocket-session",
       "audio-chunks",
-      "speech-playback"
+      "speech-playback",
     ]),
-    handleConnection(socket, { deviceId = "stackchan", userId = deviceId, channel = "local", token = null, onEvent = () => {} } = {}) {
+    handleConnection(
+      socket,
+      {
+        deviceId = "stackchan",
+        userId = deviceId,
+        channel = "local",
+        token = null,
+        onEvent = () => {},
+      } = {},
+    ) {
       let sequence = 0;
       let sttSession = null;
       let sttSessionStartedAt = 0;
@@ -3531,16 +3807,19 @@ export const createStackChanRealtimeSessionHandler = ({
         typeof createQueue === "function"
           ? createQueue({ deviceId, userId, channel })
           : null;
-      const providerOwnsVad = ["provider", "stt", "aiavatar", "aiavatar-silero-openai"].includes(
-        String(vadMode || "node").toLowerCase()
-      );
+      const providerOwnsVad = [
+        "provider",
+        "stt",
+        "aiavatar",
+        "aiavatar-silero-openai",
+      ].includes(String(vadMode || "node").toLowerCase());
 
       const emit = (event) => {
         const nextEvent = createAdapterEvent({
           adapterId: id,
           sequence,
           event,
-          extra: { deviceId, channel }
+          extra: { deviceId, channel },
         });
         sequence += 1;
         onEvent(nextEvent);
@@ -3549,7 +3828,9 @@ export const createStackChanRealtimeSessionHandler = ({
 
       const send = (payload) => {
         const wirePayload =
-          protocol === "aiavatarstackchan" ? toAiAvatarStackChanServerMessage(payload) : payload;
+          protocol === "aiavatarstackchan"
+            ? toAiAvatarStackChanServerMessage(payload)
+            : payload;
         const message = JSON.stringify({
           ...wirePayload,
           ...(protocol === "aiavatarstackchan"
@@ -3558,8 +3839,8 @@ export const createStackChanRealtimeSessionHandler = ({
                 sessionId: id,
                 deviceId,
                 sequence,
-                timestamp: nowIso()
-              })
+                timestamp: nowIso(),
+              }),
         });
         if (typeof socket.send === "function") {
           socket.send(message);
@@ -3571,18 +3852,18 @@ export const createStackChanRealtimeSessionHandler = ({
         if (payload.type === "ready") {
           return {
             type: "connected",
-            session_id: aiAvatarSessionId
+            session_id: aiAvatarSessionId,
           };
         }
         if (payload.type === "stt.event") {
           return payload.event?.final
             ? {
                 type: "accepted",
-                session_id: aiAvatarSessionId
+                session_id: aiAvatarSessionId,
               }
             : {
                 type: "voiced",
-                session_id: aiAvatarSessionId
+                session_id: aiAvatarSessionId,
               };
         }
         if (payload.type === "stt.empty") {
@@ -3593,8 +3874,8 @@ export const createStackChanRealtimeSessionHandler = ({
             metadata: {
               text: "",
               voice_text: "",
-              reason: payload.reason || "empty"
-            }
+              reason: payload.reason || "empty",
+            },
           };
         }
         if (payload.type === "response.start") {
@@ -3602,8 +3883,8 @@ export const createStackChanRealtimeSessionHandler = ({
             type: "start",
             session_id: aiAvatarSessionId,
             metadata: {
-              request_text: payload.text || ""
-            }
+              request_text: payload.text || "",
+            },
           };
         }
         if (payload.type === "speech.audio") {
@@ -3614,12 +3895,12 @@ export const createStackChanRealtimeSessionHandler = ({
             audio_data: audio.dataBase64 || "",
             metadata: {
               audio_format: toAiAvatarAudioFormat(audio),
-              text: payload.text || ""
+              text: payload.text || "",
             },
             avatar_control_request: {
               face_name: payload.faceName || "neutral",
-              face_duration: payload.faceDurationSec || 2
-            }
+              face_duration: payload.faceDurationSec || 2,
+            },
           };
         }
         if (payload.type === "response.final") {
@@ -3629,14 +3910,14 @@ export const createStackChanRealtimeSessionHandler = ({
             text: payload.text || "",
             metadata: {
               text: payload.text || "",
-              voice_text: payload.voiceText || payload.text || ""
-            }
+              voice_text: payload.voiceText || payload.text || "",
+            },
           };
         }
         if (payload.type === "speech.interrupted") {
           return {
             type: "stop",
-            session_id: aiAvatarSessionId
+            session_id: aiAvatarSessionId,
           };
         }
         if (payload.type === "error") {
@@ -3644,12 +3925,12 @@ export const createStackChanRealtimeSessionHandler = ({
             type: "error",
             session_id: aiAvatarSessionId,
             code: payload.code,
-            message: payload.message || payload.code || "error"
+            message: payload.message || payload.code || "error",
           };
         }
         return {
           ...payload,
-          session_id: aiAvatarSessionId
+          session_id: aiAvatarSessionId,
         };
       };
 
@@ -3657,7 +3938,7 @@ export const createStackChanRealtimeSessionHandler = ({
         Object.freeze({
           platform: "m5stack",
           platformUserId: activeUserId,
-          displayName: deviceId
+          displayName: deviceId,
         });
 
       const receiveTurn = async ({ modality, text, metadata = {} }) =>
@@ -3670,9 +3951,10 @@ export const createStackChanRealtimeSessionHandler = ({
             deviceId,
             channel: activeChannel,
             realtimeSessionId: id,
-            aiAvatarSessionId: protocol === "aiavatarstackchan" ? aiAvatarSessionId : null,
-            ...metadata
-          }
+            aiAvatarSessionId:
+              protocol === "aiavatarstackchan" ? aiAvatarSessionId : null,
+            ...metadata,
+          },
         });
 
       // Shared wire delivery for one normalized speech-audio payload:
@@ -3681,7 +3963,7 @@ export const createStackChanRealtimeSessionHandler = ({
       // the wire shape stays byte-compatible between the two.
       const deliverSpeechAudio = ({ audio, text, role = "answer" }) => {
         const audioChunks = splitStackChanSpeechAudio(audio, {
-          maxBytes: speechChunkBytes
+          maxBytes: speechChunkBytes,
         });
         const item = queue?.enqueue
           ? queue.enqueue({
@@ -3691,14 +3973,14 @@ export const createStackChanRealtimeSessionHandler = ({
                 dataBase64: audio.dataBase64,
                 sampleRate: audio.sampleRate,
                 channels: audio.channels,
-                bitsPerSample: audio.bitsPerSample
+                bitsPerSample: audio.bitsPerSample,
               },
               voice,
-              source: id
+              source: id,
             })
           : {
               id: `${id}:speech:${sequence}`,
-              text
+              text,
             };
         audioChunks.forEach((audioChunk, index) => {
           send({
@@ -3713,9 +3995,9 @@ export const createStackChanRealtimeSessionHandler = ({
               dataBase64: audioChunk.dataBase64,
               sampleRate: audioChunk.sampleRate,
               channels: audioChunk.channels,
-              bitsPerSample: audioChunk.bitsPerSample
+              bitsPerSample: audioChunk.bitsPerSample,
             },
-            voice
+            voice,
           });
         });
         return audioChunks.length;
@@ -3731,12 +4013,12 @@ export const createStackChanRealtimeSessionHandler = ({
         emit({
           type: "stackchan.speech.started",
           role,
-          textLength: responseText.length
+          textLength: responseText.length,
         });
         send({
           type: "response.start",
           role,
-          text: responseText
+          text: responseText,
         });
         let speechChunkCount = 0;
         speechInFlight = true;
@@ -3754,13 +4036,13 @@ export const createStackChanRealtimeSessionHandler = ({
                 emit({
                   type: "stackchan.tts.first_audio",
                   durationMs: ttsFirstAudioAt - ttsStartedAt,
-                  textLength: responseText.length
+                  textLength: responseText.length,
                 });
               }
               const sentChunks = deliverSpeechAudio({
                 audio,
                 text: event.text || responseText,
-                role
+                role,
               });
               speechChunkCount += sentChunks;
               emit({
@@ -3768,9 +4050,9 @@ export const createStackChanRealtimeSessionHandler = ({
                 role,
                 chunks: sentChunks,
                 totalChunks: speechChunkCount,
-                bytes: audio.dataBase64.length
+                bytes: audio.dataBase64.length,
               });
-            }
+            },
           });
           const completed = queue?.snapshot?.().current;
           if (completed?.id && queue?.complete) {
@@ -3780,7 +4062,7 @@ export const createStackChanRealtimeSessionHandler = ({
             send({
               type: "response.final",
               role,
-              text: responseText
+              text: responseText,
             });
           }
           emit({
@@ -3788,7 +4070,9 @@ export const createStackChanRealtimeSessionHandler = ({
             role,
             chunks: speechChunkCount,
             ttsDurationMs: Date.now() - ttsStartedAt,
-            timeToFirstAudioMs: ttsFirstAudioAt ? ttsFirstAudioAt - ttsStartedAt : null
+            timeToFirstAudioMs: ttsFirstAudioAt
+              ? ttsFirstAudioAt - ttsStartedAt
+              : null,
           });
           return Object.freeze(speechEvents);
         } finally {
@@ -3801,7 +4085,7 @@ export const createStackChanRealtimeSessionHandler = ({
         if (!text) {
           send({
             type: "response.final",
-            text: ""
+            text: "",
           });
           return Object.freeze([]);
         }
@@ -3817,7 +4101,9 @@ export const createStackChanRealtimeSessionHandler = ({
       };
 
       const normalizeSttEvents = (events) =>
-        Object.freeze(Array.isArray(events) ? events : [events].filter(Boolean));
+        Object.freeze(
+          Array.isArray(events) ? events : [events].filter(Boolean),
+        );
 
       const findFinalTranscriptEvent = (events, { requireText = true } = {}) =>
         [...normalizeSttEvents(events)]
@@ -3825,20 +4111,24 @@ export const createStackChanRealtimeSessionHandler = ({
           .find(
             (candidate) =>
               candidate.type === "stt.final" &&
-              (!requireText || String(candidate.text || "").trim())
+              (!requireText || String(candidate.text || "").trim()),
           );
 
-      const handleEmptyTranscript = ({ reason, sttDurationMs = 0, sinceSpeechStartMs = null } = {}) => {
+      const handleEmptyTranscript = ({
+        reason,
+        sttDurationMs = 0,
+        sinceSpeechStartMs = null,
+      } = {}) => {
         emit({
           type: "stackchan.latency.stt_finalized",
           reason,
           hasText: false,
           sttDurationMs,
-          sinceSpeechStartMs
+          sinceSpeechStartMs,
         });
         send({
           type: "stt.empty",
-          reason
+          reason,
         });
         return Object.freeze([]);
       };
@@ -3848,20 +4138,22 @@ export const createStackChanRealtimeSessionHandler = ({
         payload,
         reason = "final",
         sttDurationMs = 0,
-        completedAt = Date.now()
+        completedAt = Date.now(),
       }) => {
         emit({
           type: "stackchan.latency.stt_finalized",
           reason,
           hasText: true,
           sttDurationMs,
-          sinceSpeechStartMs: latencyTurnStartedAt ? completedAt - latencyTurnStartedAt : null,
-          transcriptLength: transcriptEvent.text.length
+          sinceSpeechStartMs: latencyTurnStartedAt
+            ? completedAt - latencyTurnStartedAt
+            : null,
+          transcriptLength: transcriptEvent.text.length,
         });
         const brainStartedAt = Date.now();
         emit({
           type: "stackchan.latency.brain_started",
-          transcriptLength: transcriptEvent.text.length
+          transcriptLength: transcriptEvent.text.length,
         });
         const ackText =
           typeof immediateAckText === "function"
@@ -3869,18 +4161,18 @@ export const createStackChanRealtimeSessionHandler = ({
                 text: transcriptEvent.text,
                 reason,
                 deviceId,
-                channel: activeChannel
+                channel: activeChannel,
               })
             : immediateAckText;
         const ackPromise = normalizeSpeechText(ackText)
           ? speak({
               text: ackText,
               role: "ack",
-              sendFinal: false
+              sendFinal: false,
             }).catch((error) => {
               emit({
                 type: "stackchan.ack.error",
-                message: error.message
+                message: error.message,
               });
               return Object.freeze([]);
             })
@@ -3890,14 +4182,15 @@ export const createStackChanRealtimeSessionHandler = ({
           text: transcriptEvent.text,
           metadata: {
             audio: normalizeStackChanAudioPayload(payload),
-            sttFinalizeReason: reason
-          }
+            sttFinalizeReason: reason,
+          },
         });
         emit({
           type: "stackchan.latency.brain_completed",
           durationMs: Date.now() - brainStartedAt,
           resultKind: result?.kind || null,
-          textLength: String(result?.text || result?.output?.summary || "").length
+          textLength: String(result?.text || result?.output?.summary || "")
+            .length,
         });
         if (ackPromise) {
           await ackPromise;
@@ -3905,7 +4198,11 @@ export const createStackChanRealtimeSessionHandler = ({
         return handleTurnResult(result);
       };
 
-      const finalizeAudioTurn = async ({ pushedEvents = [], payload, reason = "final" }) => {
+      const finalizeAudioTurn = async ({
+        pushedEvents = [],
+        payload,
+        reason = "final",
+      }) => {
         if (!sttSession) {
           return Object.freeze([]);
         }
@@ -3915,13 +4212,15 @@ export const createStackChanRealtimeSessionHandler = ({
         resetAudioTurnState();
         const transcriptEvent = findFinalTranscriptEvent([
           ...normalizeSttEvents(pushedEvents),
-          ...normalizeSttEvents(finalEvents)
+          ...normalizeSttEvents(finalEvents),
         ]);
         if (!transcriptEvent) {
           return handleEmptyTranscript({
             reason,
             sttDurationMs: sttFinalizeCompletedAt - sttFinalizeStartedAt,
-            sinceSpeechStartMs: latencyTurnStartedAt ? sttFinalizeCompletedAt - latencyTurnStartedAt : null
+            sinceSpeechStartMs: latencyTurnStartedAt
+              ? sttFinalizeCompletedAt - latencyTurnStartedAt
+              : null,
           });
         }
         return handleTranscriptTurn({
@@ -3929,7 +4228,7 @@ export const createStackChanRealtimeSessionHandler = ({
           payload,
           reason,
           sttDurationMs: sttFinalizeCompletedAt - sttFinalizeStartedAt,
-          completedAt: sttFinalizeCompletedAt
+          completedAt: sttFinalizeCompletedAt,
         });
       };
 
@@ -3937,26 +4236,38 @@ export const createStackChanRealtimeSessionHandler = ({
         const audio = normalizeStackChanAudioPayload(payload);
         const now = Date.now();
         const vad = analyzePcm16Audio(audio, { vadThresholdDb });
-        const audioLevelDebugEvery = Number(process.env.IROHARNESS_STACKCHAN_AUDIO_LEVEL_DEBUG_EVERY || "0");
-        if (audioLevelDebugEvery > 0 && audioLevelDebugCounter % audioLevelDebugEvery === 0) {
+        const audioLevelDebugEvery = Number(
+          process.env.IROHARNESS_STACKCHAN_AUDIO_LEVEL_DEBUG_EVERY || "0",
+        );
+        if (
+          audioLevelDebugEvery > 0 &&
+          audioLevelDebugCounter % audioLevelDebugEvery === 0
+        ) {
           emit({
             type: "stackchan.audio_level",
             messageType: payload.type || "audio",
             bytes: vad.bytes,
             rmsDb: vad.rmsDb,
             isSpeech: vad.isSpeech,
-            thresholdDb: vadThresholdDb
+            thresholdDb: vadThresholdDb,
           });
         }
         audioLevelDebugCounter += 1;
         if (speechInFlight && !payload.final) {
           return Object.freeze([]);
         }
-        if (!providerOwnsVad && vad.bytes < minAudioBytes && !payload.final && !sttSession) {
+        if (
+          !providerOwnsVad &&
+          vad.bytes < minAudioBytes &&
+          !payload.final &&
+          !sttSession
+        ) {
           return Object.freeze([]);
         }
         const deviceFinal = Boolean(payload.final);
-        const shouldStart = providerOwnsVad ? deviceFinal || vad.bytes > 0 : deviceFinal || vad.isSpeech;
+        const shouldStart = providerOwnsVad
+          ? deviceFinal || vad.bytes > 0
+          : deviceFinal || vad.isSpeech;
         if (!sttSession && !shouldStart) {
           return Object.freeze([]);
         }
@@ -3966,13 +4277,13 @@ export const createStackChanRealtimeSessionHandler = ({
             onEvent(event) {
               emit({
                 ...event,
-                type: `stackchan.${event.type}`
+                type: `stackchan.${event.type}`,
               });
               send({
                 type: "stt.event",
-                event
+                event,
               });
-            }
+            },
           });
         if (!sttSessionStartedAt) {
           sttSessionStartedAt = now;
@@ -3987,7 +4298,7 @@ export const createStackChanRealtimeSessionHandler = ({
             latencyTurnStartedAt = now;
             emit({
               type: "stackchan.stt.speech_started",
-              rmsDb: vad.rmsDb
+              rmsDb: vad.rmsDb,
             });
           }
           vadLastSpeechAt = now;
@@ -3996,10 +4307,12 @@ export const createStackChanRealtimeSessionHandler = ({
         sttSessionBytes += dataBytes;
         const pushedEvents = await sttSession.push({
           audio,
-          final: deviceFinal
+          final: deviceFinal,
         });
         if (providerOwnsVad) {
-          const transcriptEvent = findFinalTranscriptEvent(pushedEvents, { requireText: false });
+          const transcriptEvent = findFinalTranscriptEvent(pushedEvents, {
+            requireText: false,
+          });
           if (transcriptEvent) {
             const completedAt = Date.now();
             const hasText = String(transcriptEvent.text || "").trim();
@@ -4008,7 +4321,9 @@ export const createStackChanRealtimeSessionHandler = ({
               return handleEmptyTranscript({
                 reason: "provider-vad",
                 sttDurationMs: completedAt - now,
-                sinceSpeechStartMs: latencyTurnStartedAt ? completedAt - latencyTurnStartedAt : null
+                sinceSpeechStartMs: latencyTurnStartedAt
+                  ? completedAt - latencyTurnStartedAt
+                  : null,
               });
             }
             return handleTranscriptTurn({
@@ -4016,14 +4331,16 @@ export const createStackChanRealtimeSessionHandler = ({
               payload,
               reason: "provider-vad",
               sttDurationMs: completedAt - now,
-              completedAt
+              completedAt,
             });
           }
           if (!deviceFinal) {
             return Object.freeze(pushedEvents);
           }
         }
-        const elapsedSpeechMs = vadSpeechStartedAt ? now - vadSpeechStartedAt : 0;
+        const elapsedSpeechMs = vadSpeechStartedAt
+          ? now - vadSpeechStartedAt
+          : 0;
         const silenceMs = vadLastSpeechAt ? now - vadLastSpeechAt : 0;
         const shouldVadFinal =
           !deviceFinal &&
@@ -4042,7 +4359,12 @@ export const createStackChanRealtimeSessionHandler = ({
           sttAutoFinalMs > 0 &&
           sttSessionBytes >= sttAutoFinalMinBytes &&
           elapsedSpeechMs >= sttAutoFinalMs;
-        if (!deviceFinal && !shouldVadFinal && !shouldMaxFinal && !shouldAutoFinal) {
+        if (
+          !deviceFinal &&
+          !shouldVadFinal &&
+          !shouldMaxFinal &&
+          !shouldAutoFinal
+        ) {
           return Object.freeze(pushedEvents);
         }
         return finalizeAudioTurn({
@@ -4054,7 +4376,7 @@ export const createStackChanRealtimeSessionHandler = ({
               ? "vad-silence"
               : shouldMaxFinal
                 ? "vad-max-duration"
-                : "auto-final"
+                : "auto-final",
         });
       };
 
@@ -4072,8 +4394,9 @@ export const createStackChanRealtimeSessionHandler = ({
         const pcm =
           encoding === "wav"
             ? Buffer.from(
-                parsePcm16Wav(Buffer.from(audio.dataBase64 || "", "base64")).dataBase64,
-                "base64"
+                parsePcm16Wav(Buffer.from(audio.dataBase64 || "", "base64"))
+                  .dataBase64,
+                "base64",
               )
             : Buffer.from(audio.dataBase64 || "", "base64");
         const sampleCount = Math.floor(pcm.length / 2);
@@ -4083,13 +4406,17 @@ export const createStackChanRealtimeSessionHandler = ({
         const combined = new Int16Array(pipelineResidual.length + sampleCount);
         combined.set(pipelineResidual, 0);
         for (let index = 0; index < sampleCount; index += 1) {
-          combined[pipelineResidual.length + index] = pcm.readInt16LE(index * 2);
+          combined[pipelineResidual.length + index] = pcm.readInt16LE(
+            index * 2,
+          );
         }
         let offset = 0;
         // Messages are handled serially per connection (messageChain), so
         // awaiting inside the loop cannot interleave with another decode.
         while (combined.length - offset >= pipelineFrameSamples) {
-          await voicePipeline.pushAudio(combined.subarray(offset, offset + pipelineFrameSamples));
+          await voicePipeline.pushAudio(
+            combined.subarray(offset, offset + pipelineFrameSamples),
+          );
           offset += pipelineFrameSamples;
         }
         pipelineResidual = combined.slice(offset);
@@ -4112,7 +4439,7 @@ export const createStackChanRealtimeSessionHandler = ({
             audio: event.audio?.dataBase64,
             sampleRate: event.audio?.sampleRate,
             channels: event.audio?.channels,
-            bitsPerSample: event.audio?.bitsPerSample
+            bitsPerSample: event.audio?.bitsPerSample,
           });
           if (!pipelineTurnStarted) {
             pipelineTurnStarted = true;
@@ -4122,13 +4449,13 @@ export const createStackChanRealtimeSessionHandler = ({
             send({
               type: "response.start",
               role,
-              text: event.text || ""
+              text: event.text || "",
             });
           }
           const sentChunks = deliverSpeechAudio({
             audio,
             text: event.text || "",
-            role
+            role,
           });
           const completed = queue?.snapshot?.().current;
           if (completed?.id && queue?.complete) {
@@ -4139,7 +4466,7 @@ export const createStackChanRealtimeSessionHandler = ({
             role,
             chunks: sentChunks,
             totalChunks: sentChunks,
-            bytes: audio.dataBase64.length
+            bytes: audio.dataBase64.length,
           });
           return null;
         }
@@ -4149,14 +4476,14 @@ export const createStackChanRealtimeSessionHandler = ({
             type: "stackchan.latency.pipeline_turn",
             firstAudioTotalMs: event.metrics?.first_audio_total_ms ?? null,
             totalMs: event.metrics?.total_ms ?? null,
-            textLength: String(event.text || "").length
+            textLength: String(event.text || "").length,
           });
           send({
             type: "response.final",
             role: "answer",
             text: event.text || "",
             // Additive field — legacy firmware ignores it, hosts can log it.
-            metrics: event.metrics ?? null
+            metrics: event.metrics ?? null,
           });
           return null;
         }
@@ -4178,7 +4505,7 @@ export const createStackChanRealtimeSessionHandler = ({
           if (event.reason !== "device-interrupt") {
             send({
               type: "speech.interrupted",
-              reason: event.reason || "interrupted"
+              reason: event.reason || "interrupted",
             });
           }
           return null;
@@ -4190,12 +4517,12 @@ export const createStackChanRealtimeSessionHandler = ({
           emit({
             type: "stackchan.error",
             stage: event.stage || null,
-            message: event.message
+            message: event.message,
           });
           send({
             type: "error",
             stage: event.stage || null,
-            message: event.message || "voice pipeline error"
+            message: event.message || "voice pipeline error",
           });
           return null;
         }
@@ -4211,14 +4538,14 @@ export const createStackChanRealtimeSessionHandler = ({
         }
         emit({
           type: "stackchan.message",
-          messageType: payload.type || "unknown"
+          messageType: payload.type || "unknown",
         });
         if (payload.type === "start") {
           send({
             type: "ready",
             latencyBudgetMs,
             acceptedAudio: ["pcm16", "pcm_s16le", "wav"],
-            acceptedInput: ["data", "invoke", "stop"]
+            acceptedInput: ["data", "invoke", "stop"],
           });
           return null;
         }
@@ -4227,7 +4554,13 @@ export const createStackChanRealtimeSessionHandler = ({
             type: "ready",
             latencyBudgetMs,
             acceptedAudio: ["pcm_s16le", "wav"],
-            acceptedInput: ["audio.chunk", "ptt.audio", "invoke", "vision", "interrupt"]
+            acceptedInput: [
+              "audio.chunk",
+              "ptt.audio",
+              "invoke",
+              "vision",
+              "interrupt",
+            ],
           });
           return null;
         }
@@ -4238,10 +4571,14 @@ export const createStackChanRealtimeSessionHandler = ({
           return handleAudio({
             ...payload,
             type: "audio.chunk",
-            final: Boolean(payload.final)
+            final: Boolean(payload.final),
           });
         }
-        if (payload.type === "audio.chunk" || payload.type === "audio" || payload.type === "ptt.audio") {
+        if (
+          payload.type === "audio.chunk" ||
+          payload.type === "audio" ||
+          payload.type === "ptt.audio"
+        ) {
           // ptt.audio carries a complete utterance with final:true — keep it
           // on the legacy one-shot path even in streaming mode.
           if (voicePipeline && payload.type !== "ptt.audio") {
@@ -4254,23 +4591,26 @@ export const createStackChanRealtimeSessionHandler = ({
             return handleAudio({
               ...payload,
               type: "ptt.audio",
-              final: true
+              final: true,
             });
           }
           if (protocol === "aiavatarstackchan") {
             send({
-              type: "accepted"
+              type: "accepted",
             });
           }
           const imageDataUrl =
-            payload.imageDataUrl || payload.files?.find?.((file) => file?.url)?.url || null;
+            payload.imageDataUrl ||
+            payload.files?.find?.((file) => file?.url)?.url ||
+            null;
           const result = await receiveTurn({
-            modality: payload.type === "vision" || imageDataUrl ? "vision" : "text",
+            modality:
+              payload.type === "vision" || imageDataUrl ? "vision" : "text",
             text: payload.text || "",
             metadata: {
               imageDataUrl,
-              invokeType: payload.type
-            }
+              invokeType: payload.type,
+            },
           });
           return handleTurnResult(result);
         }
@@ -4283,13 +4623,13 @@ export const createStackChanRealtimeSessionHandler = ({
           queue?.interrupt?.("device-interrupt", { clearPending: true });
           send({
             type: "speech.interrupted",
-            reason: "device-interrupt"
+            reason: "device-interrupt",
           });
           return null;
         }
         send({
           type: "error",
-          message: `Unsupported StackChan realtime message: ${payload.type || "(missing)"}`
+          message: `Unsupported StackChan realtime message: ${payload.type || "(missing)"}`,
         });
         return null;
       };
@@ -4297,7 +4637,7 @@ export const createStackChanRealtimeSessionHandler = ({
       if (deviceToken && token !== deviceToken) {
         send({
           type: "error",
-          code: "invalid_device_token"
+          code: "invalid_device_token",
         });
         if (typeof socket.close === "function") {
           socket.close();
@@ -4305,7 +4645,7 @@ export const createStackChanRealtimeSessionHandler = ({
         return Object.freeze({
           accepted: false,
           send,
-          close: () => {}
+          close: () => {},
         });
       }
 
@@ -4315,11 +4655,11 @@ export const createStackChanRealtimeSessionHandler = ({
           .catch((error) => {
             emit({
               type: "stackchan.error",
-              message: error.message
+              message: error.message,
             });
             send({
               type: "error",
-              message: error.message
+              message: error.message,
             });
           });
       });
@@ -4336,18 +4676,24 @@ export const createStackChanRealtimeSessionHandler = ({
         vadLastSpeechAt = 0;
         queue?.clear?.("socket-closed");
         emit({
-          type: "stackchan.closed"
+          type: "stackchan.closed",
         });
       });
       send({
         type: "ready",
         latencyBudgetMs,
         acceptedAudio: ["pcm_s16le", "wav"],
-        acceptedInput: ["audio.chunk", "ptt.audio", "invoke", "vision", "interrupt"]
+        acceptedInput: [
+          "audio.chunk",
+          "ptt.audio",
+          "invoke",
+          "vision",
+          "interrupt",
+        ],
       });
       emit({
         type: "stackchan.accepted",
-        latencyBudgetMs
+        latencyBudgetMs,
       });
       return Object.freeze({
         accepted: true,
@@ -4360,9 +4706,9 @@ export const createStackChanRealtimeSessionHandler = ({
           if (typeof socket.close === "function") {
             socket.close();
           }
-        }
+        },
       });
-    }
+    },
   });
 };
 
@@ -4373,7 +4719,7 @@ export const createJsonlProcessMicroHarness = ({
   cwd,
   env = {},
   capabilities = [],
-  timeoutMs = 120_000
+  timeoutMs = 120_000,
 }) => {
   if (!id || !command) {
     throw new Error("createJsonlProcessMicroHarness requires id and command");
@@ -4388,9 +4734,9 @@ export const createJsonlProcessMicroHarness = ({
           cwd,
           env: {
             ...process.env,
-            ...env
+            ...env,
           },
-          stdio: ["pipe", "pipe", "pipe"]
+          stdio: ["pipe", "pipe", "pipe"],
         });
         let stdout = "";
         let stderr = "";
@@ -4411,7 +4757,7 @@ export const createJsonlProcessMicroHarness = ({
             status: "failed",
             summary: `${id} timed out after ${timeoutMs}ms`,
             artifacts: [],
-            raw: { stdout, stderr }
+            raw: { stdout, stderr },
           });
         }, timeoutMs);
 
@@ -4426,7 +4772,7 @@ export const createJsonlProcessMicroHarness = ({
             status: "failed",
             summary: `${id} process error: ${error.message}`,
             artifacts: [],
-            raw: { stdout, stderr }
+            raw: { stdout, stderr },
           });
         });
         child.on("close", (code) => {
@@ -4442,14 +4788,15 @@ export const createJsonlProcessMicroHarness = ({
           }
           finish({
             status: code === 0 ? "completed" : "failed",
-            summary: stdout.trim() || stderr.trim() || `${id} exited with ${code}`,
+            summary:
+              stdout.trim() || stderr.trim() || `${id} exited with ${code}`,
             artifacts: [],
-            raw: { stdout, stderr, code }
+            raw: { stdout, stderr, code },
           });
         });
         child.stdin.end(`${JSON.stringify({ task, context })}\n`);
       });
-    }
+    },
   });
 };
 
@@ -4465,16 +4812,20 @@ export const createJsonlRealtimeCoreProcess = ({
   timestamp = () => new Date().toISOString(),
   onMessage = () => {},
   onStderr = () => {},
-  onExit = () => {}
+  onExit = () => {},
 } = {}) => {
   if (!command) {
     throw new Error("createJsonlRealtimeCoreProcess requires command");
   }
   if (!Number.isInteger(eventCapacity) || eventCapacity < 1) {
-    throw new Error("createJsonlRealtimeCoreProcess requires a positive eventCapacity");
+    throw new Error(
+      "createJsonlRealtimeCoreProcess requires a positive eventCapacity",
+    );
   }
   if (!Number.isInteger(messageCapacity) || messageCapacity < 1) {
-    throw new Error("createJsonlRealtimeCoreProcess requires a positive messageCapacity");
+    throw new Error(
+      "createJsonlRealtimeCoreProcess requires a positive messageCapacity",
+    );
   }
 
   let processRef = null;
@@ -4500,9 +4851,9 @@ export const createJsonlRealtimeCoreProcess = ({
       cwd,
       env: {
         ...process.env,
-        ...env
+        ...env,
       },
-      stdio: ["pipe", "pipe", "pipe"]
+      stdio: ["pipe", "pipe", "pipe"],
     });
     const lines = createInterface({ input: processRef.stdout });
     lines.on("line", (line) => {
@@ -4512,7 +4863,7 @@ export const createJsonlRealtimeCoreProcess = ({
         recordMessage({
           type: "parse_error",
           message: error.message,
-          line
+          line,
         });
       }
     });
@@ -4520,7 +4871,7 @@ export const createJsonlRealtimeCoreProcess = ({
     processRef.on("error", (error) => {
       recordMessage({
         type: "process_error",
-        message: error.message
+        message: error.message,
       });
     });
     processRef.on("exit", (code, signal) => {
@@ -4538,8 +4889,8 @@ export const createJsonlRealtimeCoreProcess = ({
         coreId: id,
         sequence,
         timestamp: timestamp(),
-        ...payload
-      })}\n`
+        ...payload,
+      })}\n`,
     );
     sequence += 1;
   };
@@ -4548,7 +4899,7 @@ export const createJsonlRealtimeCoreProcess = ({
     const nextEvent = Object.freeze({
       ...event,
       realtimeCoreId: id,
-      timestamp: event?.timestamp || timestamp()
+      timestamp: event?.timestamp || timestamp(),
     });
     events = Object.freeze([...events, nextEvent].slice(-eventCapacity));
     send("publish", { event: nextEvent });
@@ -4558,7 +4909,7 @@ export const createJsonlRealtimeCoreProcess = ({
   const mark = (name, at = clock()) => {
     marks = Object.freeze({
       ...marks,
-      [name]: at
+      [name]: at,
     });
     const nextMark = Object.freeze({ name, at });
     send("mark", { mark: nextMark });
@@ -4569,7 +4920,9 @@ export const createJsonlRealtimeCoreProcess = ({
     const startAt = marks[startMark];
     const endAt = marks[endMark];
     if (typeof startAt !== "number" || typeof endAt !== "number") {
-      throw new Error(`realtime core measure ${name} requires marks: ${startMark}, ${endMark}`);
+      throw new Error(
+        `realtime core measure ${name} requires marks: ${startMark}, ${endMark}`,
+      );
     }
     const nextMeasure = Object.freeze({
       name,
@@ -4577,7 +4930,7 @@ export const createJsonlRealtimeCoreProcess = ({
       endMark,
       start: startAt,
       end: endAt,
-      durationMs: endAt - startAt
+      durationMs: endAt - startAt,
     });
     measures = Object.freeze([...measures, nextMeasure]);
     send("measure", { measure: nextMeasure });
@@ -4609,7 +4962,7 @@ export const createJsonlRealtimeCoreProcess = ({
     }
     send("shouldInterrupt", {
       event,
-      result: shouldInterruptNow
+      result: shouldInterruptNow,
     });
     return shouldInterruptNow;
   };
@@ -4622,18 +4975,18 @@ export const createJsonlRealtimeCoreProcess = ({
       process: Object.freeze({
         running: Boolean(processRef),
         command,
-        args: Object.freeze([...args])
+        args: Object.freeze([...args]),
       }),
       events: Object.freeze([...events]),
       messages: Object.freeze([...messages]),
       latency: Object.freeze({
         marks: Object.freeze({ ...marks }),
-        measures: Object.freeze([...measures])
+        measures: Object.freeze([...measures]),
       }),
       bargeIn: Object.freeze({
         speaking,
-        interrupted
-      })
+        interrupted,
+      }),
     });
 
   const close = () => {
@@ -4651,7 +5004,12 @@ export const createJsonlRealtimeCoreProcess = ({
     id,
     kind: "realtime-core",
     implementation: "jsonl-process",
-    capabilities: Object.freeze(["event-bus", "latency", "barge-in", "jsonl-process"]),
+    capabilities: Object.freeze([
+      "event-bus",
+      "latency",
+      "barge-in",
+      "jsonl-process",
+    ]),
     start,
     publish,
     push: publish,
@@ -4661,7 +5019,7 @@ export const createJsonlRealtimeCoreProcess = ({
     finishSpeaking,
     shouldInterrupt,
     snapshot,
-    close
+    close,
   });
 };
 
@@ -4684,9 +5042,9 @@ export const createTextProcessMicroHarness = ({
       status: code === 0 ? "completed" : "failed",
       summary: stdout.trim() || stderr.trim() || `${id} exited with ${code}`,
       artifacts: [],
-      raw: { stdout, stderr, code }
+      raw: { stdout, stderr, code },
     };
-  }
+  },
 }) => {
   if (!id || !command) {
     throw new Error("createTextProcessMicroHarness requires id and command");
@@ -4701,9 +5059,9 @@ export const createTextProcessMicroHarness = ({
           cwd,
           env: {
             ...process.env,
-            ...env
+            ...env,
           },
-          stdio: ["pipe", "pipe", "pipe"]
+          stdio: ["pipe", "pipe", "pipe"],
         });
         let stdout = "";
         let stderr = "";
@@ -4724,7 +5082,7 @@ export const createTextProcessMicroHarness = ({
             status: "failed",
             summary: `${id} timed out after ${timeoutMs}ms`,
             artifacts: [],
-            raw: { stdout, stderr }
+            raw: { stdout, stderr },
           });
         }, timeoutMs);
 
@@ -4739,7 +5097,7 @@ export const createTextProcessMicroHarness = ({
             status: "failed",
             summary: `${id} process error: ${error.message}`,
             artifacts: [],
-            raw: { stdout, stderr }
+            raw: { stdout, stderr },
           });
         });
         child.on("close", (code) => {
@@ -4747,7 +5105,7 @@ export const createTextProcessMicroHarness = ({
         });
         child.stdin.end(buildInput({ task, context }));
       });
-    }
+    },
   });
 };
 
@@ -4761,7 +5119,7 @@ export const createClaudeCodeCliMicroHarness = ({
   timeoutMs = 10 * 60_000,
   buildPrompt = ({ task, context }) =>
     buildDefaultMicroHarnessPrompt({ task, context, label: "Claude Code" }),
-  parseOutput
+  parseOutput,
 } = {}) =>
   createTextProcessMicroHarness({
     id,
@@ -4772,7 +5130,7 @@ export const createClaudeCodeCliMicroHarness = ({
     capabilities,
     timeoutMs,
     buildInput: ({ task, context }) => buildPrompt({ task, context }),
-    ...(parseOutput ? { parseOutput } : {})
+    ...(parseOutput ? { parseOutput } : {}),
   });
 
 export const createMotionPngTuberMapper = () =>
@@ -4789,7 +5147,7 @@ export const createMotionPngTuberMapper = () =>
         return "mouth_off_eye_off";
       }
       return "mouth_off_eye_on";
-    }
+    },
   });
 
 export const createMotionPngTuberRendererBridge = ({
@@ -4797,8 +5155,8 @@ export const createMotionPngTuberRendererBridge = ({
   assets = {
     mouth_on_eye_on: "mouth_on_eye_on.png",
     mouth_off_eye_on: "mouth_off_eye_on.png",
-    mouth_off_eye_off: "mouth_off_eye_off.png"
-  }
+    mouth_off_eye_off: "mouth_off_eye_off.png",
+  },
 } = {}) => {
   const mapper = createMotionPngTuberMapper();
   return createMappedBodyBridgeDevice({
@@ -4812,9 +5170,9 @@ export const createMotionPngTuberRendererBridge = ({
         asset: assets[mapped] || null,
         mode: state?.mode || null,
         emotion: state?.emotion || null,
-        speechText
+        speechText,
       });
-    }
+    },
   });
 };
 
@@ -4828,10 +5186,10 @@ export const createM5StackFaceMapper = () =>
         thinking: "...",
         speaking: ":D",
         working: ">_>",
-        error: "x_x"
+        error: "x_x",
       };
       return faces[state.mode] || faces.idle;
-    }
+    },
   });
 
 export const createM5StackBodyBridge = ({ id = "m5stack-face" } = {}) => {
@@ -4845,9 +5203,9 @@ export const createM5StackBodyBridge = ({ id = "m5stack-face" } = {}) => {
       return Object.freeze({
         face: mapped,
         mode: state?.mode || null,
-        text: speechText ? speechText.slice(0, 40) : ""
+        text: speechText ? speechText.slice(0, 40) : "",
       });
-    }
+    },
   });
 };
 
@@ -4865,7 +5223,7 @@ export const createEvenG2DisplayMapper = () =>
         return "Thinking...";
       }
       return "";
-    }
+    },
   });
 
 export const createEvenG2DisplayBridge = ({ id = "even-g2-display" } = {}) => {
@@ -4878,9 +5236,9 @@ export const createEvenG2DisplayBridge = ({ id = "even-g2-display" } = {}) => {
     mapPayload({ state, mapped, speechText }) {
       return Object.freeze({
         text: speechText ? speechText.slice(0, 80) : mapped,
-        mode: state?.mode || null
+        mode: state?.mode || null,
       });
-    }
+    },
   });
 };
 
@@ -4889,22 +5247,25 @@ const createExpressionMapper = ({
   expressions = {},
   motions = {},
   fallbackExpression = "neutral",
-  fallbackMotion = "idle"
+  fallbackMotion = "idle",
 }) =>
   Object.freeze({
     id,
     mapState(state) {
       const expression =
-        expressions[state.emotion] || expressions[state.mode] || fallbackExpression;
-      const motion = motions[state.motion] || motions[state.mode] || fallbackMotion;
+        expressions[state.emotion] ||
+        expressions[state.mode] ||
+        fallbackExpression;
+      const motion =
+        motions[state.motion] || motions[state.mode] || fallbackMotion;
       return Object.freeze({
         expression,
         motion,
         speaking: state.mode === "speaking",
         mode: state.mode,
-        emotion: state.emotion || "neutral"
+        emotion: state.emotion || "neutral",
       });
-    }
+    },
   });
 
 export const createLive2DBodyBridge = ({
@@ -4914,7 +5275,7 @@ export const createLive2DBodyBridge = ({
     focused: "serious",
     careful: "serious",
     relieved: "smile",
-    error: "troubled"
+    error: "troubled",
   },
   motions = {
     idle: "Idle",
@@ -4922,38 +5283,46 @@ export const createLive2DBodyBridge = ({
     thinking: "Think",
     speaking: "Talk",
     working: "Work",
-    error: "Error"
-  }
+    error: "Error",
+  },
 } = {}) => {
   const mapper = createExpressionMapper({
     id: "live2d-expression-mapper",
     expressions,
     motions,
     fallbackExpression: "neutral",
-    fallbackMotion: "Idle"
+    fallbackMotion: "Idle",
   });
   return createMappedBodyBridgeDevice({
     id,
     kind: "live2d",
     mapper,
-    capabilities: ["state", "speech", "task", "expression", "motion", "lip-sync", "sse"],
+    capabilities: [
+      "state",
+      "speech",
+      "task",
+      "expression",
+      "motion",
+      "lip-sync",
+      "sse",
+    ],
     mapPayload({ state, mapped, speechText }) {
       return Object.freeze({
         expression: mapped.expression,
         motion: mapped.motion,
         lipSync: {
           active: Boolean(mapped.speaking),
-          text: speechText || ""
+          text: speechText || "",
         },
         parameters: {
           mouthOpenY: mapped.speaking ? 1 : 0,
           eyeOpenLeft: state?.mode === "error" ? 0 : 1,
-          eyeOpenRight: state?.mode === "error" ? 0 : 1
+          eyeOpenRight: state?.mode === "error" ? 0 : 1,
         },
         mode: mapped.mode,
-        emotion: mapped.emotion
+        emotion: mapped.emotion,
       });
-    }
+    },
   });
 };
 
@@ -4964,7 +5333,7 @@ export const createVrmBodyBridge = ({
     focused: "serious",
     careful: "serious",
     relieved: "relaxed",
-    error: "sad"
+    error: "sad",
   },
   motions = {
     idle: "idle",
@@ -4972,21 +5341,29 @@ export const createVrmBodyBridge = ({
     thinking: "think",
     speaking: "talk",
     working: "work",
-    error: "error"
-  }
+    error: "error",
+  },
 } = {}) => {
   const mapper = createExpressionMapper({
     id: "vrm-expression-mapper",
     expressions,
     motions,
     fallbackExpression: "neutral",
-    fallbackMotion: "idle"
+    fallbackMotion: "idle",
   });
   return createMappedBodyBridgeDevice({
     id,
     kind: "vrm",
     mapper,
-    capabilities: ["state", "speech", "task", "expression", "animation", "gaze", "sse"],
+    capabilities: [
+      "state",
+      "speech",
+      "task",
+      "expression",
+      "animation",
+      "gaze",
+      "sse",
+    ],
     mapPayload({ state, mapped, speechText }) {
       return Object.freeze({
         expression: mapped.expression,
@@ -4995,8 +5372,8 @@ export const createVrmBodyBridge = ({
         speaking: Boolean(mapped.speaking),
         caption: speechText || "",
         mode: mapped.mode,
-        emotion: mapped.emotion
+        emotion: mapped.emotion,
       });
-    }
+    },
   });
 };

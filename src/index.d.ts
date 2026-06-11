@@ -359,6 +359,11 @@ export function createIroHarness(input: {
   readonly satisfiedRequirements?:
     | readonly string[]
     | ((context: SatisfiedRequirementsContext) => readonly string[]);
+  // Phase 5b (5.3, optional & additive): the view's work-runner-policy.json.
+  // When set, the work route passes the same shared Work Runner delegation
+  // gate as every other delegate path (public: denied / trusted:
+  // delegate_work required / owner: allowed).
+  readonly workRunnerPolicy?: JsonObject | null;
 }): IroHarness;
 
 export const constants: {

@@ -3,7 +3,9 @@ import { randomBytes } from "node:crypto";
 import { cpSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 
-import { createFileUserRegistry, createProjectOsMarkdown } from "../src/index.js";
+import { createFileProjectOs, createFileUserRegistry, createHttpBrain, createProjectOsMarkdown } from "../src/index.js";
+import { runBankCommand } from "../src/agent-bank/cli.js";
+import { runPersonaCheck } from "../src/persona-check/index.js";
 import {
   createFileSkillRegistry,
   defaultBuiltInSkillDir,
@@ -30,6 +32,10 @@ Usage:
   iroharness skill list [dir] [--json]
   iroharness skill plan stackchan-avatar-pack [dir] --reference-image <path> [--pack-id <id>] [--out <dir>] [--json]
   iroharness skill eval stackchan-avatar-pack [dir] --pack-dir <dir> [--json]
+  iroharness bank list [dir] [--all]
+  iroharness bank promote <id> [dir] [--owner-approve]
+  iroharness bank sweep [dir] [--max-idle-days <days>] [--dry-run]
+  iroharness persona-check [dir] [--slot <voice|text|deep>] [--responses <file>] [--soul <path>] [--rich] [--json]
   iroharness view export [dir] --zone <public|trusted|owner> --out <view-dir> [--force]
   iroharness work-runner check <view-dir> [--json]
   iroharness doctor [dir] [--production] [--json]
@@ -47,12 +53,27 @@ Examples:
   iroharness skill list ./my-companion
   iroharness skill plan stackchan-avatar-pack ./my-companion --reference-image ./iroha.jpg
   iroharness skill eval stackchan-avatar-pack ./my-companion --pack-dir ./.iroharness/artifacts/avatar-packs/iroha
+  iroharness bank list ./my-companion --all
+  iroharness bank promote tax-v3 ./my-companion --owner-approve
+  iroharness bank sweep ./my-companion --max-idle-days 30 --dry-run
+  iroharness persona-check ./my-companion --slot text --responses ./text-brain-transcript.jsonl
+  IROHARNESS_JUDGE_BRAIN_ENDPOINT=http://localhost:8787/judge iroharness persona-check ./my-companion --rich --responses ./text-brain-transcript.jsonl
   iroharness view export ./my-companion --zone trusted --out /Users/iroharness-trusted/iroha-view --force
   iroharness work-runner check /Users/iroharness-trusted/iroha-view
   iroharness doctor ./my-companion
   IROHARNESS_ADMIN_TOKEN=... iroharness doctor ./my-companion --production
   iroharness doctor ./my-companion --production --json
 `;
+
+// W1: persona-check flags must not silently fall back when their value is
+// missing (e.g. `--responses` without a path would probe the echo brain and
+// exit 0 — a green CI run that checked nothing).
+const requireFlagValue = (flag, value) => {
+  if (value === undefined || value === "" || value.startsWith("-")) {
+    throw new Error(`${flag} requires a value`);
+  }
+  return value;
+};
 
 const parseArgs = (argv) => {
   const [command = "--help", ...rest] = argv;
@@ -94,6 +115,15 @@ const parseArgs = (argv) => {
   let packDir = null;
   let zone = null;
   let out = null;
+  let bankId = null;
+  let all = false;
+  let ownerApprove = false;
+  let maxIdleDays = null;
+  let dryRun = false;
+  let slot = "text";
+  let responses = null;
+  let soul = null;
+  let rich = false;
   const identities = {};
   const positional = [];
 
@@ -276,6 +306,42 @@ const parseArgs = (argv) => {
       index += 1;
       continue;
     }
+    if (value === "--all") {
+      all = true;
+      continue;
+    }
+    if (value === "--owner-approve") {
+      ownerApprove = true;
+      continue;
+    }
+    if (value === "--max-idle-days") {
+      maxIdleDays = rest[index + 1];
+      index += 1;
+      continue;
+    }
+    if (value === "--dry-run") {
+      dryRun = true;
+      continue;
+    }
+    if (value === "--slot") {
+      slot = requireFlagValue("--slot", rest[index + 1]);
+      index += 1;
+      continue;
+    }
+    if (value === "--responses") {
+      responses = requireFlagValue("--responses", rest[index + 1]);
+      index += 1;
+      continue;
+    }
+    if (value === "--soul") {
+      soul = requireFlagValue("--soul", rest[index + 1]);
+      index += 1;
+      continue;
+    }
+    if (value === "--rich") {
+      rich = true;
+      continue;
+    }
     if (["--youtube", "--discord", "--slack", "--vscode", "--browser", "--m5stack", "--even-g2"].includes(value)) {
       identities[value.slice(2)] = rest[index + 1];
       index += 1;
@@ -292,6 +358,14 @@ const parseArgs = (argv) => {
     } else {
       skillId = positional[1] || null;
       dir = positional[2] || ".";
+    }
+  } else if (command === "bank") {
+    [action = null] = positional;
+    if (action === "promote") {
+      bankId = positional[1] || null;
+      dir = positional[2] || ".";
+    } else {
+      dir = positional[1] || ".";
     }
   } else if (command === "audience" || command === "connect" || command === "view" || command === "work-runner") {
     [action = null, dir = "."] = positional;
@@ -339,6 +413,15 @@ const parseArgs = (argv) => {
     packDir,
     zone,
     out,
+    bankId,
+    all,
+    ownerApprove,
+    maxIdleDays,
+    dryRun,
+    slot,
+    responses,
+    soul,
+    rich,
     identities
   };
 };
@@ -2222,6 +2305,143 @@ const skills = (args) => {
   throw new Error(`Unknown skill action: ${args.action || "(missing)"}\n\n${usage}`);
 };
 
+// Agent Bank (mekiki W-B): thin wiring over src/agent-bank/cli.js. The bank
+// lives at <dir>/.iroharness/agent-bank; the ledger derives from the app's
+// Project OS file (.iroharness/pjos.json), same convention as the generated
+// app. Promotion still goes through the single composite gate — no flag here
+// can bypass it (the sandbox condition comes from the recorded
+// verification-ledger.json, and the security review from bantou's verdict).
+const bank = (args) => {
+  if (!["list", "promote", "sweep"].includes(args.action)) {
+    throw new Error(`Unknown bank action: ${args.action || "(missing)"}\n\n${usage}`);
+  }
+  const targetDir = resolve(args.dir);
+  const root = join(targetDir, ".iroharness", "agent-bank");
+  const projectOs = createFileProjectOs({
+    path: join(targetDir, ".iroharness", "pjos.json")
+  });
+
+  const argv = [args.action];
+  if (args.action === "list" && args.all) {
+    argv.push("--all");
+  }
+  if (args.action === "promote") {
+    if (args.bankId) {
+      argv.push(args.bankId);
+    }
+    if (args.ownerApprove) {
+      argv.push("--owner-approve");
+    }
+  }
+  if (args.action === "sweep") {
+    if (args.maxIdleDays !== null) {
+      argv.push("--max-idle-days", args.maxIdleDays);
+    }
+    if (args.dryRun) {
+      argv.push("--dry-run");
+    }
+  }
+
+  const result = runBankCommand({ root, argv, projectOs });
+  if (result.exitCode !== 0) {
+    throw new Error(result.output);
+  }
+  console.log(result.output);
+};
+
+
+// Cheap tier (docs/persona-guard.md §5, Phase B) plus the opt-in rich tier
+// (Phase C, --rich): responses are additionally scored by an LLM judge brain
+// against a rubric extracted from the character files. The judge brain is
+// configured EXPLICITLY via IROHARNESS_JUDGE_BRAIN_ENDPOINT (same HTTP brain
+// contract as the slot brains); without that configuration --rich refuses
+// with an explanation — it never silently bills and never silently passes.
+const judgeBrainFromEnv = () => {
+  const endpoint = process.env.IROHARNESS_JUDGE_BRAIN_ENDPOINT;
+  if (!endpoint) {
+    throw new Error(
+      "persona-check --rich needs a judge brain connection: set IROHARNESS_JUDGE_BRAIN_ENDPOINT " +
+        "(optionally IROHARNESS_JUDGE_BRAIN_MODEL / IROHARNESS_JUDGE_BRAIN_ID / IROHARNESS_BRAIN_AUTH_TOKEN). " +
+        "The rich tier issues LLM calls (cost) — roughly one judge call per response — so it only runs " +
+        "when explicitly configured. Run without --rich for the free mechanical tier.",
+    );
+  }
+  return createHttpBrain({
+    id: process.env.IROHARNESS_JUDGE_BRAIN_ID || "judge-http",
+    endpoint,
+    model: process.env.IROHARNESS_JUDGE_BRAIN_MODEL || null,
+    headers: process.env.IROHARNESS_BRAIN_AUTH_TOKEN
+      ? { authorization: `Bearer ${process.env.IROHARNESS_BRAIN_AUTH_TOKEN}` }
+      : {}
+  });
+};
+
+const personaCheck = async (args) => {
+  const judgeBrain = args.rich ? judgeBrainFromEnv() : null;
+  // W2: without --responses the CLI's only response source is the built-in
+  // echo probe, and paying a judge to score canned echo replies is meaningless
+  // cost. Refuse loudly instead of billing for nothing.
+  if (args.rich && !args.responses) {
+    throw new Error(
+      "persona-check --rich requires --responses <file>: without it the only response source is " +
+        "the built-in echo probe, and judging canned echo replies would issue LLM calls (cost) for a " +
+        "meaningless verdict. Capture real brain transcripts (e.g. before/after a model swap) and pass " +
+        "them via --responses.",
+    );
+  }
+  const result = await runPersonaCheck({
+    dir: args.dir,
+    soulPath: args.soul,
+    responsesPath: args.responses,
+    slot: args.slot,
+    rich: args.rich,
+    judgeBrain,
+  });
+  if (args.json) {
+    console.log(JSON.stringify(result, null, 2));
+    if (!result.ok) {
+      process.exitCode = 1;
+    }
+    return;
+  }
+  console.log(`persona-check (${result.tier} tier) slot: ${result.slot}`);
+  console.log(
+    `soul: ${result.soulPath}${result.sectionFound ? "" : " (no Vocabulary Rules section)"}`,
+  );
+  console.log(`rules: ${result.totalRules} total, checkable rules: ${result.checkableRules}`);
+  console.log(`responses: ${result.responseCount} from ${result.responseSource}`);
+  console.log(`violations: ${result.violations.length}`);
+  result.violations.forEach((violation) => {
+    console.log(
+      `- [${violation.rule.kind}] response #${violation.responseIndex + 1} matched 「${violation.matched}」: ${violation.response}`,
+    );
+  });
+  if (result.judge) {
+    const failed = result.judge.results.filter((entry) => !entry.ok);
+    console.log(
+      `judge: ${result.judge.rubricItems} rubric item(s), ${result.judge.results.length} response(s) judged, ${failed.length} failed`,
+    );
+    failed.forEach((entry) => {
+      console.log(
+        `- [judge] response #${entry.responseIndex + 1}: ${entry.reasons.join("; ") || "rejected"}${entry.rewrite ? ` (suggested rewrite: ${entry.rewrite})` : ""}`,
+      );
+    });
+  }
+  if (!result.ok) {
+    const judgeFailures = result.judge
+      ? result.judge.results.filter((entry) => !entry.ok).length
+      : 0;
+    throw new Error(
+      `persona-check failed: ${result.violations.length} violation(s)${judgeFailures ? `, ${judgeFailures} judge failure(s)` : ""}`,
+    );
+  }
+  console.log(
+    result.checkableRules === 0 && !result.judge
+      ? "ok (no mechanically checkable rules — see docs/persona-guard.md §4a)"
+      : "ok",
+  );
+};
+
 const main = () => {
   const args = parseArgs(process.argv.slice(2));
   if (args.command === "--help" || args.command === "-h" || args.command === "help") {
@@ -2260,6 +2480,10 @@ const main = () => {
     skills(args);
     return;
   }
+  if (args.command === "bank") {
+    bank(args);
+    return;
+  }
   if (args.command === "view") {
     const result = exportView(args);
     if (args.json) {
@@ -2268,6 +2492,14 @@ const main = () => {
     }
     console.log(`exported ${result.manifest.zone} view to ${result.currentRoot}`);
     console.log(`files: ${result.manifest.files.length}`);
+    return;
+  }
+  if (args.command === "persona-check") {
+    // Async: report errors the same way the top-level catch does.
+    personaCheck(args).catch((error) => {
+      console.error(error.message);
+      process.exitCode = 1;
+    });
     return;
   }
   if (args.command === "work-runner") {
