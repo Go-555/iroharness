@@ -1,17 +1,18 @@
 import assert from "node:assert/strict";
 import { copyFileSync, mkdtempSync, writeFileSync } from "node:fs";
+import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import test from "node:test";
 
 const fixturesDir = join(process.cwd(), "fixtures", "persona-check");
 
-const runCli = (args) =>
+const runCli = (args, { env } = {}) =>
   spawnSync(
     process.execPath,
     [join(process.cwd(), "bin", "iroharness.mjs"), ...args],
-    { cwd: process.cwd(), encoding: "utf8" },
+    { cwd: process.cwd(), encoding: "utf8", ...(env ? { env } : {}) },
   );
 
 const companionDir = ({ soul } = {}) => {
@@ -164,12 +165,118 @@ test("persona-check reports malformed responses files as errors", () => {
   assert.match(result.stderr, /line 1/);
 });
 
-test("persona-check --rich is reserved for Phase C and not silently ignored", () => {
+// ─── Phase C: --rich (LLM-judged tier, opt-in) ────────────────────────────────
+
+test("persona-check --rich without a judge brain configuration exits 1 with an explanation", () => {
   const dir = companionDir();
-  const result = runCli(["persona-check", dir, "--rich"]);
+  const env = { ...process.env };
+  delete env.IROHARNESS_JUDGE_BRAIN_ENDPOINT;
+  const result = runCli(["persona-check", dir, "--rich"], { env });
   assert.equal(result.status, 1);
-  assert.match(result.stderr, /Phase C/);
-  assert.match(result.stderr, /LLM/);
+  assert.match(result.stderr, /IROHARNESS_JUDGE_BRAIN_ENDPOINT/);
+  assert.match(result.stderr, /LLM/); // the cost warning survives
+  assert.doesNotMatch(result.stdout, /echo brain/); // it never silently probed
+});
+
+test("persona-check --rich without --responses exits 1 instead of billing for echo-probe verdicts (W2)", () => {
+  const dir = companionDir();
+  const result = runCli(["persona-check", dir, "--rich"], {
+    // endpoint configured (never called): the refusal is about --responses
+    env: {
+      ...process.env,
+      IROHARNESS_JUDGE_BRAIN_ENDPOINT: "http://127.0.0.1:9/never-called",
+    },
+  });
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /--responses/);
+  assert.match(result.stderr, /echo/i); // explains WHY: judging the echo probe is meaningless
+  assert.doesNotMatch(result.stdout, /echo brain/); // it never probed
+});
+
+// The server-backed tests use ASYNC spawn: spawnSync would block the parent
+// event loop, deadlocking against the in-process judge HTTP server.
+const runCliAsync = (args, env) =>
+  new Promise((resolvePromise) => {
+    const child = spawn(
+      process.execPath,
+      [join(process.cwd(), "bin", "iroharness.mjs"), ...args],
+      { cwd: process.cwd(), env, stdio: ["ignore", "pipe", "pipe"] },
+    );
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk;
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk;
+    });
+    child.on("close", (status) => resolvePromise({ status, stdout, stderr }));
+  });
+
+// A minimal judge brain endpoint speaking the createHttpBrain contract:
+// POST in, { text: "<verdict JSON>" } out.
+const withJudgeServer = async (verdictFor, run) => {
+  const server = createServer((request, response) => {
+    let body = "";
+    request.on("data", (chunk) => {
+      body += chunk;
+    });
+    request.on("end", () => {
+      const payload = JSON.parse(body);
+      response.setHeader("content-type", "application/json");
+      response.end(
+        JSON.stringify({ text: JSON.stringify(verdictFor(payload)) }),
+      );
+    });
+  });
+  await new Promise((resolvePromise) =>
+    server.listen(0, "127.0.0.1", resolvePromise),
+  );
+  try {
+    const { port } = server.address();
+    await run(`http://127.0.0.1:${port}/judge`);
+  } finally {
+    await new Promise((resolvePromise) => server.close(resolvePromise));
+  }
+};
+
+test("persona-check --rich judges responses through the configured endpoint and reports reasons", async () => {
+  const dir = companionDir();
+  const responses = join(dir, "broke.jsonl");
+  writeFileSync(responses, '{"text":"あたしはそう思うよ。"}\n');
+  await withJudgeServer(
+    () => ({ ok: false, reasons: ["register drifted to keigo"] }),
+    async (endpoint) => {
+      const result = await runCliAsync(
+        ["persona-check", dir, "--rich", "--responses", responses],
+        { ...process.env, IROHARNESS_JUDGE_BRAIN_ENDPOINT: endpoint },
+      );
+      assert.equal(result.status, 1);
+      assert.match(result.stdout, /rich/);
+      assert.match(result.stdout, /register drifted to keigo/);
+    },
+  );
+});
+
+test("persona-check --rich exits 0 when the judge approves and emits the judge section in --json", async () => {
+  const dir = companionDir();
+  const responses = join(dir, "clean.jsonl");
+  writeFileSync(responses, '{"text":"あたしはそう思うよ。"}\n');
+  await withJudgeServer(
+    () => ({ ok: true, reasons: [] }),
+    async (endpoint) => {
+      const result = await runCliAsync(
+        ["persona-check", dir, "--rich", "--responses", responses, "--json"],
+        { ...process.env, IROHARNESS_JUDGE_BRAIN_ENDPOINT: endpoint },
+      );
+      assert.equal(result.status, 0);
+      const report = JSON.parse(result.stdout);
+      assert.equal(report.tier, "rich");
+      assert.equal(report.ok, true);
+      assert.equal(report.judge.ok, true);
+      assert.equal(report.judge.results.length, 1);
+    },
+  );
 });
 
 test("persona-check appears in --help usage", () => {

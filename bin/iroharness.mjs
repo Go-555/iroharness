@@ -3,7 +3,7 @@ import { randomBytes } from "node:crypto";
 import { cpSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 
-import { createFileProjectOs, createFileUserRegistry, createProjectOsMarkdown } from "../src/index.js";
+import { createFileProjectOs, createFileUserRegistry, createHttpBrain, createProjectOsMarkdown } from "../src/index.js";
 import { runBankCommand } from "../src/agent-bank/cli.js";
 import { runPersonaCheck } from "../src/persona-check/index.js";
 import {
@@ -35,7 +35,7 @@ Usage:
   iroharness bank list [dir] [--all]
   iroharness bank promote <id> [dir] [--owner-approve]
   iroharness bank sweep [dir] [--max-idle-days <days>] [--dry-run]
-  iroharness persona-check [dir] [--slot <voice|text|deep>] [--responses <file>] [--soul <path>] [--json]
+  iroharness persona-check [dir] [--slot <voice|text|deep>] [--responses <file>] [--soul <path>] [--rich] [--json]
   iroharness view export [dir] --zone <public|trusted|owner> --out <view-dir> [--force]
   iroharness work-runner check <view-dir> [--json]
   iroharness doctor [dir] [--production] [--json]
@@ -57,6 +57,7 @@ Examples:
   iroharness bank promote tax-v3 ./my-companion --owner-approve
   iroharness bank sweep ./my-companion --max-idle-days 30 --dry-run
   iroharness persona-check ./my-companion --slot text --responses ./text-brain-transcript.jsonl
+  IROHARNESS_JUDGE_BRAIN_ENDPOINT=http://localhost:8787/judge iroharness persona-check ./my-companion --rich --responses ./text-brain-transcript.jsonl
   iroharness view export ./my-companion --zone trusted --out /Users/iroharness-trusted/iroha-view --force
   iroharness work-runner check /Users/iroharness-trusted/iroha-view
   iroharness doctor ./my-companion
@@ -2360,13 +2361,43 @@ const bank = (args) => {
 };
 
 
-// Cheap tier only (docs/persona-guard.md §5, Phase B). The rich tier — fixed
-// question set against the real brain + LLM judge — is Phase C: opt-in,
-// issues LLM calls (cost), gated behind --rich and not implemented yet.
-const personaCheck = async (args) => {
-  if (args.rich) {
+// Cheap tier (docs/persona-guard.md §5, Phase B) plus the opt-in rich tier
+// (Phase C, --rich): responses are additionally scored by an LLM judge brain
+// against a rubric extracted from the character files. The judge brain is
+// configured EXPLICITLY via IROHARNESS_JUDGE_BRAIN_ENDPOINT (same HTTP brain
+// contract as the slot brains); without that configuration --rich refuses
+// with an explanation — it never silently bills and never silently passes.
+const judgeBrainFromEnv = () => {
+  const endpoint = process.env.IROHARNESS_JUDGE_BRAIN_ENDPOINT;
+  if (!endpoint) {
     throw new Error(
-      "persona-check --rich is reserved for Phase C: the LLM-judged tier is opt-in, issues LLM calls (cost), and is not implemented yet. Run without --rich for the free mechanical tier.",
+      "persona-check --rich needs a judge brain connection: set IROHARNESS_JUDGE_BRAIN_ENDPOINT " +
+        "(optionally IROHARNESS_JUDGE_BRAIN_MODEL / IROHARNESS_JUDGE_BRAIN_ID / IROHARNESS_BRAIN_AUTH_TOKEN). " +
+        "The rich tier issues LLM calls (cost) — roughly one judge call per response — so it only runs " +
+        "when explicitly configured. Run without --rich for the free mechanical tier.",
+    );
+  }
+  return createHttpBrain({
+    id: process.env.IROHARNESS_JUDGE_BRAIN_ID || "judge-http",
+    endpoint,
+    model: process.env.IROHARNESS_JUDGE_BRAIN_MODEL || null,
+    headers: process.env.IROHARNESS_BRAIN_AUTH_TOKEN
+      ? { authorization: `Bearer ${process.env.IROHARNESS_BRAIN_AUTH_TOKEN}` }
+      : {}
+  });
+};
+
+const personaCheck = async (args) => {
+  const judgeBrain = args.rich ? judgeBrainFromEnv() : null;
+  // W2: without --responses the CLI's only response source is the built-in
+  // echo probe, and paying a judge to score canned echo replies is meaningless
+  // cost. Refuse loudly instead of billing for nothing.
+  if (args.rich && !args.responses) {
+    throw new Error(
+      "persona-check --rich requires --responses <file>: without it the only response source is " +
+        "the built-in echo probe, and judging canned echo replies would issue LLM calls (cost) for a " +
+        "meaningless verdict. Capture real brain transcripts (e.g. before/after a model swap) and pass " +
+        "them via --responses.",
     );
   }
   const result = await runPersonaCheck({
@@ -2374,6 +2405,8 @@ const personaCheck = async (args) => {
     soulPath: args.soul,
     responsesPath: args.responses,
     slot: args.slot,
+    rich: args.rich,
+    judgeBrain,
   });
   if (args.json) {
     console.log(JSON.stringify(result, null, 2));
@@ -2382,7 +2415,7 @@ const personaCheck = async (args) => {
     }
     return;
   }
-  console.log(`persona-check (cheap tier) slot: ${result.slot}`);
+  console.log(`persona-check (${result.tier} tier) slot: ${result.slot}`);
   console.log(
     `soul: ${result.soulPath}${result.sectionFound ? "" : " (no Vocabulary Rules section)"}`,
   );
@@ -2394,11 +2427,27 @@ const personaCheck = async (args) => {
       `- [${violation.rule.kind}] response #${violation.responseIndex + 1} matched 「${violation.matched}」: ${violation.response}`,
     );
   });
+  if (result.judge) {
+    const failed = result.judge.results.filter((entry) => !entry.ok);
+    console.log(
+      `judge: ${result.judge.rubricItems} rubric item(s), ${result.judge.results.length} response(s) judged, ${failed.length} failed`,
+    );
+    failed.forEach((entry) => {
+      console.log(
+        `- [judge] response #${entry.responseIndex + 1}: ${entry.reasons.join("; ") || "rejected"}${entry.rewrite ? ` (suggested rewrite: ${entry.rewrite})` : ""}`,
+      );
+    });
+  }
   if (!result.ok) {
-    throw new Error(`persona-check failed: ${result.violations.length} violation(s)`);
+    const judgeFailures = result.judge
+      ? result.judge.results.filter((entry) => !entry.ok).length
+      : 0;
+    throw new Error(
+      `persona-check failed: ${result.violations.length} violation(s)${judgeFailures ? `, ${judgeFailures} judge failure(s)` : ""}`,
+    );
   }
   console.log(
-    result.checkableRules === 0
+    result.checkableRules === 0 && !result.judge
       ? "ok (no mechanically checkable rules — see docs/persona-guard.md §4a)"
       : "ok",
   );
