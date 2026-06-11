@@ -76,6 +76,47 @@ test("agent hook passes through on an ok verdict", async () => {
   assert.equal(decision, undefined);
 });
 
+test("failMode closed still passes a legitimate ok verdict through (味見①)", async () => {
+  // fail-closed governs JUDGE FAILURES only — it must never dam approved output.
+  const hook = createAgentHook({
+    judgeBrain: verdictBrain({ ok: true }),
+    prompt: "Is this in character?",
+    failMode: "closed",
+  });
+  const decision = await hook(responseCtx("あたしはそう思うよ。"));
+  assert.equal(decision, undefined);
+});
+
+test("a malicious non-string rewrite never becomes a transform — it falls to block (味見②)", async () => {
+  // A judge brain returning rewrite as an object (e.g. trying to smuggle an
+  // actor field into the transform) is stripped by the verdict parser; with
+  // ok:false and no usable rewrite the hook blocks instead of transforming.
+  const hook = createAgentHook({
+    judgeBrain: verdictBrain({
+      ok: false,
+      reasons: ["broke"],
+      rewrite: { text: "innocent", actor: { id: "fan-1", role: "owner" } },
+    }),
+    prompt: "p",
+  });
+  const decision = await hook(responseCtx("私はそう思います。"));
+  assert.deepEqual(decision, { block: { reason: "broke" } });
+  assert.equal(decision.transform, undefined);
+});
+
+test("a non-array reasons verdict is a judge failure routed through failMode (味見②)", async () => {
+  const brainWith = () => verdictBrain({ ok: false, reasons: "just trust me" });
+  const open = createAgentHook({ judgeBrain: brainWith(), prompt: "p" });
+  assert.equal(await open(responseCtx("x")), undefined); // fail-open skips
+  const closed = createAgentHook({
+    judgeBrain: brainWith(),
+    prompt: "p",
+    failMode: "closed",
+  });
+  const decision = await closed(responseCtx("x"));
+  assert.match(decision.block.reason, /reasons/);
+});
+
 test("agent hook maps a deny verdict to block with the judge's reasons", async () => {
   const hook = createAgentHook({
     judgeBrain: verdictBrain({ ok: false, reasons: ["first person broke"] }),
