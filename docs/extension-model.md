@@ -463,18 +463,78 @@ it is validated at load:
   `args`/`cwd`/`env` are optional and validated by 7a's `createCommandHook`
   (args = string array, etc.); `priority` (optional) is a `register` option (see
   above).
-- **`type: "agent"` is a clear load-time error** ("agent hooks are not supported
-  until Phase 8") — not a silent skip.
+- **`type: "agent"`** is accepted since Phase 8 (§3.11): `prompt` is a required
+  non-empty string, `model` an optional string, `timeout` an optional finite
+  number. Before Phase 8 it was a clear load-time error — never a silent skip.
 - An invalid regex, an unknown/missing `type`, or any malformed entry throws a
   load-time error **naming the event and the entry index**, consistent with §6's
-  "never a silent drop." A command hook on a realtime event surfaces the §3.5
-  rejection. (Duplicate event keys within a single JSON object resolve by the
-  parser's last-wins behavior, which is acceptable — the manifest is a single
-  authored document.)
+  "never a silent drop." A command or agent hook on a realtime event surfaces
+  the §3.5 rejection. (Duplicate event keys within a single JSON object resolve
+  by the parser's last-wins behavior, which is acceptable — the manifest is a
+  single authored document.)
 
 This keeps 7b's security surface at the boundary (the manifest file and the
 child it names), reusing 7a's already-hardened spawn (shell-false, minimal env,
-timeout, output cap, fail-closed). No agent runner (Phase 8).
+timeout, output cap, fail-closed).
+
+### 3.11 Agent Runner (Phase 8): LLM judgment hooks
+
+Phase 8 ships the third execution style (§3.2): an **agent hook** that runs an
+LLM judgment on a **text-path** event and maps the verdict onto the §3.4
+dispatch contract. The realtime invariant (§3.5) rejects `style: "agent"` on
+`bargein:`/`speech:`/`device:` events unchanged.
+
+**`createAgentHook({ judgeBrain?, rubric | prompt, timeout = 30000, failMode = "open", model? })`**
+(`extension/hook-runners/agent.js`) returns an `async (ctx) => decision`
+handler:
+
+- **The LLM is reached only through an injected judge brain** — an object
+  honoring the standard brain contract (`respond(context) -> { text }`). The
+  runner contains no API-calling code of its own; the judging itself is the
+  shared `judgeResponse` component (`src/persona-check/judge.js`, the same
+  component behind `persona-check --rich`), which sends the rubric + candidate
+  text to the brain and parses a structured verdict
+  `{ ok, reasons, rewrite? }`. Nothing injects a judge brain by default, so the
+  default LLM cost of the whole hook system remains **zero**; cost exists only
+  where an operator explicitly wires a brain.
+- **Scoring criteria** come either from a `rubric` (e.g. extracted from the
+  character files, see the preset below) or from a manifest-style `prompt`
+  string (normalized to a single-item rubric). Exactly one is required.
+- **What gets judged**: `ctx.response` when the event context carries one
+  (`response:before`), otherwise `ctx.input` — so the same runner serves the
+  response-review gate and input-side judgment points.
+- **Verdict mapping**: `ok` → pass-through; deny (`ok: false`) →
+  `{ block: { reason } }` carrying the judge's reasons; `rewrite` →
+  `{ transform }` replacing only the judged field's `text` (the
+  out-of-character-response rewrite case). `dispatch`'s `protectedKeys` guard
+  applies to the transform as to any other — an agent hook cannot forge
+  `actor`.
+- **`failMode` (default `"open"`) governs judge failures** — a missing
+  (uninjected) brain, a brain error, a timeout, or an unparseable verdict.
+  Fail-open passes the response through (with a warning); fail-closed blocks.
+  **The default is fail-open by design**: this gate guards the character's own
+  face, and a broken, slow, or unconfigured judge must never mute the
+  conversation (persona-guard.md §6 — verification must not make the face
+  slower or mute). Operators preferring "no unvetted output" opt into
+  `failMode: "closed"`. Note the hook catches its own judge failures, so the
+  registry-level `failModeFor` (which fails closed on gate events) never sees
+  them; a judge that *answers* `ok: false` always blocks or transforms
+  regardless of `failMode`.
+
+**Manifest entries** (`{ "type": "agent", "prompt": ..., "model"?, "timeout"?, "matcher"?, "priority"? }`)
+are declarative only: **the judge brain must be injected from code** via
+`registerCommandManifest(registry, manifest, { judgeBrain })` /
+`loadCommandManifestFile(registry, path, { judgeBrain })`. A manifest alone
+never connects an LLM (declaration and implementation stay separate); a
+declared agent hook that fires without an injected brain follows its
+`failMode` (default fail-open). `model` is advisory and threaded into the
+judge brain's context; the injected brain decides whether to honor it.
+
+**`createPersonaGuardHook({ character, judgeBrain, timeout?, failMode?, model? })`**
+is the persona-gate preset (persona-guard.md §6): it extracts the scoring
+rubric from the character files (SOUL/IDENTITY/VOICE via `extractRubric`) and
+returns an agent hook intended for `response:before`. Opt-in by construction —
+nothing registers it by default.
 
 ## 4. Skills
 
@@ -864,7 +924,16 @@ Each unit has one purpose and a defined interface:
      with fail-loud load-time validation (no silent drop; `type:"agent"` errors
      until Phase 8). Reuses 7a's `createCommandHook`; `dispatch`/`register`
      unchanged. **Done.**
-8. Agent runner (response review).
+8. Agent runner (response review), §3.11: `createAgentHook` (style 3, judge
+   brain injected via the standard brain contract — no API-calling code in the
+   runner), the `createPersonaGuardHook` preset (rubric from the character
+   files), manifest `type: "agent"` unlocked with code-injected judge brains,
+   and the persona-check rich tier (`--rich`) sharing the same judge
+   component. Default off / opt-in throughout: no judge brain is injected by
+   default, so LLM cost exists only where explicitly enabled; `failMode`
+   defaults to fail-open (the gate never mutes the character on judge
+   failure). Voice-channel async post-audit (persona-guard.md §6) is **not**
+   part of this phase. **Done.**
 
 Note: the realtime invariant's coverage (device:emit, prefix/Set drift) is
 hardened with tests as part of Phase 3, independent of the deferred fail policy.

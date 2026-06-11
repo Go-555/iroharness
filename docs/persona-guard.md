@@ -1,6 +1,8 @@
 # Persona Guard: Keeping One Character Coherent Across Brain Swaps
 
-> **Status:** Draft proposal — 2026-06-10. Not yet implemented.
+> **Status:** Phases B, C, and D(text/deep) implemented — 2026-06-11.
+> Design ① (§4) is guidance/convention; the voice async post-audit of §6
+> remains future work.
 > This document is the SSOT for the persona-guard work. It extends
 > [design-principles.md](./design-principles.md) (esp. #1 The Macro Harness Owns
 > Identity), [architecture.md](./architecture.md),
@@ -157,37 +159,96 @@ expressions and string rules over candidate outputs — first-person pronoun,
 forbidden endings, banned vocabulary. No LLM calls. Runs anywhere, including
 CI.
 
-### Rich tier (LLM cost ⚠️)
+### Rich tier (LLM cost ⚠️) — implemented (`--rich`)
 
-1. A fixed question set (~12 questions, including provocation/jailbreak-style
-   questions in the spirit of source #4) is sent to the specified slot's brain
-   through the normal brain contract.
-2. A scoring rubric is generated from `SOUL.md`, `IDENTITY.md`, and `VOICE.md`
-   — this is the "setting extraction" stage of source #2.
-3. An LLM judge scores each response against the rubric items — the "response
-   evaluation" stage of source #2. Keeping extraction and evaluation separate
-   is deliberate and follows the verified two-stage design.
-4. The output is a per-item report with pass/fail and judge notes.
+1. The fixed question set (including provocation-style questions in the
+   spirit of source #4) is sent to the specified slot's brain through the
+   normal brain contract — or an operator-supplied transcript is read via
+   `--responses` (no probe calls).
+2. A scoring rubric is extracted from `SOUL.md`, `IDENTITY.md`, and `VOICE.md`
+   (`extractRubric` in `src/persona-check/judge.js`) — the "setting
+   extraction" stage of source #2. It is a superset of the cheap tier's
+   vocabulary-rule compiler: every vocabulary rule becomes a rubric item, and
+   the free-form settings (soul prose, identity, voice style) become items
+   too.
+3. An LLM judge scores each response against the rubric (`judgeResponse`,
+   same component as the §6 gate) — the "response evaluation" stage of
+   source #2. Keeping extraction and evaluation separate is deliberate and
+   follows the verified two-stage design.
+4. The report keeps the cheap tier's format and exit-code contract and adds a
+   judge section with per-response pass/fail, the judge's reasons, and any
+   suggested in-character rewrite. Overall `ok` composes both tiers; a judge
+   failure mid-run fails loud (never a silently green report).
+
+**The judge brain is configured explicitly** through the existing HTTP brain
+contract: `IROHARNESS_JUDGE_BRAIN_ENDPOINT` (plus optional
+`IROHARNESS_JUDGE_BRAIN_MODEL`, `IROHARNESS_JUDGE_BRAIN_ID`, and the shared
+`IROHARNESS_BRAIN_AUTH_TOKEN`). **Without that configuration `--rich` exits 1
+with an explanation** — it never silently bills and never silently passes.
+
+```bash
+# free mechanical tier (unchanged)
+npx iroharness persona-check ./my-companion --slot text
+
+# rich tier: judge transcript responses through a configured judge brain
+IROHARNESS_JUDGE_BRAIN_ENDPOINT=http://localhost:8787/judge \
+  npx iroharness persona-check ./my-companion --rich --responses ./text-brain-transcript.jsonl
+```
 
 **Cost warning ⚠️:** the rich tier issues roughly
-`questions × slots × (respond + judge)` LLM calls — dozens of calls per run.
-It is therefore **opt-in by default and must not be wired into automatic CI**.
-Operators run it deliberately, typically around a model swap.
+`responses × judge` (+ `questions × respond` when probing a real brain) LLM
+calls per run. It is therefore **opt-in by default and must not be wired into
+automatic CI**. Operators run it deliberately, typically around a model swap.
+The cost is exactly what was enabled: no judge endpoint, no calls.
 
 ## 6. Design ③: Persona guard — the output gate
 
 A compliance check on responses, with channel-appropriate placement:
 
-| Channel | Behavior | Default |
-|---|---|---|
-| `text` / `deep` | Pre-send compliance check; a failing response can be regenerated or flagged | **off** (opt-in) |
-| `voice` | **Never blocks.** Latency is the priority. Responses are scored asynchronously after delivery; results are logged to Project OS runs / view `state/`, and merge into the §5 report | post-audit only |
+| Channel | Behavior | Default | Status |
+|---|---|---|---|
+| `text` / `deep` | Pre-send compliance check; a failing response is blocked or rewritten in-character | **off** (opt-in) | **implemented** |
+| `voice` | **Never blocks.** Latency is the priority. Responses are scored asynchronously after delivery; results are logged to Project OS runs / view `state/`, and merge into the §5 report | post-audit only | future work |
 
 This is the same philosophy as the Agent Bank verify loop (`Plans.md` Phase
 4.4: mekiki = quality verification, send back on failure, iteration cap). The
 persona guard is that loop applied to the character's own face: verification
 exists, but it must not make the face slower or mute. For voice, the audit is
 an after-the-fact net consistent with §2.3.
+
+### Implementation (text/deep)
+
+The gate is the Phase 8 **agent hook** on `response:before`
+(extension-model.md §3.11), built by the preset:
+
+```js
+import { createHookRegistry, createPersonaGuardHook } from "iroharness/extension";
+
+const hooks = createHookRegistry();
+hooks.register(
+  "response:before",
+  createPersonaGuardHook({ character, judgeBrain }), // rubric auto-extracted from SOUL/IDENTITY/VOICE
+  { style: "agent" },
+);
+const harness = createIroHarness({ ..., hooks });
+```
+
+- **Default off.** Nothing registers the gate; an un-hooked harness is
+  byte-for-byte the behavior it had before Phase 8.
+- **Brain injection required.** The judge LLM is reached only through an
+  explicitly injected `judgeBrain` (standard brain contract). A manifest can
+  declare the hook, but it cannot connect an LLM — **cost exists only for
+  what the operator enabled**, and the default is zero calls.
+- **Judge verdicts**: an in-character `rewrite` replaces the response text
+  (transform); a deny blocks it (the §3.4 contract). The realtime invariant
+  keeps this style off the voice path entirely.
+- **`failMode` defaults to fail-open — a deliberate design judgment.** A
+  judge failure (uninjected, error, timeout, malformed verdict) passes the
+  response through rather than muting the character: the gate guards the
+  character's own face, and a broken gate must not kill the conversation
+  (the table above: the face must not become slower or mute). Operators who
+  prefer "no unvetted output ever" opt into `failMode: "closed"`. A judge
+  that *answers* "out of character" always blocks or rewrites regardless.
 
 ## 7. Fit with the existing architecture
 
@@ -212,12 +273,12 @@ provides those.
 - **Cost discipline:** anything that issues LLM calls (Phase C, Phase D) is
   opt-in, documented with its call count, and never enabled by default.
 
-| Phase | Scope | Cost | Gate |
+| Phase | Scope | Cost | Status |
 |---|---|---|---|
-| **A** | SOUL.md guidance (§4) — documentation and template text only | none | — |
-| **B** | `persona-check` cheap tier (§5): rule compiler + mechanical checks | none | — |
-| **C** | `persona-check` rich tier (§5): question set, rubric generation, LLM judge | **LLM calls ⚠️** | owner confirmation before implementation |
-| **D** | Output gate (§6): text/deep opt-in pre-check, voice async post-audit | LLM calls when enabled | after C |
+| **A** | SOUL.md guidance (§4) — documentation and template text only | none | guidance (this doc) |
+| **B** | `persona-check` cheap tier (§5): rule compiler + mechanical checks | none | **Done** |
+| **C** | `persona-check` rich tier (§5): question set, rubric generation, LLM judge | **LLM calls ⚠️** (opt-in: judge endpoint must be configured) | **Done** (owner-approved) |
+| **D** | Output gate (§6): text/deep opt-in pre-check, voice async post-audit | LLM calls when enabled | **text/deep Done** (agent hook); voice post-audit future work |
 
 ## 9. Caveats
 
