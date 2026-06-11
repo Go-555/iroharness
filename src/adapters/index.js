@@ -1925,6 +1925,288 @@ export const createSlackEventsRuntime = ({
   });
 };
 
+// Slack Socket Mode (wss) ingress. Same payload shape as the Events API, so
+// pair it with createSlackEventsRuntime#handlePayload via handleEvent — no
+// public HTTP endpoint required.
+export const resolveSlackIngressMode = ({ appToken = null } = {}) =>
+  appToken ? "socket" : "http";
+
+const SLACK_SOCKET_MODE_DEFAULT_BACKOFF = Object.freeze({
+  initialMs: 1_000,
+  maxMs: 30_000,
+  factor: 2,
+});
+
+const openNativeSlackWebSocket = ({
+  url,
+  onOpen,
+  onMessage,
+  onClose,
+  onError,
+}) => {
+  if (typeof WebSocket === "undefined") {
+    throw new Error(
+      "Slack Socket Mode needs the native WebSocket global (Node 22+); " +
+        "upgrade Node or inject openConnection",
+    );
+  }
+  const socket = new WebSocket(url);
+  socket.addEventListener("open", () => onOpen());
+  socket.addEventListener("message", (event) => onMessage(String(event.data)));
+  socket.addEventListener("close", (event) =>
+    onClose({ code: event.code, reason: event.reason }),
+  );
+  socket.addEventListener("error", () =>
+    onError(new Error("Slack Socket Mode WebSocket error")),
+  );
+  return Object.freeze({
+    send(data) {
+      socket.send(data);
+    },
+    close() {
+      socket.close();
+    },
+  });
+};
+
+export const createSlackSocketModeBridge = ({
+  appToken,
+  handleEvent,
+  openConnection = openNativeSlackWebSocket,
+  fetchImpl = globalThis.fetch,
+  apiBaseUrl = "https://slack.com/api",
+  logger = console,
+  backoff = {},
+  sleep = (ms) =>
+    new Promise((resolve) => {
+      const timer = setTimeout(resolve, ms);
+      timer.unref?.();
+    }),
+} = {}) => {
+  if (!appToken || !String(appToken).startsWith("xapp-")) {
+    throw new Error(
+      'createSlackSocketModeBridge requires an app-level token starting with "xapp-"',
+    );
+  }
+  if (typeof handleEvent !== "function") {
+    throw new Error("createSlackSocketModeBridge requires handleEvent");
+  }
+  if (typeof fetchImpl !== "function") {
+    throw new Error("createSlackSocketModeBridge requires fetchImpl");
+  }
+  const backoffPolicy = {
+    ...SLACK_SOCKET_MODE_DEFAULT_BACKOFF,
+    ...backoff,
+  };
+
+  let closed = false;
+  let started = false;
+  let reconnecting = false;
+  let reconnectAttempts = 0;
+  let activeConnection = null;
+
+  const log = (level, message, details = undefined) => {
+    if (details === undefined) {
+      logger?.[level]?.(message);
+      return;
+    }
+    logger?.[level]?.(message, details);
+  };
+
+  const openSocketUrl = async () => {
+    const response = await fetchImpl(`${apiBaseUrl}/apps.connections.open`, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${appToken}`,
+        "content-type": "application/x-www-form-urlencoded",
+      },
+    });
+    const responseText = await response.text();
+    const payload = responseText.trim() ? JSON.parse(responseText) : {};
+    if (!response.ok || payload.ok !== true || !payload.url) {
+      throw new Error(
+        `Slack apps.connections.open failed: ${response.status} ${
+          payload.error || responseText
+        }`,
+      );
+    }
+    return payload.url;
+  };
+
+  const connect = async () => {
+    const url = await openSocketUrl();
+    const connection = { settled: false, transport: null };
+    connection.transport = openConnection({
+      url,
+      onOpen: () => {
+        log("info", "slack socket mode: connection open");
+      },
+      onMessage: (data) => {
+        void handleMessage(connection, data);
+      },
+      onClose: () => {
+        handleClose(connection);
+      },
+      onError: (error) => {
+        handleError(connection, error);
+      },
+    });
+    return connection;
+  };
+
+  const scheduleReconnect = async () => {
+    if (closed || reconnecting) {
+      return;
+    }
+    reconnecting = true;
+    try {
+      while (!closed) {
+        const delayMs = Math.min(
+          backoffPolicy.initialMs * backoffPolicy.factor ** reconnectAttempts,
+          backoffPolicy.maxMs,
+        );
+        reconnectAttempts += 1;
+        await sleep(delayMs);
+        if (closed) {
+          return;
+        }
+        try {
+          activeConnection = await connect();
+          return;
+        } catch (error) {
+          log(
+            "warn",
+            `slack socket mode: reconnect failed, retrying (${error.message})`,
+          );
+        }
+      }
+    } finally {
+      reconnecting = false;
+    }
+  };
+
+  const handleClose = (connection) => {
+    if (connection.settled) {
+      return;
+    }
+    connection.settled = true;
+    if (closed || connection !== activeConnection) {
+      return;
+    }
+    log("warn", "slack socket mode: connection closed, reconnecting");
+    void scheduleReconnect();
+  };
+
+  const handleError = (connection, error) => {
+    log("error", `slack socket mode: transport error (${error.message})`);
+    try {
+      connection.transport?.close();
+    } catch {
+      // ignore: transport already gone
+    }
+    handleClose(connection);
+  };
+
+  // Slack asks for a periodic refresh: open the replacement first, then
+  // close the old connection so no envelope window is left uncovered.
+  const refreshConnection = async (connection) => {
+    log("info", "slack socket mode: refresh requested, rotating connection");
+    const next = await connect();
+    activeConnection = next;
+    connection.settled = true;
+    try {
+      connection.transport?.close();
+    } catch {
+      // ignore: old transport already gone
+    }
+  };
+
+  const handleMessage = async (connection, data) => {
+    let message;
+    try {
+      message = JSON.parse(data);
+    } catch {
+      log("warn", "slack socket mode: ignoring non-JSON frame");
+      return;
+    }
+    if (message.type === "hello") {
+      reconnectAttempts = 0;
+      log("info", "slack socket mode: hello received");
+      return;
+    }
+    if (message.type === "disconnect") {
+      try {
+        await refreshConnection(connection);
+      } catch (error) {
+        log(
+          "warn",
+          `slack socket mode: refresh failed (${error.message}), falling back to reconnect`,
+        );
+        try {
+          connection.transport?.close();
+        } catch {
+          // ignore: transport already gone
+        }
+        handleClose(connection);
+      }
+      return;
+    }
+    if (!message.envelope_id) {
+      return;
+    }
+    // Ack first (Slack requires it within 3 seconds), process after.
+    connection.transport.send(
+      JSON.stringify({ envelope_id: message.envelope_id }),
+    );
+    if (message.type !== "events_api") {
+      return;
+    }
+    try {
+      await handleEvent(message.payload, {
+        envelopeId: message.envelope_id,
+        retryAttempt: message.retry_attempt ?? null,
+        retryReason: message.retry_reason ?? null,
+      });
+    } catch (error) {
+      log("error", `slack socket mode: handleEvent failed (${error.message})`);
+    }
+  };
+
+  return Object.freeze({
+    async start() {
+      if (started) {
+        throw new Error("Slack Socket Mode bridge already started");
+      }
+      if (closed) {
+        throw new Error("Slack Socket Mode bridge already closed");
+      }
+      started = true;
+      activeConnection = await connect();
+    },
+    close() {
+      closed = true;
+      const connection = activeConnection;
+      activeConnection = null;
+      if (connection) {
+        connection.settled = true;
+        try {
+          connection.transport?.close();
+        } catch {
+          // ignore: transport already gone
+        }
+      }
+    },
+    state() {
+      return Object.freeze({
+        started,
+        closed,
+        connected: Boolean(activeConnection),
+        reconnectAttempts,
+      });
+    },
+  });
+};
+
 export const createYouTubeLiveChatPollingRuntime = ({
   apiKey,
   liveChatId,
