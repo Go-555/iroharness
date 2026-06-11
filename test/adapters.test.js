@@ -31,6 +31,7 @@ import {
   createScopedWorkRunnerMicroHarness,
   createSlackEventsRuntime,
   createSlackMessageAdapter,
+  createSlackSocketModeBridge,
   createSnapshotStreamSessionResolver,
   createStackChanRealtimeRelay,
   createStackChanRealtimeSessionHandler,
@@ -40,7 +41,8 @@ import {
   createYouTubeLiveChatAdapter,
   createYouTubeLiveChatPollingRuntime,
   createVsCodeCompanionAdapter,
-  createVsCodeCompanionWebviewHtml
+  createVsCodeCompanionWebviewHtml,
+  resolveSlackIngressMode
 } from "../src/adapters/index.js";
 import { createInMemoryUserRegistry, createSpeechPlaybackQueue } from "../src/index.js";
 
@@ -3100,4 +3102,553 @@ test("Discord bot runtime ignores messages from itself", async () => {
 
   assert.equal(receivedTurns.length, 0);
   runtime.stop();
+});
+
+// --- Slack Socket Mode bridge ---
+
+const flushAsync = async (turns = 6) => {
+  for (let index = 0; index < turns; index += 1) {
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+};
+
+const createFakeSocketModeWiring = ({ fetchPlans = [] } = {}) => {
+  const events = [];
+  const connections = [];
+  const fetchCalls = [];
+  const fetchImpl = async (url, options) => {
+    fetchCalls.push({ url, options });
+    const plan = fetchPlans.length
+      ? fetchPlans[Math.min(fetchCalls.length - 1, fetchPlans.length - 1)]
+      : {};
+    if (plan.throwMessage) {
+      throw new Error(plan.throwMessage);
+    }
+    const body = plan.body ?? { ok: true, url: `wss://fake.slack/${fetchCalls.length}` };
+    return {
+      ok: plan.httpOk ?? true,
+      status: plan.status ?? 200,
+      async text() {
+        return JSON.stringify(body);
+      }
+    };
+  };
+  const openConnection = ({ url, onOpen, onMessage, onClose, onError }) => {
+    const index = connections.length + 1;
+    const connection = {
+      index,
+      url,
+      sent: [],
+      closedByBridge: false,
+      emitOpen: () => onOpen(),
+      emitMessage: (message) => onMessage(JSON.stringify(message)),
+      emitClose: () => onClose({ code: 1006, reason: "abnormal" }),
+      emitError: (error) => onError(error)
+    };
+    events.push(`open:${index}`);
+    connections.push(connection);
+    return {
+      send(data) {
+        connection.sent.push(JSON.parse(data));
+        events.push(`send:${index}`);
+      },
+      close() {
+        connection.closedByBridge = true;
+        events.push(`close:${index}`);
+      }
+    };
+  };
+  return { events, connections, fetchCalls, fetchImpl, openConnection };
+};
+
+test("Slack Socket Mode bridge opens connection, acks envelope before handling event", async () => {
+  const wiring = createFakeSocketModeWiring();
+  const handled = [];
+  const bridge = createSlackSocketModeBridge({
+    appToken: "xapp-1-test-token",
+    handleEvent: async (payload, context) => {
+      wiring.events.push(`handle:${context.envelopeId}`);
+      handled.push({ payload, context });
+    },
+    openConnection: wiring.openConnection,
+    fetchImpl: wiring.fetchImpl,
+    logger: null
+  });
+
+  await bridge.start();
+
+  assert.equal(wiring.fetchCalls.length, 1);
+  assert.equal(
+    wiring.fetchCalls[0].url,
+    "https://slack.com/api/apps.connections.open"
+  );
+  assert.equal(wiring.fetchCalls[0].options.method, "POST");
+  assert.equal(
+    wiring.fetchCalls[0].options.headers.authorization,
+    "Bearer xapp-1-test-token"
+  );
+  assert.equal(wiring.connections.length, 1);
+  assert.equal(wiring.connections[0].url, "wss://fake.slack/1");
+
+  const connection = wiring.connections[0];
+  connection.emitMessage({ type: "hello", num_connections: 1 });
+  connection.emitMessage({
+    envelope_id: "env_1",
+    type: "events_api",
+    accepts_response_payload: false,
+    retry_attempt: 0,
+    retry_reason: null,
+    payload: {
+      type: "event_callback",
+      team_id: "T123",
+      event: {
+        type: "app_mention",
+        user: "U123",
+        channel: "C123",
+        ts: "1710000000.000100",
+        text: "<@UIROHA> こんにちは"
+      }
+    }
+  });
+  await flushAsync();
+
+  assert.deepEqual(connection.sent[0], { envelope_id: "env_1" });
+  assert.equal(handled.length, 1);
+  assert.equal(handled[0].payload.type, "event_callback");
+  assert.equal(handled[0].payload.event.text, "<@UIROHA> こんにちは");
+  assert.equal(handled[0].context.envelopeId, "env_1");
+  assert.equal(handled[0].context.retryAttempt, 0);
+  assert.ok(
+    wiring.events.indexOf("send:1") < wiring.events.indexOf("handle:env_1"),
+    `ack must be sent before handleEvent runs: ${wiring.events.join(",")}`
+  );
+
+  bridge.close();
+});
+
+test("Slack Socket Mode bridge rejects tokens without xapp- prefix", () => {
+  assert.throws(
+    () =>
+      createSlackSocketModeBridge({
+        appToken: "xoxb-not-an-app-token",
+        handleEvent: async () => {}
+      }),
+    /xapp-/
+  );
+  assert.throws(
+    () => createSlackSocketModeBridge({ handleEvent: async () => {} }),
+    /xapp-/
+  );
+});
+
+test("Slack Socket Mode bridge requires handleEvent", () => {
+  assert.throws(
+    () => createSlackSocketModeBridge({ appToken: "xapp-1-test" }),
+    /handleEvent/
+  );
+});
+
+test("Slack Socket Mode bridge surfaces apps.connections.open failures", async () => {
+  const wiring = createFakeSocketModeWiring({
+    fetchPlans: [{ body: { ok: false, error: "invalid_auth" } }]
+  });
+  const bridge = createSlackSocketModeBridge({
+    appToken: "xapp-1-test",
+    handleEvent: async () => {},
+    openConnection: wiring.openConnection,
+    fetchImpl: wiring.fetchImpl,
+    logger: null
+  });
+
+  await assert.rejects(() => bridge.start(), /invalid_auth/);
+  assert.equal(wiring.connections.length, 0);
+});
+
+test("Slack Socket Mode bridge default transport requires a WebSocket global", async () => {
+  const original = globalThis.WebSocket;
+  delete globalThis.WebSocket;
+  try {
+    const wiring = createFakeSocketModeWiring();
+    const bridge = createSlackSocketModeBridge({
+      appToken: "xapp-1-test",
+      handleEvent: async () => {},
+      fetchImpl: wiring.fetchImpl,
+      logger: null
+    });
+    await assert.rejects(() => bridge.start(), /Node 22/);
+  } finally {
+    if (original !== undefined) {
+      globalThis.WebSocket = original;
+    }
+  }
+});
+
+test("Slack Socket Mode bridge refreshes on disconnect: opens new connection before closing old", async () => {
+  const wiring = createFakeSocketModeWiring();
+  const handled = [];
+  const bridge = createSlackSocketModeBridge({
+    appToken: "xapp-1-test",
+    handleEvent: async (payload, context) => {
+      handled.push({ payload, context });
+    },
+    openConnection: wiring.openConnection,
+    fetchImpl: wiring.fetchImpl,
+    logger: null
+  });
+
+  await bridge.start();
+  wiring.connections[0].emitMessage({ type: "hello" });
+  wiring.connections[0].emitMessage({ type: "disconnect", reason: "refresh" });
+  await flushAsync();
+
+  assert.equal(wiring.connections.length, 2);
+  assert.equal(wiring.connections[0].closedByBridge, true);
+  assert.ok(
+    wiring.events.indexOf("open:2") < wiring.events.indexOf("close:1"),
+    `new connection must open before old closes: ${wiring.events.join(",")}`
+  );
+
+  const next = wiring.connections[1];
+  next.emitMessage({ type: "hello" });
+  next.emitMessage({
+    envelope_id: "env_2",
+    type: "events_api",
+    payload: { type: "event_callback", event: { type: "message", text: "after refresh" } }
+  });
+  await flushAsync();
+
+  assert.deepEqual(next.sent[0], { envelope_id: "env_2" });
+  assert.equal(handled.length, 1);
+  assert.equal(handled[0].payload.event.text, "after refresh");
+
+  bridge.close();
+});
+
+test("Slack Socket Mode bridge reconnects with capped exponential backoff after unexpected close", async () => {
+  const wiring = createFakeSocketModeWiring({
+    fetchPlans: [
+      {},
+      { throwMessage: "network down" },
+      { throwMessage: "network down" },
+      { throwMessage: "network down" },
+      {}
+    ]
+  });
+  const sleepCalls = [];
+  const bridge = createSlackSocketModeBridge({
+    appToken: "xapp-1-test",
+    handleEvent: async () => {},
+    openConnection: wiring.openConnection,
+    fetchImpl: wiring.fetchImpl,
+    backoff: { initialMs: 100, maxMs: 400, factor: 2 },
+    sleep: async (ms) => {
+      sleepCalls.push(ms);
+    },
+    logger: null
+  });
+
+  await bridge.start();
+  wiring.connections[0].emitMessage({ type: "hello" });
+  wiring.connections[0].emitClose();
+  await flushAsync(12);
+
+  assert.deepEqual(sleepCalls, [100, 200, 400, 400]);
+  assert.equal(wiring.connections.length, 2);
+  assert.equal(wiring.fetchCalls.length, 5);
+
+  bridge.close();
+});
+
+test("Slack Socket Mode bridge reconnects after transport error", async () => {
+  const wiring = createFakeSocketModeWiring();
+  const bridge = createSlackSocketModeBridge({
+    appToken: "xapp-1-test",
+    handleEvent: async () => {},
+    openConnection: wiring.openConnection,
+    fetchImpl: wiring.fetchImpl,
+    backoff: { initialMs: 1, maxMs: 1, factor: 2 },
+    sleep: async () => {},
+    logger: null
+  });
+
+  await bridge.start();
+  wiring.connections[0].emitMessage({ type: "hello" });
+  wiring.connections[0].emitError(new Error("socket exploded"));
+  await flushAsync();
+
+  assert.equal(wiring.connections.length, 2);
+  assert.equal(wiring.connections[0].closedByBridge, true);
+
+  bridge.close();
+});
+
+test("Slack Socket Mode bridge close() closes connection and stops reconnect loop", async () => {
+  const wiring = createFakeSocketModeWiring();
+  const sleepResolvers = [];
+  const bridge = createSlackSocketModeBridge({
+    appToken: "xapp-1-test",
+    handleEvent: async () => {},
+    openConnection: wiring.openConnection,
+    fetchImpl: wiring.fetchImpl,
+    backoff: { initialMs: 100, maxMs: 400, factor: 2 },
+    sleep: () => new Promise((resolve) => sleepResolvers.push(resolve)),
+    logger: null
+  });
+
+  await bridge.start();
+  wiring.connections[0].emitMessage({ type: "hello" });
+
+  // Unexpected close starts the reconnect loop, parked on our fake sleep.
+  wiring.connections[0].emitClose();
+  await flushAsync();
+  assert.equal(sleepResolvers.length, 1);
+
+  // close() during backoff must stop the loop without reconnecting.
+  bridge.close();
+  sleepResolvers[0]();
+  await flushAsync();
+
+  assert.equal(wiring.connections.length, 1);
+  assert.equal(wiring.fetchCalls.length, 1);
+
+  // Further close events after close() must not revive the loop.
+  wiring.connections[0].emitClose();
+  await flushAsync();
+  assert.equal(wiring.fetchCalls.length, 1);
+  assert.equal(wiring.connections.length, 1);
+});
+
+test("resolveSlackIngressMode picks socket mode only when an app token is present", () => {
+  assert.equal(resolveSlackIngressMode({ appToken: "xapp-1-test" }), "socket");
+  assert.equal(resolveSlackIngressMode({ appToken: "" }), "http");
+  assert.equal(resolveSlackIngressMode({ appToken: null }), "http");
+  assert.equal(resolveSlackIngressMode({}), "http");
+  assert.equal(resolveSlackIngressMode(), "http");
+});
+
+const createPendingSecondFetch = (wiring) => {
+  const state = { fetchCount: 0, resolveLateFetch: null };
+  state.fetchImpl = async (url, options) => {
+    state.fetchCount += 1;
+    if (state.fetchCount === 1) {
+      return wiring.fetchImpl(url, options);
+    }
+    return new Promise((resolve) => {
+      state.resolveLateFetch = () =>
+        resolve({
+          ok: true,
+          status: 200,
+          async text() {
+            return JSON.stringify({ ok: true, url: "wss://fake.slack/late" });
+          }
+        });
+    });
+  };
+  return state;
+};
+
+test("Slack Socket Mode bridge close() during in-flight reconnect closes the late connection", async () => {
+  const wiring = createFakeSocketModeWiring();
+  const pending = createPendingSecondFetch(wiring);
+  const bridge = createSlackSocketModeBridge({
+    appToken: "xapp-1-test",
+    handleEvent: async () => {},
+    openConnection: wiring.openConnection,
+    fetchImpl: pending.fetchImpl,
+    backoff: { initialMs: 1, maxMs: 1, factor: 2 },
+    sleep: async () => {},
+    logger: null
+  });
+
+  await bridge.start();
+  wiring.connections[0].emitMessage({ type: "hello" });
+  // Unexpected close starts the reconnect loop, which parks on the pending
+  // apps.connections.open fetch.
+  wiring.connections[0].emitClose();
+  await flushAsync();
+  assert.equal(pending.fetchCount, 2);
+
+  // close() arrives while apps.connections.open is still in flight.
+  bridge.close();
+  pending.resolveLateFetch();
+  await flushAsync();
+
+  assert.equal(wiring.connections.length, 2);
+  assert.equal(
+    wiring.connections[1].closedByBridge,
+    true,
+    "late connection must be closed when the bridge was closed mid-connect"
+  );
+  assert.equal(bridge.state().connected, false);
+});
+
+test("Slack Socket Mode bridge close() during in-flight refresh closes the late connection", async () => {
+  const wiring = createFakeSocketModeWiring();
+  const pending = createPendingSecondFetch(wiring);
+  const bridge = createSlackSocketModeBridge({
+    appToken: "xapp-1-test",
+    handleEvent: async () => {},
+    openConnection: wiring.openConnection,
+    fetchImpl: pending.fetchImpl,
+    logger: null
+  });
+
+  await bridge.start();
+  wiring.connections[0].emitMessage({ type: "hello" });
+  // Refresh parks on the pending apps.connections.open fetch.
+  wiring.connections[0].emitMessage({ type: "disconnect", reason: "refresh" });
+  await flushAsync();
+  assert.equal(pending.fetchCount, 2);
+
+  bridge.close();
+  pending.resolveLateFetch();
+  await flushAsync();
+
+  assert.equal(wiring.connections.length, 2);
+  assert.equal(
+    wiring.connections[1].closedByBridge,
+    true,
+    "late refresh connection must be closed when the bridge was closed mid-connect"
+  );
+  assert.equal(bridge.state().connected, false);
+});
+
+test("Slack Socket Mode bridge dedupes duplicate disconnect frames into a single refresh", async () => {
+  const wiring = createFakeSocketModeWiring();
+  const bridge = createSlackSocketModeBridge({
+    appToken: "xapp-1-test",
+    handleEvent: async () => {},
+    openConnection: wiring.openConnection,
+    fetchImpl: wiring.fetchImpl,
+    logger: null
+  });
+
+  await bridge.start();
+  wiring.connections[0].emitMessage({ type: "hello" });
+  wiring.connections[0].emitMessage({ type: "disconnect", reason: "refresh" });
+  wiring.connections[0].emitMessage({ type: "disconnect", reason: "refresh" });
+  await flushAsync();
+
+  assert.equal(
+    wiring.connections.length,
+    2,
+    "duplicate disconnect frames must not open parallel replacement connections"
+  );
+  assert.equal(wiring.fetchCalls.length, 2);
+  assert.equal(wiring.connections[0].closedByBridge, true);
+
+  bridge.close();
+});
+
+test("Slack Socket Mode bridge survives ack send failures and keeps serving", async () => {
+  let emit;
+  let sendCalls = 0;
+  const sent = [];
+  const openConnection = ({ onMessage }) => {
+    emit = (message) => onMessage(JSON.stringify(message));
+    return {
+      send(data) {
+        sendCalls += 1;
+        if (sendCalls === 1) {
+          throw new Error("send failed");
+        }
+        sent.push(JSON.parse(data));
+      },
+      close() {}
+    };
+  };
+  const handled = [];
+  const wiring = createFakeSocketModeWiring();
+  const bridge = createSlackSocketModeBridge({
+    appToken: "xapp-1-test",
+    handleEvent: async (payload) => {
+      handled.push(payload);
+    },
+    openConnection,
+    fetchImpl: wiring.fetchImpl,
+    logger: null
+  });
+
+  await bridge.start();
+  emit({ type: "hello" });
+  emit({
+    envelope_id: "env_1",
+    type: "events_api",
+    payload: { type: "event_callback", event: { type: "message", text: "first" } }
+  });
+  await flushAsync();
+  // The failed ack means Slack will redeliver; the event must not be
+  // processed without an ack, and the bridge must not crash.
+  assert.equal(handled.length, 0);
+
+  emit({
+    envelope_id: "env_2",
+    type: "events_api",
+    payload: { type: "event_callback", event: { type: "message", text: "second" } }
+  });
+  await flushAsync();
+
+  assert.deepEqual(sent[0], { envelope_id: "env_2" });
+  assert.equal(handled.length, 1);
+  assert.equal(handled[0].event.text, "second");
+
+  bridge.close();
+});
+
+test("Slack Socket Mode bridge keeps serving after handleEvent throws", async () => {
+  const wiring = createFakeSocketModeWiring();
+  const handled = [];
+  let calls = 0;
+  const bridge = createSlackSocketModeBridge({
+    appToken: "xapp-1-test",
+    handleEvent: async (payload) => {
+      calls += 1;
+      if (calls === 1) {
+        throw new Error("brain exploded");
+      }
+      handled.push(payload);
+    },
+    openConnection: wiring.openConnection,
+    fetchImpl: wiring.fetchImpl,
+    logger: null
+  });
+
+  await bridge.start();
+  const connection = wiring.connections[0];
+  connection.emitMessage({ type: "hello" });
+  connection.emitMessage({
+    envelope_id: "env_1",
+    type: "events_api",
+    payload: { type: "event_callback", event: { type: "message", text: "boom" } }
+  });
+  connection.emitMessage({
+    envelope_id: "env_2",
+    type: "events_api",
+    payload: { type: "event_callback", event: { type: "message", text: "fine" } }
+  });
+  await flushAsync();
+
+  // Both envelopes are acked even though the first handler threw.
+  assert.deepEqual(connection.sent[0], { envelope_id: "env_1" });
+  assert.deepEqual(connection.sent[1], { envelope_id: "env_2" });
+  assert.equal(handled.length, 1);
+  assert.equal(handled[0].event.text, "fine");
+
+  bridge.close();
+});
+
+test("Slack Socket Mode bridge rejects non-wss connection URLs", async () => {
+  const wiring = createFakeSocketModeWiring({
+    fetchPlans: [{ body: { ok: true, url: "https://not-a-socket.example" } }]
+  });
+  const bridge = createSlackSocketModeBridge({
+    appToken: "xapp-1-test",
+    handleEvent: async () => {},
+    openConnection: wiring.openConnection,
+    fetchImpl: wiring.fetchImpl,
+    logger: null
+  });
+
+  await assert.rejects(() => bridge.start(), /wss/);
+  assert.equal(wiring.connections.length, 0);
 });

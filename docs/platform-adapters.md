@@ -176,6 +176,10 @@ const runtime = createSlackEventsRuntime({
 await runtime.handlePayload(slackEventsPayload);
 ```
 
+To receive the same payloads over Slack Socket Mode (wss, no public HTTP
+endpoint, Node 22+), pair `createSlackSocketModeBridge` with the same
+runtime — see [slack-codex.md](./slack-codex.md#socket-mode-no-public-endpoint).
+
 Or run the example:
 
 ```bash

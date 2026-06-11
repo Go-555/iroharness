@@ -59,6 +59,68 @@ http://127.0.0.1:4181/slack/events
 Expose that endpoint with Tailscale Serve, Cloudflare Tunnel, ngrok, or another
 trusted ingress. Put the public HTTPS URL into Slack's Events API Request URL.
 
+## Socket Mode (no public endpoint)
+
+If you set `SLACK_APP_TOKEN`, the example connects to Slack over Socket Mode
+(outbound wss) instead of starting the HTTP listener. No tunnel, reverse
+proxy, or public Request URL is needed — the only network exposure is an
+outbound connection from your machine to Slack.
+
+```bash
+SLACK_BOT_TOKEN=xoxb-... \
+SLACK_APP_TOKEN=xapp-... \
+SLACK_BOT_USER_ID=UIROHA \
+IROHARNESS_RUN_CODEX=1 \
+IROHARNESS_SLACK_OWNER_USER_ID=UOWNER \
+CODEX_WORKSPACE=/path/to/project \
+npm run example:slack-codex
+```
+
+How to create the `xapp-` token:
+
+1. In your Slack app settings, open **Basic Information → App-Level Tokens**
+   and generate a token with the `connections:write` scope. It starts with
+   `xapp-`.
+2. Enable **Socket Mode** for the app (Settings → Socket Mode).
+3. Subscribe to the same events as the HTTP path (`app_mention`, optionally
+   `message.channels` / `message.groups`). No Request URL is required.
+
+Notes:
+
+- `SLACK_SIGNING_SECRET` is not used in Socket Mode. Request signing is an
+  HTTP Events API concept; Socket Mode authenticates through the `xapp-`
+  token when opening the connection.
+- Socket Mode needs the native `WebSocket` global, so run the example on
+  **Node 22+**. The package itself still supports Node >=20 for everything
+  else; the bridge raises a clear error on older runtimes (or inject
+  `openConnection` with your own WebSocket implementation).
+- Slack may redeliver the same event (`retry_attempt` on the envelope, or a
+  duplicate delivery around connection refreshes). The bridge acks every
+  envelope and leaves dedupe to the caller; the example reuses the same
+  `event_id` dedupe as the HTTP path.
+- Slack periodically sends `disconnect` frames to refresh connections. The
+  bridge opens the replacement connection before closing the old one and
+  reconnects with capped exponential backoff after unexpected drops.
+
+For library use, wire `createSlackSocketModeBridge` to the existing events
+runtime — the envelope payload has the same shape as an Events API request
+body:
+
+```js
+import {
+  createSlackEventsRuntime,
+  createSlackSocketModeBridge
+} from "iroharness/adapters";
+
+const runtime = createSlackEventsRuntime({ botToken, harness });
+const bridge = createSlackSocketModeBridge({
+  appToken: process.env.SLACK_APP_TOKEN,
+  handleEvent: (payload) => runtime.handlePayload(payload)
+});
+await bridge.start();
+// later: bridge.close();
+```
+
 ## Slack App Settings
 
 Minimum Slack app setup:

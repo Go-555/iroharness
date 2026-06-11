@@ -13,7 +13,9 @@ import {
   createCodexAppServerBrain,
   createCodexAppServerMicroHarness,
   createSlackEventsRuntime,
-  createSlackMessageAdapter
+  createSlackMessageAdapter,
+  createSlackSocketModeBridge,
+  resolveSlackIngressMode
 } from "../src/adapters/index.js";
 
 const requireEnv = (name) => {
@@ -89,7 +91,10 @@ const createSlackCodexCompanion = () => {
   }
 
   const botToken = requireEnv("SLACK_BOT_TOKEN");
-  const signingSecret = requireEnv("SLACK_SIGNING_SECRET");
+  const appToken = process.env.SLACK_APP_TOKEN || null;
+  const ingressMode = resolveSlackIngressMode({ appToken });
+  // Slack request signing only exists on the HTTP (Events API) ingress.
+  const signingSecret = ingressMode === "http" ? requireEnv("SLACK_SIGNING_SECRET") : null;
   const port = Number(process.env.PORT || "4181");
   const host = process.env.HOST || "127.0.0.1";
   const codexWorkspace = process.env.CODEX_WORKSPACE || process.cwd();
@@ -144,6 +149,18 @@ const createSlackCodexCompanion = () => {
   });
 
   const seenEventIds = new Set();
+  const isDuplicateEvent = (payload) => {
+    if (!payload?.event_id) {
+      return false;
+    }
+    if (seenEventIds.has(payload.event_id)) {
+      return true;
+    }
+    seenEventIds.add(payload.event_id);
+    setTimeout(() => seenEventIds.delete(payload.event_id), 10 * 60_000).unref?.();
+    return false;
+  };
+
   const runtime = createSlackEventsRuntime({
     botToken,
     harness,
@@ -174,6 +191,30 @@ const createSlackCodexCompanion = () => {
     }
   });
 
+  if (ingressMode === "socket") {
+    const bridge = createSlackSocketModeBridge({
+      appToken,
+      handleEvent: async (payload) => {
+        if (isDuplicateEvent(payload)) {
+          return;
+        }
+        await runtime.handlePayload(payload).catch((error) => {
+          console.error(error.stack || error.message);
+        });
+      }
+    });
+    return Object.freeze({
+      mode: "socket",
+      async listen() {
+        await bridge.start();
+        return { url: "wss (Slack Socket Mode)" };
+      },
+      close() {
+        bridge.close();
+      }
+    });
+  }
+
   const server = createServer(async (request, response) => {
     if (request.method === "GET" && request.url === "/health") {
       response.writeHead(200, { "content-type": "application/json" });
@@ -200,14 +241,10 @@ const createSlackCodexCompanion = () => {
       return;
     }
 
-    if (payload.event_id && seenEventIds.has(payload.event_id)) {
+    if (isDuplicateEvent(payload)) {
       response.writeHead(200, { "content-type": "application/json" });
       response.end(JSON.stringify({ ok: true, duplicate: true }));
       return;
-    }
-    if (payload.event_id) {
-      seenEventIds.add(payload.event_id);
-      setTimeout(() => seenEventIds.delete(payload.event_id), 10 * 60_000).unref?.();
     }
 
     response.writeHead(200, { "content-type": "application/json" });
@@ -218,6 +255,7 @@ const createSlackCodexCompanion = () => {
   });
 
   return Object.freeze({
+    mode: "http",
     listen() {
       return new Promise((resolve) => {
         server.listen(port, host, () => {
@@ -233,5 +271,10 @@ const createSlackCodexCompanion = () => {
 
 const companion = createSlackCodexCompanion();
 const { url } = await companion.listen();
-console.log(`IroHarness Slack + Codex companion listening on ${url}`);
-console.log("Use a tunnel or Tailscale Serve URL as the Slack Events Request URL.");
+if (companion.mode === "socket") {
+  console.log("IroHarness Slack + Codex companion connected via Slack Socket Mode.");
+  console.log("Running in socket mode, no public endpoint. No HTTP listener was started.");
+} else {
+  console.log(`IroHarness Slack + Codex companion listening on ${url}`);
+  console.log("Use a tunnel or Tailscale Serve URL as the Slack Events Request URL.");
+}

@@ -89,6 +89,10 @@ export function createStreamContextEnricher(
 ): (turn: TurnInput) => Promise<TurnInput>;
 export function createDiscordBotRuntime(input: JsonObject): JsonObject;
 export function createSlackEventsRuntime(input: JsonObject): JsonObject;
+export function createSlackSocketModeBridge(input: JsonObject): JsonObject;
+export function resolveSlackIngressMode(input?: {
+  readonly appToken?: string | null;
+}): "socket" | "http";
 export function createYouTubeLiveChatPollingRuntime(
   input: JsonObject,
 ): JsonObject;
