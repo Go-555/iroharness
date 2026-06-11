@@ -32,7 +32,7 @@ Status labels:
 | Streaming voice pipeline | built-in | `createVoicePipeline`, `src/voice-pipeline/` | VAD → STT → sentence-split streaming TTS → pacer loop. Emits `speech.audio`, `turn.final`, and `metrics` events. Enabled via `IROHARNESS_STACKCHAN_STREAMING=1`. |
 | Silero VAD | built-in w/ optional `onnxruntime-node` | `createSileroVad`, `src/voice-pipeline/silero-vad.js` | Node.js ONNX-based VAD. Falls back to mock (always-on) when `onnxruntime-node` or `IROHARNESS_SILERO_MODEL` is absent. |
 | Streaming brains | adapter | `toBrainStream`, `createOpenAIResponsesBrain`, Codex app-server `respondStream` | OpenAI Responses API SSE and Codex app-server streaming paths; both implement the `respondStream` async-iterator contract. |
-| Harness `receiveStream` | built-in | `harness.receiveStream()`, `src/harness-receive-stream.js` | Streaming turn entry point: yields brain deltas and exposes `abandon()` for barge-in without double-finalizing state. |
+| Harness `receiveStream` | built-in | `harness.receiveStream()`, `src/index.js` | Streaming turn entry point: yields brain deltas and exposes `abandon()` for barge-in without double-finalizing state. |
 | Rust realtime core | contract | `crates/realtime-core`, `createRustRealtimeCoreBinding`, `createRustRealtimeCoreCabiAdapter` | Rust crate exposes JSONL plus native/WASM C ABI fast-path bindings. |
 
 ## Micro Harnesses

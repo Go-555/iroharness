@@ -357,6 +357,28 @@ const createStackChanStt = () => {
   });
 };
 
+// Minimal real RIFF/WAVE (PCM16 mono 16000Hz) with silent samples so the
+// gateway's strict parsePcm16Wav normalization accepts mock TTS audio and the
+// hardware-free E2E exercises the actual speech.audio path.
+const buildSilentWavBase64 = ({ sampleRate = 16000, samples = 160 } = {}) => {
+  const dataBytes = samples * 2;
+  const header = Buffer.alloc(44);
+  header.write("RIFF", 0, "ascii");
+  header.writeUInt32LE(36 + dataBytes, 4);
+  header.write("WAVE", 8, "ascii");
+  header.write("fmt ", 12, "ascii");
+  header.writeUInt32LE(16, 16); // fmt chunk size
+  header.writeUInt16LE(1, 20); // PCM
+  header.writeUInt16LE(1, 22); // mono
+  header.writeUInt32LE(sampleRate, 24);
+  header.writeUInt32LE(sampleRate * 2, 28); // byte rate
+  header.writeUInt16LE(2, 32); // block align
+  header.writeUInt16LE(16, 34); // bits per sample
+  header.write("data", 36, "ascii");
+  header.writeUInt32LE(dataBytes, 40);
+  return Buffer.concat([header, Buffer.alloc(dataBytes)]).toString("base64");
+};
+
 const createStackChanTts = () => {
   const provider = process.env.IROHARNESS_STACKCHAN_TTS_PROVIDER || "none";
   if (provider === "mock") {
@@ -364,7 +386,7 @@ const createStackChanTts = () => {
       id: "stackchan-mock-tts",
       kind: "tts",
       async stream({ text, onEvent = () => {} }) {
-        const audio = Buffer.from(`mock-audio:${text || ""}`).toString("base64");
+        const audio = buildSilentWavBase64();
         const events = [
           {
             type: "tts.audio",

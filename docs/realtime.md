@@ -412,8 +412,8 @@ This mirrors AIAvatarStackChan's `ack`/`answer` pattern at the pipeline level.
 | `IROHARNESS_STACKCHAN_STREAMING` | `0` | Set to `1` to attach a `VoicePipeline` to the StackChan session handler instead of using the legacy PTT path. |
 | `IROHARNESS_SILERO_MODEL` | (none) | Path to a Silero VAD ONNX model file. When set, `createSileroVad` loads the model via `onnxruntime-node`. Unset = mock VAD (always-on speech). |
 | `IROHARNESS_STACKCHAN_TTS_SAMPLE_RATE` | `24000` | Sample rate used by the pacer to compute per-sentence sleep durations. Must match the TTS provider's output rate. |
-| `IROHARNESS_VOICE_MAX_SENTENCES` | `20` | Maximum sentences per turn. Pipeline aborts the brain and speaks remaining audio when the cap is hit. |
-| `IROHARNESS_STACKCHAN_IMMEDIATE_ACK_TEXT` | (none) | Short phrase pre-warmed by the quick-responder and spoken before the first brain token arrives. |
+| `IROHARNESS_VOICE_MAX_SENTENCES` | `30` | Maximum sentences per turn. Pipeline aborts the brain and speaks remaining audio when the cap is hit. |
+| `IROHARNESS_STACKCHAN_IMMEDIATE_ACK_TEXT` | `うん。` | Short phrase pre-warmed by the quick-responder and spoken before the first brain token arrives. Falls back to `うん。` when unset. |
 
 ### Wire Sequence Notes
 
@@ -436,8 +436,8 @@ The pipeline records per-turn latency marks and emits them in `turn.final`:
 
 | Metric key | Meaning |
 |---|---|
-| `first_audio_total_ms` | Wall-clock time from speech segment start to first `speech.audio` event delivered (includes VAD, STT, brain first token, TTS first chunk, and pacer). |
-| `total_ms` | Wall-clock time from speech segment start to `turn.final`. |
+| `first_audio_total_ms` | `tts.first_audio − speech.end`: wall-clock time from the end of the user's speech segment to the first `speech.audio` event delivered (includes STT, brain first sentence, TTS first chunk, and pacer). |
+| `total_ms` | `response.final − speech.end`: wall-clock time from the end of the user's speech segment to `turn.final`. |
 
 The session handler forwards these as the additive `metrics` field on
 `response.final`. Legacy firmware ignores the field; streaming-aware hosts can
