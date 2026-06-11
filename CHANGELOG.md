@@ -18,7 +18,7 @@ A full end-to-end streaming voice pipeline is now built into IroHarness
 - **`receiveStream` / `abandon`** — `harness.receiveStream()` yields streaming
   brain deltas through the `respondStream` async-iterator contract and exposes
   `abandon()` for clean barge-in without double-finalizing harness state.
-- **Streaming brains** — `createOpenAIResponsesBrain` streams via the OpenAI
+- **Streaming brains** — `createOpenAiResponsesBrain` streams via the OpenAI
   Responses API SSE endpoint; `createCodexAppServerBrain` streams via the Codex
   app-server `respondStream` path; both implement the `respondStream` contract
   consumed by `toBrainStream`.
@@ -26,7 +26,7 @@ A full end-to-end streaming voice pipeline is now built into IroHarness
   accepts a `voicePipeline` option and routes all audio frames through it,
   translating pipeline events (`speech.audio`, `turn.final`, `speech.interrupted`,
   `error`, `stt.empty`, `turn.rejected`) to the firmware wire protocol.
-- **Pacer and per-turn metrics** — `createVoicePacer` paces audio delivery by
+- **Pacer and per-turn metrics** — `createAudioPacer` paces audio delivery by
   the base64 byte-length / 2 ÷ sampleRate approximation; `createVoiceTurnMetrics`
   records `first_audio_total_ms` and `total_ms` per turn; these appear in the
   additive `metrics` field on `response.final`.

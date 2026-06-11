@@ -305,7 +305,8 @@ OpenAI 実装: Responses API `stream: true` の SSE を fetchImpl で読み、`r
 仕様: `createVoicePipeline({ vad, stt, harness, tts, queue, pacer, quickResponder, metrics, maxSentences = 30, stageTimeoutMs = { stt: 10000, brain: 30000, tts: 10000 }, onEvent })`。
 （暴走ガードの**最大トークン**は pipeline ではなく brain adapter の責務: gateway 由来のオプション **`maxOutputTokens`**（env は `IROHARNESS_VOICE_BRAIN_MAX_TOKENS`）をそのまま使う。pipeline 側は文数と段別タイムアウトを持つ——二重実装しない）
 入力 `pushAudio(frame)` / `interrupt(reason)`。流れ: VAD end → STT → quickResponder.fire() → `harness.receiveStream` → splitter → 文ごとに `tts.stream`（AbortSignal 持参）→ pacer 経由で `onEvent({type:"speech.audio", ...})` → 全文後 finalize。
-エラー正規化: どの段の失敗も `onEvent({type:"error", stage, message})` 1 種。1 文の TTS 失敗はスキップして継続。**空白のみの文（"\n" 等、Markdown 由来）は TTS に送らずスキップ**（splitter は本家どおり素通しするので pipeline 側で濾す。テストも 1 本）。brain 途中死は言いかけまで＋定型句。interrupt は進行中 brain/TTS を abort。
+**注意（Task 9 申し送り）**: `finalize`/`abandon` は settled ラッチ済み（二重呼び出しは null/no-op）。gate 拒否時は `{stream: null, result}` が返るので分岐すること。**barge-in では `abandon()` と AbortSignal の発火を必ずセットで行う**——abandon は状態を idle に戻すだけで brain stream は止めない（signal を忘れるとトークンを黙って燃やし続ける）。
+エラー正規化: どの段の失敗も `onEvent({type:"error", stage, message})` 1 種。1 文の TTS 失敗はスキップして継続。**空白のみの文（"\n" 等、Markdown 由来）は TTS に送らずスキップ**（splitter は本家どおり素通しするので pipeline 側で濾す。テストも 1 本）。**brain が非空白文ゼロのまま final になった turn も同じ定型句経路で処理**（Codex の zero-delta turn は `{delta:"", final:true}` を返す——adapter に filler を持たせない決定済み。Task 8 レビュー参照）。brain 途中死は言いかけまで＋定型句。interrupt は進行中 brain/TTS を abort。
 
 - [ ] **Step 1: failing test — 並走の証明**（mock brain が delta を 2 文ぶん時間差で流し、mock tts が呼び出し時刻を記録。**1 文目の tts 開始時刻 < brain 完了時刻** を assert）
 - [ ] **Step 2: failing test — barge-in**（再生中に interrupt → tts の signal.aborted が true、`speech.interrupted` イベント。**自動 barge-in も**: speaking 中の pushAudio で VAD が speech.start を返したら同様に abort されること）
@@ -320,6 +321,7 @@ OpenAI 実装: Responses API `stream: true` の SSE を fetchImpl で読み、`r
 - Modify: `examples/slack-stackchan-companion.mjs`（pipeline 組み立てに差し替え、`IROHARNESS_VOICE_MAX_SENTENCES` 等の env 追加）
 - Test: 既存 `test/adapters.test.js` の session handler テストが**そのまま通る**こと＋first_audio metrics がイベントに乗るケース追加＋**STT 空振り時に `stt.empty` を送って listening に復帰する挙動（gateway `90a0ea0` 由来）がリファクタ後も残る**ことの assertion＋**WS 切断で進行中 tts の signal が aborted になる**ことの assertion（spec §6「WS 切断 → abort」）
 
+- [ ] Step 0 **実モデル関所**（→ 開発機でダウンロード不可のため**移行④の Mac mini 上で実施**に変更）: silero_vad.onnx を取得し `IROHARNESS_SILERO_MODEL=... node --test test/voice-silero-vad.test.js` で gated smoke test を一度通す（sr テンソルの scalar dims を実グラフで確認。Task 10 レビュー Minor 5）
 - [ ] Step 1 既存テスト green を確認（リファクタ前の基準）→ Step 2 置換実装 → Step 3 `npm test` 全 green → Step 4 Commit `refactor(voice): session handler delegates to voice pipeline (wire format unchanged)`
 
 ### Task 13: E2E（疑似実機お会計）＋ docs

@@ -30,8 +30,8 @@ Status labels:
 | Speech playback queue | contract | `createSpeechPlaybackQueue`, `protocols/speech-queue.schema.json` | Normalizes queued, started, completed, interrupted, and cleared speech events for bodies. |
 | StackChan realtime relay | adapter | `createStackChanRealtimeRelay`, `createStackChanRealtimeSessionHandler`, `protocols/stackchan-realtime-message.schema.json` | WebSocket audio chunk and speech playback relay plus firmware-facing session handler for the sub-second StackChan path. |
 | Streaming voice pipeline | built-in | `createVoicePipeline`, `src/voice-pipeline/` | VAD → STT → sentence-split streaming TTS → pacer loop. Emits `speech.audio`, `turn.final`, and `metrics` events. Enabled via `IROHARNESS_STACKCHAN_STREAMING=1`. |
-| Silero VAD | built-in w/ optional `onnxruntime-node` | `createSileroVad`, `src/voice-pipeline/silero-vad.js` | Node.js ONNX-based VAD. Falls back to mock (always-on) when `onnxruntime-node` or `IROHARNESS_SILERO_MODEL` is absent. |
-| Streaming brains | adapter | `toBrainStream`, `createOpenAIResponsesBrain`, Codex app-server `respondStream` | OpenAI Responses API SSE and Codex app-server streaming paths; both implement the `respondStream` async-iterator contract. |
+| Silero VAD | built-in w/ optional `onnxruntime-node` | `createSileroVad`, `src/voice-pipeline/silero-vad.js` | Node.js ONNX-based VAD. Requires `onnxruntime-node` and a Silero model file; without them the example stays on the legacy voice path. |
+| Streaming brains | adapter | `toBrainStream`, `createOpenAiResponsesBrain`, Codex app-server `respondStream` | OpenAI Responses API SSE and Codex app-server streaming paths; both implement the `respondStream` async-iterator contract. |
 | Harness `receiveStream` | built-in | `harness.receiveStream()`, `src/index.js` | Streaming turn entry point: yields brain deltas and exposes `abandon()` for barge-in without double-finalizing state. |
 | Rust realtime core | contract | `crates/realtime-core`, `createRustRealtimeCoreBinding`, `createRustRealtimeCoreCabiAdapter` | Rust crate exposes JSONL plus native/WASM C ABI fast-path bindings. |
 

@@ -16,7 +16,7 @@ tracked copy derived from AIAvatarStackChan (MIT license). The upstream MIT
 license notice is preserved in `LICENSE.aiavatarstackchan` and
 `THIRD_PARTY_NOTICES.md` inside that directory. The runtime is kept isolated
 from the macro harness core. Per the absorption architecture the plan is to
-split it into a dedicated `iroharness-stackchan-runtime` repository once the
+split it into a dedicated `iroharness-stackchan-firmware` repository once the
 PlatformIO release cadence diverges from the npm package cadence.
 
 ## Boundary
@@ -242,7 +242,7 @@ PCM conversion.
 Split the firmware runtime only when the toolchain forces it:
 
 ```text
-iroharness-stackchan-runtime/
+iroharness-stackchan-firmware/
 ```
 
 Reasons to split:
@@ -288,4 +288,4 @@ target once the upstream-compatible gateway is implemented.
 5. Measure real CoreS3 microphone-to-first-audio latency against the Mac mini
    host.
 6. Decide whether the runtime stays in this repository or splits into
-   `iroharness-stackchan-runtime`.
+   `iroharness-stackchan-firmware`.

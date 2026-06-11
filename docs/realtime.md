@@ -399,7 +399,7 @@ VAD (Silero or mock)
 ```
 
 Barge-in and manual interrupt are handled at any point: the pipeline calls
-`tts.abort()` and emits `speech.interrupted`.
+the per-turn `AbortSignal` passed to `tts.stream()` and emits `speech.interrupted`.
 
 A quick-responder (`createQuickResponder`) warms up a short ack phrase and fires
 it as the first `speech.audio` event before the brain returns its first token.
@@ -410,7 +410,7 @@ This mirrors AIAvatarStackChan's `ack`/`answer` pattern at the pipeline level.
 | Variable | Default | Effect |
 |---|---|---|
 | `IROHARNESS_STACKCHAN_STREAMING` | `0` | Set to `1` to attach a `VoicePipeline` to the StackChan session handler instead of using the legacy PTT path. |
-| `IROHARNESS_SILERO_MODEL` | (none) | Path to a Silero VAD ONNX model file. When set, `createSileroVad` loads the model via `onnxruntime-node`. Unset = mock VAD (always-on speech). |
+| `IROHARNESS_SILERO_MODEL` | (none) | Path to a Silero VAD ONNX model file. When set, `createSileroVad` loads the model via `onnxruntime-node`. Unset = the example stays on the legacy (non-streaming) voice path. |
 | `IROHARNESS_STACKCHAN_TTS_SAMPLE_RATE` | `24000` | Sample rate used by the pacer to compute per-sentence sleep durations. Must match the TTS provider's output rate. |
 | `IROHARNESS_VOICE_MAX_SENTENCES` | `30` | Maximum sentences per turn. Pipeline aborts the brain and speaks remaining audio when the cap is hit. |
 | `IROHARNESS_STACKCHAN_IMMEDIATE_ACK_TEXT` | `うん。` | Short phrase pre-warmed by the quick-responder and spoken before the first brain token arrives. Falls back to `うん。` when unset. |
@@ -451,6 +451,6 @@ is present (streaming mode). When absent it shows `"n/a (legacy mode)"`.
 
 The Silero VAD integration (`createSileroVad`) requires `onnxruntime-node` and a
 downloaded ONNX model (`IROHARNESS_SILERO_MODEL`). Both are optional runtime
-dependencies — the pipeline falls back to a mock VAD (speech always active)
+dependencies — the example stays on the legacy (non-streaming) voice path
 when they are absent. E2E tests on machines without the model run in legacy mode
 and document the expected `n/a (legacy mode)` summary output.
