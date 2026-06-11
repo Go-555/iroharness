@@ -1,9 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import {
-  createQuickResponder,
-  createDynamicQuickResponder,
-} from "../src/voice-pipeline/quick-responder.js";
+import { createQuickResponder,
+  createDynamicQuickResponder, resolveQuickBrain } from "../src/voice-pipeline/quick-responder.js";
 
 // ---------------------------------------------------------------------------
 // Mock TTS factory
@@ -311,4 +309,25 @@ test("dynamic: constructor validates brain and tts", () => {
   assert.throws(() => createDynamicQuickResponder({ tts: makeMockTts() }), /brain/i);
   assert.throws(() => createDynamicQuickResponder({ brain: {}, tts: makeMockTts() }), /brain/i);
   assert.throws(() => createDynamicQuickResponder({ brain: makeMockBrain() }), /tts/i);
+});
+
+test("resolveQuickBrain prefers the dedicated quick brain even over a codex voice brain", () => {
+  const quickBrain = { id: "quick" };
+  const voiceBrain = { id: "voice-codex" };
+  const resolved = resolveQuickBrain({ quickBrain, voiceBrain, voiceBrainIsCodex: true });
+  assert.equal(resolved.brain, quickBrain);
+  assert.equal(resolved.downgraded, false);
+});
+
+test("resolveQuickBrain falls back to a non-codex voice brain", () => {
+  const voiceBrain = { id: "voice-openai" };
+  const resolved = resolveQuickBrain({ voiceBrain, voiceBrainIsCodex: false });
+  assert.equal(resolved.brain, voiceBrain);
+  assert.equal(resolved.downgraded, false);
+});
+
+test("resolveQuickBrain refuses a codex voice brain fallback (downgraded)", () => {
+  const resolved = resolveQuickBrain({ voiceBrain: { id: "voice-codex" }, voiceBrainIsCodex: true });
+  assert.equal(resolved.brain, null);
+  assert.equal(resolved.downgraded, true);
 });

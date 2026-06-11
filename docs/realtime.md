@@ -414,7 +414,8 @@ This mirrors AIAvatarStackChan's `ack`/`answer` pattern at the pipeline level.
 | `IROHARNESS_STACKCHAN_TTS_SAMPLE_RATE` | `24000` | Sample rate used by the pacer to compute per-sentence sleep durations. Must match the TTS provider's output rate. |
 | `IROHARNESS_VOICE_MAX_SENTENCES` | `30` | Maximum sentences per turn. Pipeline aborts the brain and speaks remaining audio when the cap is hit. |
 | `IROHARNESS_STACKCHAN_IMMEDIATE_ACK_TEXT` | `うん。` | Short phrase pre-warmed by the quick-responder and spoken before the first brain token arrives. Falls back to `うん。` when unset. |
-| `IROHARNESS_STACKCHAN_QUICK_MODE` | `static` | `dynamic` = a separate lightweight voice-brain call (1.5s deadline, ≤10 JA chars by prompt) generates a context-appropriate ack, falling back to the static phrase on timeout/error (AIAvatarKit QuickResponder parity). In BOTH modes the spoken ack text flows to `buildInput` as `quickText`, and the companion wraps the transcript in the continuation instruction («already said X — continue, correct course if X missed») so the main brain never repeats the ack. |
+| `IROHARNESS_STACKCHAN_QUICK_MODE` | `static` | `dynamic` = a separate lightweight voice-brain call (1.5s deadline, ≤10 JA chars by prompt) generates a context-appropriate ack, falling back to the static phrase on timeout/error (AIAvatarKit QuickResponder parity). In BOTH modes the spoken ack text flows to `buildInput` as `quickText`, and the companion wraps the transcript in the continuation instruction («already said X — continue, correct course if X missed») so the main brain never repeats the ack. `dynamic` には軽量な quick 専用 brain が必要（`IROHARNESS_QUICK_BRAIN_PROVIDER` 未設定で voice brain が codex の場合は警告の上 static に自動降格）。 |
+| `IROHARNESS_QUICK_BRAIN_PROVIDER` / `_MODEL` / `_MAX_TOKENS` | (unset) | dynamic quick responder 専用の軽量 brain スロット（本家 pro.py の分離 QR クライアント相当）。未設定時は voice brain を流用（codex は不可）。 |
 
 ### Wire Sequence Notes
 

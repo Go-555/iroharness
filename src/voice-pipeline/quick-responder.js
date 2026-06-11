@@ -43,7 +43,22 @@ import { toBrainStream } from "./brain-stream.js";
 
 // 本家 quick_responder/base.py の日本語プロンプト準拠。
 export const DEFAULT_QUICK_PROMPT_PREFIX =
-  "$以下はユーザーの発話内容である。ユーザー発話を受け止めて、第一声として相応しい、10文字以内のごく短いフレーズを出力せよ。応答の末尾は「。」や「、」句読点や感嘆符とする。";
+  "$以下はユーザーの発話内容である。ユーザー発話を受け止めて、第一声として相応しい、10文字以内のごく短いフレーズを出力せよ。応答の末尾は「。」や「、」句読点や感嘆符とする。フレーズのみを出力すること。";
+
+// Picks the brain for the dynamic quick responder. A dedicated quick brain
+// (IROHARNESS_QUICK_BRAIN_PROVIDER) always wins. Falling back to a codex
+// voice brain is refused (downgraded: true): codex TTFT loses the 1.5s race
+// every turn, its aborted quick turns bleed late events into the main turn,
+// and quick prompts pollute the stateful thread.
+export const resolveQuickBrain = ({ quickBrain = null, voiceBrain = null, voiceBrainIsCodex = false } = {}) => {
+  if (quickBrain) {
+    return Object.freeze({ brain: quickBrain, downgraded: false });
+  }
+  if (voiceBrain && !voiceBrainIsCodex) {
+    return Object.freeze({ brain: voiceBrain, downgraded: false });
+  }
+  return Object.freeze({ brain: null, downgraded: true });
+};
 
 export const createQuickResponder = ({ tts, phrases = ["うん。"] } = {}) => {
   if (!tts || typeof tts.stream !== "function") {

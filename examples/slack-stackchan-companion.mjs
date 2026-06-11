@@ -27,6 +27,7 @@ import {
 import {
   createAudioPacer,
   createDynamicQuickResponder,
+  resolveQuickBrain,
   createQuickResponder,
   createSileroVad,
   createVoicePipeline,
@@ -454,13 +455,13 @@ const STACKCHAN_VAD_FRAME_SAMPLES = Number(
 // voice pipeline that the realtime session handler consumes via DI.
 // Requires IROHARNESS_SILERO_MODEL (path to silero_vad.onnx) — without it
 // the companion stays on the legacy in-handler VAD path.
-// 本家 AIAvatarKit の continuation prefix（quick_responder/base.py 準拠）:
+// 本家 AIAvatarKit の continuation prefix（quick_responder/pro.py の DEFAULT_QRP_REQUEST_PREFIX_JA 準拠）:
 // 既に第一声 quickText を発話済みであることを本命 brain に伝え、繰り返しを
 // 抑止しつつ、外していた場合は続きの中で軌道修正させる。
 const buildQuickContinuationText = (quickText, transcript) =>
   `$以下の入力に対して、既にあなたが出力済みの「${quickText}」や類似の表現は再出力せず、その続きのみを出力せよ。もし「${quickText}」が本来応答すべき内容にそぐわない場合は、続きの中でうまく適切な方向に補正すること:\n\n${transcript}`;
 
-const createStackChanVoicePipeline = async ({ harness, brain, stt, tts, stackchanId, getSession }) => {
+const createStackChanVoicePipeline = async ({ harness, brain, quickBrain = null, voiceBrainIsCodex = false, stt, tts, stackchanId, getSession }) => {
   if (process.env.IROHARNESS_STACKCHAN_STREAMING !== "1") {
     return null;
   }
@@ -503,20 +504,33 @@ const createStackChanVoicePipeline = async ({ harness, brain, stt, tts, stackcha
   // Quick ack mode: "static" (default, pre-synthesized phrase — current
   // behavior) or "dynamic" (separate lightweight brain call generates a
   // context-appropriate ack; the static responder stays as its fallback).
-  const quickMode = process.env.IROHARNESS_STACKCHAN_QUICK_MODE || "static";
+  let quickMode = process.env.IROHARNESS_STACKCHAN_QUICK_MODE || "static";
   const staticQuickResponder = createQuickResponder({
     tts,
     phrases: [process.env.IROHARNESS_STACKCHAN_IMMEDIATE_ACK_TEXT || "うん。"]
   });
-  const quickResponder =
-    quickMode === "dynamic"
-      ? createDynamicQuickResponder({
-          brain,
-          tts,
-          fallback: staticQuickResponder,
-          voice: process.env.IROHARNESS_STACKCHAN_VOICE || "iroha"
-        })
-      : staticQuickResponder;
+  let dynamicBrain = null;
+  if (quickMode === "dynamic") {
+    const resolved = resolveQuickBrain({ quickBrain, voiceBrain: brain, voiceBrainIsCodex });
+    if (resolved.downgraded) {
+      console.warn(
+        "StackChan streaming voice: IROHARNESS_STACKCHAN_QUICK_MODE=dynamic ですが quick brain が codex voice brain しか無いため static に降格します。" +
+          "（codex は TTFT が 1.5s の締切に間に合わず毎ターン +1.5s、中断した quick turn のイベントが本回答に混入し、スレッド履歴も汚れます。" +
+          "IROHARNESS_QUICK_BRAIN_PROVIDER=openai 等で軽量な quick 専用 brain を指定してください）"
+      );
+      quickMode = "static (downgraded)";
+    } else {
+      dynamicBrain = resolved.brain;
+    }
+  }
+  const quickResponder = dynamicBrain
+    ? createDynamicQuickResponder({
+        brain: dynamicBrain,
+        tts,
+        fallback: staticQuickResponder,
+        voice: process.env.IROHARNESS_STACKCHAN_VOICE || "iroha"
+      })
+    : staticQuickResponder;
   const cachedPhrases = await quickResponder.warmup();
   console.log(
     `StackChan streaming voice: quick responder warmed (${cachedPhrases} phrase(s) cached, mode=${quickMode})`
@@ -639,6 +653,11 @@ const createSlackStackChanCompanion = async () => {
   const voicePipeline = await createStackChanVoicePipeline({
     harness,
     brain: voiceBrain,
+    // 専用 quick brain（IROHARNESS_QUICK_BRAIN_PROVIDER 設定時のみ・本家 pro.py の分離 QR クライアント相当）
+    quickBrain: process.env.IROHARNESS_QUICK_BRAIN_PROVIDER
+      ? createBrainForSlot({ slot: "quick", codexWorkspace })
+      : null,
+    voiceBrainIsCodex: (process.env.IROHARNESS_VOICE_BRAIN_PROVIDER || "echo") === "codex",
     stt: stackchanStt,
     tts: stackchanTts,
     stackchanId: stackchan.id,
