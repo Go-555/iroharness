@@ -55,9 +55,20 @@ export const mintSpecialist = ({ root, task, allowlist = [], generate }) => {
   // gate. The draft's requested visibility is passed through so an
   // owner-visibility grab is refused; vault tools are refused even if a
   // tainted allowlist contains them. Nothing is written unless this passes.
-  const toolset = intersectToolset(draft.toolset, allowlist).map((tool) =>
-    assertFrontmatterScalar("toolset entry", tool),
-  );
+  // ajimi: an entry containing list delimiters would survive the intersection
+  // as ONE tool (when a tainted allowlist holds it verbatim) but round-trip
+  // through the `toolset: [a, b]` frontmatter join as SEVERAL tools — e.g.
+  // "doc-read, vault" parses back as doc-read AND vault. Reject outright.
+  const TOOLSET_DELIMITERS = /[,[\]]/;
+  const toolset = intersectToolset(draft.toolset, allowlist).map((tool) => {
+    assertFrontmatterScalar("toolset entry", tool);
+    if (TOOLSET_DELIMITERS.test(tool)) {
+      throw new Error(
+        `generated toolset entry must not contain list delimiters (',', '[', ']'): ${tool}`,
+      );
+    }
+    return tool;
+  });
   assertStagingSafe({ toolset, visibility: draft.visibility, allowlist });
 
   const md = [

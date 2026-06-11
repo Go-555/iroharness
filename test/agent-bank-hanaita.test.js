@@ -164,6 +164,48 @@ test("a trusted view needs delegate_work permission; with it the goal runs", asy
   assert.equal(result.status, "completed");
 });
 
+// ---- goal shape boundaries (ajimi): pinned to the normalizeSteps contract ---
+
+test("delegate_goal rejects a goal with empty steps", () => {
+  const root = makeBank();
+  const { hanaita } = makeHanaita({ root });
+  assert.throws(
+    () => hanaita.delegateGoal({ title: "empty", steps: [] }),
+    /non-empty array/i,
+  );
+});
+
+test("delegate_goal rejects duplicate step ids", () => {
+  const root = makeBank();
+  writeRecipe(root, "active", "researcher");
+  const { hanaita } = makeHanaita({ root });
+  assert.throws(
+    () =>
+      hanaita.delegateGoal({
+        title: "dup",
+        steps: [
+          { id: "s1", recipe: "researcher" },
+          { id: "s1", recipe: "researcher" },
+        ],
+      }),
+    /duplicate step id: s1/,
+  );
+});
+
+test("delegate_goal rejects a dependsOn naming an unknown step", () => {
+  const root = makeBank();
+  writeRecipe(root, "active", "researcher");
+  const { hanaita } = makeHanaita({ root });
+  assert.throws(
+    () =>
+      hanaita.delegateGoal({
+        title: "ghost dep",
+        steps: [{ id: "s1", recipe: "researcher", dependsOn: ["ghost"] }],
+      }),
+    /depends on unknown step: ghost/,
+  );
+});
+
 // ---- 4.1 invariant 1: only ACTIVE recipes may be hired ----------------------
 
 test("a staging recipe cannot be hired by delegate_goal (folder is the authority)", async () => {
@@ -417,7 +459,23 @@ test("fan-out runs independent steps concurrently and fan-in aggregates them", a
     if (started === 2) {
       releaseBarrier();
     }
-    return barrier;
+    // regression guard (ajimi): if the executor ever turns sequential, fail
+    // fast with a clear message instead of hanging the suite forever
+    return Promise.race([
+      barrier,
+      new Promise((unused, reject) => {
+        const timer = setTimeout(
+          () =>
+            reject(
+              new Error(
+                "fan-out barrier timed out: steps did not run concurrently",
+              ),
+            ),
+          5000,
+        );
+        timer.unref?.();
+      }),
+    ]);
   };
 
   const seen = {};
@@ -560,6 +618,35 @@ test("unfit work is cut off at the iteration cap and recorded as failed", async 
   const snapshot = projectOs.snapshot();
   assert.equal(snapshot.runs.length, 1);
   assert.equal(snapshot.runs[0].status, "failed");
+});
+
+// ajimi: maxVerifyAttempts: 0 means the verify loop never runs. That must
+// surface as a meaningful verify_exhausted failure — not a TypeError from
+// joining a null feedback — and must never reach the runner.
+test("maxVerifyAttempts: 0 fails with a meaningful error before any run", async () => {
+  const root = makeBank();
+  writeRecipe(root, "active", "researcher");
+  let runs = 0;
+  const { hanaita } = makeHanaita({
+    root,
+    createRunner: ({ id }) => ({
+      id,
+      run: async () => {
+        runs += 1;
+        return { status: "completed", summary: "never reached" };
+      },
+    }),
+    options: { maxVerifyAttempts: 0 },
+  });
+
+  const result = await hanaita.delegateGoal({
+    title: "t",
+    steps: [{ id: "s1", recipe: "researcher" }],
+  }).summary;
+
+  assert.equal(result.status, "failed");
+  assert.match(result.reason, /verify attempts exhausted before any run/);
+  assert.equal(runs, 0, "the specialist must never run");
 });
 
 test("the bantou-style tool-usage verifier rejects work that claims tools outside the recipe toolset", async () => {

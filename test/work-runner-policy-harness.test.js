@@ -117,6 +117,9 @@ test("work route matrix: zone x actor over the real exported policies", async ()
     ["trusted", "UFAN", "permission_denied"], // trusted: permission-required
     ["trusted", "UDEV", "delegation"],
     ["owner", "UDEV", "delegation"],
+    // ajimi: the owner zone's "allowed" gate does NOT override the user
+    // permission check — an actor without delegate_work is still refused
+    ["owner", "UFAN", "permission_denied"],
   ];
   for (const [zone, platformUserId, kind] of matrix) {
     const { harness } = makeHarness({ workRunnerPolicy: policies[zone] });

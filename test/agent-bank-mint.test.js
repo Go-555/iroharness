@@ -177,6 +177,35 @@ test("mintSpecialist rejects a non-string prompt", () => {
   assert.deepEqual(createBankRegistry({ root }).list("staging"), []);
 });
 
+// ajimi: a toolset entry containing list delimiters would survive the
+// allowlist intersection as ONE entry (if a tainted allowlist contains it
+// verbatim) but round-trip through the frontmatter `toolset: [a, b]` join as
+// SEVERAL tools — e.g. "doc-read, vault" parses back as doc-read AND vault.
+// mint must reject such entries and write nothing.
+test("mintSpecialist rejects a toolset entry carrying list delimiters (comma injection)", () => {
+  const root = makeBank();
+  const generate = () => ({
+    id: "comma-smuggler",
+    role: "helper",
+    prompt: "p",
+    toolset: ["doc-read, vault"],
+  });
+
+  assert.throws(
+    () =>
+      mintSpecialist({
+        root,
+        task: {},
+        // tainted allowlist: contains the smuggled entry verbatim, so the
+        // intersection alone would let it through
+        allowlist: [...DEFAULT_STAGING_ALLOWLIST, "doc-read, vault"],
+        generate,
+      }),
+    /toolset entry/,
+  );
+  assert.deepEqual(createBankRegistry({ root }).list("staging"), []);
+});
+
 // Invariant #1 wiring: a draft requesting owner visibility is refused by
 // assertStagingSafe before anything reaches the staging folder.
 test("mintSpecialist rejects a draft requesting owner visibility", () => {

@@ -305,15 +305,20 @@ export const createHanaita = ({
       feedback = Object.freeze([...reasons]);
     }
 
+    // feedback is null when the loop never ran (maxVerifyAttempts < 1):
+    // surface a meaningful exhaustion message instead of a TypeError.
+    const failureReasons = feedback ?? [
+      "verify attempts exhausted before any run (maxVerifyAttempts < 1)",
+    ];
     blackboard.reject({
       runId,
       output: {
         status: "failed",
-        summary: `verify rejected after ${attempts} attempt(s): ${feedback.join("; ")}`,
+        summary: `verify rejected after ${attempts} attempt(s): ${failureReasons.join("; ")}`,
       },
     });
     throw new Error(
-      `verify_exhausted: step ${step.id} was rejected ${attempts} time(s) and was cut off: ${feedback.join("; ")}`,
+      `verify_exhausted: step ${step.id} was rejected ${attempts} time(s) and was cut off: ${failureReasons.join("; ")}`,
     );
   };
 
