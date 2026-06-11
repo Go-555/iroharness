@@ -22,6 +22,7 @@ import {
 } from "./runner.js";
 
 export { checkResponses } from "./checker.js";
+export { extractRubric, judgeResponse } from "./judge.js";
 export { parseVocabularyRules } from "./rules.js";
 export {
   collectBrainResponses,
