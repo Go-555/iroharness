@@ -846,3 +846,171 @@ test("a workspace outside the allowed scope fails the step (scoped runner enforc
 
   assert.equal(result.status, "failed");
 });
+
+// ---- A2: chooseRecipe — the LLM picks from the ask_bank menu -----------------
+
+test("a step may choose its recipe from the ask_bank menu via chooseRecipe", async () => {
+  const root = makeBank();
+  writeRecipe(root, "active", "researcher");
+  writeRecipe(root, "active", "tax-helper");
+  const projectOs = createInMemoryProjectOs();
+  let seenListing = null;
+  const { hanaita } = makeHanaita({
+    root,
+    projectOs,
+    createRunner: ({ id }) => ({
+      id,
+      run: async () => ({
+        status: "completed",
+        summary: `${id} answered`,
+        artifacts: [],
+      }),
+    }),
+  });
+
+  const result = await hanaita.delegateGoal({
+    title: "pick a regular",
+    steps: [
+      {
+        id: "s1",
+        slice: "research the topic",
+        chooseRecipe: (listing) => {
+          seenListing = listing;
+          return "researcher";
+        },
+      },
+    ],
+  }).summary;
+
+  assert.equal(result.status, "completed");
+  assert.match(result.summary, /researcher answered/);
+
+  // the callback received the ask_bank menu: structure + text, active only
+  assert.ok(Array.isArray(seenListing.recipes));
+  assert.deepEqual(seenListing.recipes.map((entry) => entry.id).sort(), [
+    "researcher",
+    "tax-helper",
+  ]);
+  assert.equal(typeof seenListing.text, "string");
+  assert.match(seenListing.text, /researcher/);
+
+  // the chosen id is the harnessId on the blackboard (ledger keys keep working)
+  const snapshot = projectOs.snapshot();
+  assert.equal(snapshot.runs.length, 1);
+  assert.equal(snapshot.runs[0].harnessId, "researcher");
+});
+
+test("chooseRecipe is a proposal: a staging pick still fails the hire gate", async () => {
+  const root = makeBank();
+  writeRecipe(root, "active", "researcher");
+  writeRecipe(root, "staging", "trainee");
+  const { hanaita } = makeHanaita({ root });
+
+  const result = await hanaita.delegateGoal({
+    title: "sneaky pick",
+    steps: [{ id: "s1", chooseRecipe: () => "trainee" }],
+  }).summary;
+
+  assert.equal(result.status, "failed");
+  assert.match(result.reason, /recipe_not_active/);
+});
+
+test("chooseRecipe must return a recipe id string", async () => {
+  const root = makeBank();
+  writeRecipe(root, "active", "researcher");
+  const { hanaita } = makeHanaita({ root });
+
+  const result = await hanaita.delegateGoal({
+    title: "bad pick",
+    steps: [{ id: "s1", chooseRecipe: () => null }],
+  }).summary;
+
+  assert.equal(result.status, "failed");
+  assert.match(result.reason, /choose_recipe_invalid/);
+});
+
+test("a throwing chooseRecipe fails the step, not the process", async () => {
+  const root = makeBank();
+  writeRecipe(root, "active", "researcher");
+  const { hanaita } = makeHanaita({ root });
+
+  const result = await hanaita.delegateGoal({
+    title: "picker blew up",
+    steps: [
+      {
+        id: "s1",
+        chooseRecipe: () => {
+          throw new Error("picker exploded");
+        },
+      },
+    ],
+  }).summary;
+
+  assert.equal(result.status, "failed");
+  assert.match(result.reason, /picker exploded/);
+});
+
+test("a step without recipe and without chooseRecipe is rejected up front", () => {
+  const root = makeBank();
+  writeRecipe(root, "active", "researcher");
+  const { hanaita } = makeHanaita({ root });
+
+  assert.throws(
+    () =>
+      hanaita.delegateGoal({
+        title: "no recipe",
+        steps: [{ id: "s1", slice: "do something" }],
+      }),
+    /recipe/,
+  );
+});
+
+// ---- M-2: the Hanaita closes each step's worker after the step settles -------
+
+test("a step's worker is closed after the step completes (M-2)", async () => {
+  const root = makeBank();
+  writeRecipe(root, "active", "researcher");
+  const closed = [];
+  const { hanaita } = makeHanaita({
+    root,
+    createRunner: ({ id }) => ({
+      id,
+      run: async () => ({ status: "completed", summary: `${id} done` }),
+      close: () => {
+        closed.push(id);
+      },
+    }),
+  });
+
+  const result = await hanaita.delegateGoal({
+    title: "tidy",
+    steps: [{ id: "s1", recipe: "researcher" }],
+  }).summary;
+
+  assert.equal(result.status, "completed");
+  assert.deepEqual(closed, ["researcher"]);
+});
+
+test("a step's worker is closed even when the step fails (M-2)", async () => {
+  const root = makeBank();
+  writeRecipe(root, "active", "researcher");
+  const closed = [];
+  const { hanaita } = makeHanaita({
+    root,
+    createRunner: ({ id }) => ({
+      id,
+      run: async () => ({ status: "failed", summary: "boom" }),
+      close: () => {
+        closed.push(id);
+      },
+    }),
+  });
+
+  const result = await hanaita.delegateGoal({
+    title: "tidy",
+    steps: [{ id: "s1", recipe: "researcher" }],
+  }).summary;
+
+  assert.equal(result.status, "failed");
+  assert.deepEqual(closed, ["researcher"]);
+});

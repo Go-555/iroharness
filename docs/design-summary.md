@@ -175,11 +175,11 @@ beads の流儀は「1委譲 = 1 bead」。run を独立レコードとして別
 |---|---|
 | `ProjectOs` 契約・本体配線 | **実装済み**（`createInMemoryProjectOs` / `createFileProjectOs` ＋ 本体・adapter が契約に依存） |
 | Bank コア（recipe/registry/ledger/seed/昇格ガード） | **実装済み・テスト green** |
-| **Phase 3 動的生成（mint / persist-guard / sandbox 検証）** | **実装済み・テスト green・本トランシェ収録**。mint は id 検証＋frontmatter 注入拒否＋allowlist intersect＋staging ガード必須経由、persist は scoped workspace 限定（host グローバル dir は既定拒否・owner 承認のみ）、sandbox 検証は bank root の `verification-ledger.json` が権威（昇格ガードは記録優先で導出、`runTrial` への実 Work Runner 配線は今後） |
+| **Phase 3 動的生成（mint / persist-guard / sandbox 検証）** | **実装済み・テスト green・本トランシェ収録**。mint は id 検証＋frontmatter 注入拒否＋allowlist intersect＋staging ガード必須経由、persist は scoped workspace 限定（host グローバル dir は既定拒否・owner 承認のみ）、sandbox 検証は bank root の `verification-ledger.json` が権威（昇格ガードは記録優先で導出。`runTrial` の既定配線は `createSmokeTrial`＝隔離 scoped workspace での契約確認スモーク・fail-closed、実装済み） |
 | **beads バックエンド（`createBeadsProjectOs`・道A／6メソッド保持）** | **実装済み**（`src/beads-project-os.js`）。ユニット（fake exec）11 green ＋ **実 bd 統合テスト 1 green**、全体 204 green |
 | **本体 `runMicroHarness`** | **無改修**（道A＝6メソッド契約と snapshot 互換を保持したため。既存テスト全 green） |
 | snapshot メモ化（レイテンシ実測の上で） | **未了**（要否を実測で判断＝§9） |
-| 協力して動く（Hanaita orchestration / `delegate_goal`・Phase 4） | **実装済み・テスト green**（`src/agent-bank/hanaita.js`＋`blackboard.js`。切り身配布・黒板＝ProjectOs 6メソッド経由（in-memory / beads 同一契約をテストで保証）・star/pipeline/fan-out・verify ループ・コストガード W-1。職人実行は `createRunner` 注入式で **実 micro-harness への配線は未了**。formula 不使用の方針どおり） |
+| 協力して動く（Hanaita orchestration / `delegate_goal`・Phase 4） | **実装済み・テスト green**（`src/agent-bank/hanaita.js`＋`blackboard.js`。切り身配布・黒板＝ProjectOs 6メソッド経由（in-memory / beads 同一契約をテストで保証）・star/pipeline/fan-out・verify ループ・コストガード W-1。職人実行は `createRunner` 注入式のまま、**実 micro-harness への配線は opt-in の `createDefaultRunnerFactory` で実装済み**（codex app-server / claude-code CLI のコード側許可マップ＋seed-manifest 起点の解決、frontmatter 不信。minted は operator の `mintedRuntime` 明示時のみ）。`ask_bank` も実装済み（`askBank`＝active のみの品書き＋`chooseRecipe(listing)` step、選択は提案・権威は hire ゲート）。実ランタイムは env ガード付き統合テスト（`IROHARNESS_CODEX_INTEGRATION=1` 等）。formula 不使用の方針どおり） |
 | 設計書 `agent-bank.md` | あり（2026-06-10 改訂済み：beads 整合＋Phase 3 実装状況を反映） |
 | git 履歴 | 一部乱れ（commit と実体がズレ・要棚卸し） |
 

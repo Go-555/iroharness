@@ -11,8 +11,17 @@
 // unparsable ledger verifies nothing, and tainted entries (invalid id keys,
 // non-boolean `verified`) are dropped so they can never satisfy the gate.
 
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
+
+import { createScopedWorkRunnerMicroHarness } from "../adapters/index.js";
 
 import { assertValidRecipeId, BANK_STATUSES } from "./ids.js";
 import { parseRecipe } from "./recipe.js";
@@ -72,6 +81,14 @@ export const isSandboxVerified = ({ root, id }) =>
 // Run the isolated trial and record its outcome. Only an outcome of exactly
 // { passed: true } records as verified (fail-safe); anything else records
 // verified:false, overwriting any stale pass.
+//
+// Concurrency note (L-3): the ledger update below is a non-atomic
+// read-modify-write of verification-ledger.json. The Agent Bank assumes a
+// SINGLE verifying process per bank root at a time (the CLI and the Hanaita
+// both run in-process); two concurrent verifications of different recipes
+// could lose one record. If multi-process verification ever becomes a real
+// usage, this needs file locking or an atomic rename — not built on purpose
+// (YAGNI) until then.
 export const runSandboxVerification = async ({
   root,
   id,
@@ -108,4 +125,107 @@ export const runSandboxVerification = async ({
   writeVerificationLedger(root, recipes);
 
   return { id, verified };
+};
+
+// A3: the generic smoke trial — the default runTrial wiring.
+//
+// Boots the recipe on a REAL runner (createRunner, e.g.
+// createDefaultRunnerFactory from runner-factory.js) inside an ISOLATED
+// scoped workspace (a fresh temp dir unless the caller scopes one). The
+// isolation is wired to the RUNTIME boundary (H-1): the trial workspace is
+// both the scoped-runner workspace check AND the runner's per-call execution
+// cwd (for codex that also pins the cwd-derived sandboxPolicy.writableRoots).
+// The trial hands the runner a fixed contract-check task and judges only the
+// response FORM: status
+// "completed" with a non-empty summary string passes; anything else —
+// failure, malformed output, timeout, or ANY thrown error (including
+// runner_unavailable from the factory) — yields { passed: false }, so
+// runSandboxVerification records verified:false (fail-closed).
+//
+// The run goes through createScopedWorkRunnerMicroHarness, so the same
+// policy / workspace enforcement as every other delegate path is live here
+// (invariant 3): a denied policy fails the smoke before the worker runs.
+export const SMOKE_TRIAL_INSTRUCTION =
+  'Contract check: reply with exactly "OK" and nothing else.';
+
+export const createSmokeTrial = ({
+  createRunner,
+  workspace = null,
+  workRunnerPolicy = null,
+  audience = undefined,
+  timeoutMs = 120_000,
+} = {}) => {
+  if (typeof createRunner !== "function") {
+    throw new Error(
+      "createSmokeTrial requires createRunner({ id, recipe }) — e.g. createDefaultRunnerFactory",
+    );
+  }
+  return async ({ id, recipe }) => {
+    let timer = null;
+    let worker = null;
+    let trialWorkspace = null;
+    const ownsWorkspace = workspace === null;
+    try {
+      trialWorkspace =
+        workspace ?? mkdtempSync(join(tmpdir(), "iroharness-smoke-"));
+      // H-1: the trial workspace is the runner's EXECUTION boundary too —
+      // passed as the per-call cwd so the child process (and codex's
+      // cwd-derived sandboxPolicy.writableRoots) actually runs inside it,
+      // not just past the scoped-runner workspace check.
+      worker = createRunner({ id, recipe, cwd: trialWorkspace });
+      const scoped = createScopedWorkRunnerMicroHarness({
+        id,
+        worker,
+        // null = the scoped runner's own default policy (owner / allowed);
+        // an explicit policy (e.g. the view export) is enforced as-is.
+        ...(workRunnerPolicy ? { policy: workRunnerPolicy } : {}),
+        allowedWorkspaces: [trialWorkspace],
+        defaultWorkspace: trialWorkspace,
+        capabilities: Array.isArray(recipe?.toolset) ? recipe.toolset : [],
+      });
+      const task = Object.freeze({
+        id: `smoke-${id}`,
+        title: `sandbox smoke: ${id}`,
+        purpose: SMOKE_TRIAL_INSTRUCTION,
+      });
+      const timeout = new Promise((resolvePromise) => {
+        timer = setTimeout(
+          () =>
+            resolvePromise({
+              status: "failed",
+              summary: `smoke trial timed out after ${timeoutMs}ms`,
+            }),
+          timeoutMs,
+        );
+      });
+      const result = await Promise.race([
+        scoped.run(task, { audience }),
+        timeout,
+      ]);
+      const passed =
+        result?.status === "completed" &&
+        typeof result?.summary === "string" &&
+        result.summary.trim().length > 0;
+      return { passed, summary: result?.summary ?? null };
+    } catch (error) {
+      return { passed: false, summary: error?.message ?? String(error) };
+    } finally {
+      if (timer) {
+        clearTimeout(timer);
+      }
+      // M-2 (+ bantou L-2): close the worker on EVERY path — pass, fail,
+      // timeout, throw — so a hung codex app-server child is never leaked.
+      // Best-effort: a throwing close must not mask the trial outcome.
+      try {
+        worker?.close?.();
+      } catch {
+        // fail-closed result already decided; nothing useful to add
+      }
+      // M-1: a trial-owned temp workspace is removed afterwards; a
+      // caller-provided workspace is the caller's to keep.
+      if (ownsWorkspace && trialWorkspace) {
+        rmSync(trialWorkspace, { recursive: true, force: true });
+      }
+    }
+  };
 };

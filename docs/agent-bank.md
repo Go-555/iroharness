@@ -11,17 +11,21 @@
 > #3 Delegated Workers, #7 Borrow Runtimes Own The Boundary) and
 > [architecture.md](./architecture.md).
 >
-> **Where things stand (2026-06-10):** the Agent Bank core (recipe / registry /
+> **Where things stand (2026-06-11):** the Agent Bank core (recipe / registry /
 > ledger / seed / promotion gate / mint / persist-guard / sandbox-verification
 > ledger), the beads Project OS backend (`createBeadsProjectOs`, 道A), **and the
 > Hanaita orchestration (Phase 4: `createHanaita` / `delegateGoal` in
 > `src/agent-bank/hanaita.js`, blackboard in `src/agent-bank/blackboard.js`)**
-> are implemented and green. Two injection points remain UNWIRED to production
-> runtimes on purpose: the real Work Runner trial still plugs into
-> `runSandboxVerification` via its injected `runTrial`, and the Hanaita's
-> specialist execution plugs in via its injected `createRunner({ id, recipe })`
-> (tests use fakes; wiring a real Codex/OpenClaw/Claude-Code micro-harness
-> adapter into it is future work). See design-summary §7 for the live status.
+> are implemented and green. The two injection points are now WIRED to
+> production runtimes, opt-in: the Hanaita's `createRunner({ id, recipe })`
+> takes `createDefaultRunnerFactory` (`src/agent-bank/runner-factory.js` —
+> Codex app-server / Claude Code CLI behind a code-side allow map keyed off
+> the seed manifest), and `runSandboxVerification`'s `runTrial` takes
+> `createSmokeTrial` (`src/agent-bank/sandbox.js` — a fixed contract-check
+> task in an isolated scoped workspace, fail-closed). `ask_bank` is
+> implemented (`src/agent-bank/ask-bank.js`) as an LLM-readable menu; tests
+> keep using fakes (real runtimes are env-gated integration tests). See
+> design-summary §7 for the live status.
 
 ## 1. Summary
 
@@ -449,13 +453,25 @@ verify(item)                        # mekiki (quality) + bantou (permission)
 score_and_promote(run_id)           # compute derived ledger (by harnessId) + apply composite promotion gate
 ```
 
-> **Implementation note (Phase 4):** `spawn` / `collect` / `post_to_board` /
-> `verify` are not separate tools — they live inside `createHanaita`'s goal
-> loop (assign waves → scoped runner → verify loop → blackboard confirm).
-> `ask_bank` matching is NOT built yet: today a goal's steps name their
-> recipes explicitly, and hiring enforces active-folder-only. `spawn`'s actual
-> execution is the injected `createRunner` (see the status note at the top —
-> real micro-harness wiring is future work).
+> **Implementation note (Phase 4 + wiring):** `spawn` / `collect` /
+> `post_to_board` / `verify` are not separate tools — they live inside
+> `createHanaita`'s goal loop (assign waves → scoped runner → verify loop →
+> blackboard confirm). `ask_bank` is implemented in
+> `src/agent-bank/ask-bank.js` as **"Iroha (the LLM) chooses" — no machine
+> ranking**: `askBank({ root, projectOs })` returns the menu of ACTIVE
+> regulars only (id, role, capabilities, derived track record from
+> `computeLedger`) as a frozen structure plus a compact text menu. A goal
+> step names its recipe directly OR carries `chooseRecipe(listing) => id`;
+> the pick is a **proposal** — the resolved id still passes the unchanged
+> hire gate (active-only, `assertValidRecipeId`). `spawn`'s actual execution
+> is the injected `createRunner`; the production wiring is the opt-in
+> `createDefaultRunnerFactory` (`src/agent-bank/runner-factory.js`): the
+> runtime allow map (codex app-server / claude-code CLI) is **code-side
+> authority**, runtime resolution rides the seed manifest (`originOf` —
+> builtin ids map through a code-side table; minted recipes need an explicit
+> operator `mintedRuntime` opt-in), and frontmatter is never consulted — no
+> "recipe string → command" path exists. The recipe's role + body dress the
+> worker as a prompt preamble only.
 
 ## 10. Cast
 
@@ -473,8 +489,12 @@ score_and_promote(run_id)           # compute derived ledger (by harnessId) + ap
 - **Generation quality assurance** — a generated specialist may not actually work
   when wired up. The verification *bookkeeping* is built (`runSandboxVerification`
   records trial outcomes in `verification-ledger.json`; the promotion gate reads
-  the record); the remaining piece is wiring a real Work Runner isolated trial
-  into the injected `runTrial`.
+  the record), and the default trial is now wired too: `createSmokeTrial`
+  (`src/agent-bank/sandbox.js`) runs the recipe on a real runner (the default
+  factory) in an isolated scoped workspace against a fixed contract-check task,
+  fail-closed (failure / timeout / any thrown error records `verified:false`).
+  The smoke checks response *form* only — a deeper task-quality trial remains
+  open (the promotion threshold's quality score covers it over real runs).
 - **Permission × dynamic generation** — the central security risk (bantou).
   Inherit-creator-scope or isolate; never grant a `staging` specialist owner
   power. Prior art (CC/OpenClaw) gives no template here — own it.
