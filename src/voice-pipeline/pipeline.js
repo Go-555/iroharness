@@ -13,9 +13,13 @@
 // Flow per utterance ("the turn", runs in the background so the mic loop keeps
 // feeding pushAudio — that is what makes auto barge-in possible):
 //   1. vad speech.end → STT (timeout stageTimeoutMs.stt). Empty text → stt.empty, stop.
-//   2. quickResponder?.fire() → emitted immediately (quick: true), never paced.
-//   3. harness.receiveStream(buildInput(text), { signal }). Gate-rejected
-//      ({ stream: null, result }) → turn.rejected, stop.
+//   2. Quick ack, never paced: quickResponder.fireFor(text, { signal }) when
+//      present (dynamic — awaited, bounded by its own ~1.5s deadline), else
+//      quickResponder?.fire() (static, zero-latency). Emitted with quick: true.
+//   3. harness.receiveStream(buildInput(text, { quickText }), { signal }).
+//      quickText is the ack text (or null) so the session handler can add a
+//      continuation instruction. Gate-rejected ({ stream: null, result }) →
+//      turn.rejected, stop.
 //   4. Stream deltas → sentence splitter → per closed sentence: tts.stream
 //      (timeout stageTimeoutMs.tts) → optional pacer.pace → onEvent speech.audio.
 //      Whitespace-only sentences are skipped (Markdown "\n" noise). maxSentences
@@ -37,8 +41,10 @@
 // per-turn AbortSignal and the latched abandon() — abandon alone only resets
 // harness state; without the signal the brain keeps burning tokens.
 //
-// buildInput(transcript) is REQUIRED: the session handler owns platform
-// specifics (source/actor/metadata) — the pipeline never hardcodes them.
+// buildInput(transcript, { quickText }) is REQUIRED: the session handler owns
+// platform specifics (source/actor/metadata) — the pipeline never hardcodes
+// them. The second arg is additive (quickText: ack text or null); existing
+// single-arg callbacks keep working.
 //
 // Pacing approximation: sampleCount = decoded base64 byte length / 2 (PCM16).
 // For "wav" payloads the same approximation is used — the header bytes inflate
@@ -293,8 +299,22 @@ export const createVoicePipeline = ({
       return;
     }
 
-    // 2. Quick responder — tiny pre-synthesized filler, never paced.
-    const quick = quickResponder?.fire() ?? null;
+    // 2. Quick responder — never paced. Dynamic responders (fireFor) generate
+    //    a context-appropriate ack via a separate bounded LLM call (their own
+    //    ≤1.5s deadline) and are AWAITED before the brain stream opens —
+    //    mirrors AIAvatarKit's ordering. Static responders (fire) stay
+    //    zero-latency.
+    let quick = null;
+    if (quickResponder) {
+      if (typeof quickResponder.fireFor === "function") {
+        quick = await quickResponder.fireFor(transcript, {
+          signal: turn.controller.signal
+        });
+        if (turn.interrupted) return; // interrupted during fireFor — bail
+      } else {
+        quick = quickResponder.fire() ?? null;
+      }
+    }
     if (quick) {
       onEvent({
         type: "speech.audio",
@@ -304,10 +324,15 @@ export const createVoicePipeline = ({
       });
     }
 
-    // 3. Brain stream through the harness gate sequence.
+    // 3. Brain stream through the harness gate sequence. The ack text flows
+    //    onward as quickText (additive second arg — single-arg buildInput
+    //    callbacks keep working) so the session handler can append the
+    //    continuation instruction ("already said X, continue from there").
+    //    Static acks flow too: the continuation instruction is just as valid
+    //    for a pre-synthesized "うん。".
     let opened;
     try {
-      opened = await harness.receiveStream(buildInput(transcript), {
+      opened = await harness.receiveStream(buildInput(transcript, { quickText: quick?.text ?? null }), {
         signal: turn.controller.signal
       });
     } catch (error) {

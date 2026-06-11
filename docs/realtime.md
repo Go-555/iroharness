@@ -414,6 +414,7 @@ This mirrors AIAvatarStackChan's `ack`/`answer` pattern at the pipeline level.
 | `IROHARNESS_STACKCHAN_TTS_SAMPLE_RATE` | `24000` | Sample rate used by the pacer to compute per-sentence sleep durations. Must match the TTS provider's output rate. |
 | `IROHARNESS_VOICE_MAX_SENTENCES` | `30` | Maximum sentences per turn. Pipeline aborts the brain and speaks remaining audio when the cap is hit. |
 | `IROHARNESS_STACKCHAN_IMMEDIATE_ACK_TEXT` | `うん。` | Short phrase pre-warmed by the quick-responder and spoken before the first brain token arrives. Falls back to `うん。` when unset. |
+| `IROHARNESS_STACKCHAN_QUICK_MODE` | `static` | `dynamic` = a separate lightweight voice-brain call (1.5s deadline, ≤10 JA chars by prompt) generates a context-appropriate ack, falling back to the static phrase on timeout/error (AIAvatarKit QuickResponder parity). In BOTH modes the spoken ack text flows to `buildInput` as `quickText`, and the companion wraps the transcript in the continuation instruction («already said X — continue, correct course if X missed») so the main brain never repeats the ack. |
 
 ### Wire Sequence Notes
 

@@ -26,6 +26,7 @@ import {
 } from "../src/adapters/index.js";
 import {
   createAudioPacer,
+  createDynamicQuickResponder,
   createQuickResponder,
   createSileroVad,
   createVoicePipeline,
@@ -453,7 +454,13 @@ const STACKCHAN_VAD_FRAME_SAMPLES = Number(
 // voice pipeline that the realtime session handler consumes via DI.
 // Requires IROHARNESS_SILERO_MODEL (path to silero_vad.onnx) — without it
 // the companion stays on the legacy in-handler VAD path.
-const createStackChanVoicePipeline = async ({ harness, stt, tts, stackchanId, getSession }) => {
+// 本家 AIAvatarKit の continuation prefix（quick_responder/base.py 準拠）:
+// 既に第一声 quickText を発話済みであることを本命 brain に伝え、繰り返しを
+// 抑止しつつ、外していた場合は続きの中で軌道修正させる。
+const buildQuickContinuationText = (quickText, transcript) =>
+  `$以下の入力に対して、既にあなたが出力済みの「${quickText}」や類似の表現は再出力せず、その続きのみを出力せよ。もし「${quickText}」が本来応答すべき内容にそぐわない場合は、続きの中でうまく適切な方向に補正すること:\n\n${transcript}`;
+
+const createStackChanVoicePipeline = async ({ harness, brain, stt, tts, stackchanId, getSession }) => {
   if (process.env.IROHARNESS_STACKCHAN_STREAMING !== "1") {
     return null;
   }
@@ -493,12 +500,27 @@ const createStackChanVoicePipeline = async ({ harness, stt, tts, stackchanId, ge
     sampleRate: Number(process.env.IROHARNESS_STACKCHAN_TTS_SAMPLE_RATE || "24000"),
     sleepFn: (ms) => new Promise((resolveSleep) => setTimeout(resolveSleep, ms))
   });
-  const quickResponder = createQuickResponder({
+  // Quick ack mode: "static" (default, pre-synthesized phrase — current
+  // behavior) or "dynamic" (separate lightweight brain call generates a
+  // context-appropriate ack; the static responder stays as its fallback).
+  const quickMode = process.env.IROHARNESS_STACKCHAN_QUICK_MODE || "static";
+  const staticQuickResponder = createQuickResponder({
     tts,
     phrases: [process.env.IROHARNESS_STACKCHAN_IMMEDIATE_ACK_TEXT || "うん。"]
   });
+  const quickResponder =
+    quickMode === "dynamic"
+      ? createDynamicQuickResponder({
+          brain,
+          tts,
+          fallback: staticQuickResponder,
+          voice: process.env.IROHARNESS_STACKCHAN_VOICE || "iroha"
+        })
+      : staticQuickResponder;
   const cachedPhrases = await quickResponder.warmup();
-  console.log(`StackChan streaming voice: quick responder warmed (${cachedPhrases} phrase(s) cached)`);
+  console.log(
+    `StackChan streaming voice: quick responder warmed (${cachedPhrases} phrase(s) cached, mode=${quickMode})`
+  );
   const deviceId = stackchanId;
   return createVoicePipeline({
     vad,
@@ -512,10 +534,13 @@ const createStackChanVoicePipeline = async ({ harness, stt, tts, stackchanId, ge
     sampleRate: micSampleRate,
     maxSentences: Number(process.env.IROHARNESS_VOICE_MAX_SENTENCES || "30"),
     // Mirrors what the legacy voice-turn path passes to harness.receive.
-    buildInput: (transcript) => ({
+    // quickText (set when a quick ack was spoken — static or dynamic) wraps
+    // the transcript in the AIAvatarKit continuation instruction so the main
+    // brain continues from the ack instead of repeating it.
+    buildInput: (transcript, { quickText = null } = {}) => ({
       source: "m5stack",
       modality: "voice",
-      text: transcript,
+      text: quickText ? buildQuickContinuationText(quickText, transcript) : transcript,
       actor: {
         platform: "m5stack",
         platformUserId: process.env.IROHARNESS_STACKCHAN_USER_PLATFORM_ID || deviceId,
@@ -595,13 +620,16 @@ const createSlackStackChanCompanion = async () => {
         ]
       : [];
 
+  // Hoisted so the dynamic quick responder can reuse the same voice brain
+  // instance for its lightweight first-utterance call.
+  const voiceBrain = createBrainForSlot({ slot: "voice", codexWorkspace });
   const harness = createIroHarness({
     character: createCharacterFromRuntime(runtimePaths),
     projectOs,
     userRegistry,
     router: createHeuristicRouter(),
     brains: {
-      voice: createBrainForSlot({ slot: "voice", codexWorkspace }),
+      voice: voiceBrain,
       text: createBrainForSlot({ slot: "text", codexWorkspace })
     },
     devices: [stackchan],
@@ -610,6 +638,7 @@ const createSlackStackChanCompanion = async () => {
   let activeRealtimeSession = null;
   const voicePipeline = await createStackChanVoicePipeline({
     harness,
+    brain: voiceBrain,
     stt: stackchanStt,
     tts: stackchanTts,
     stackchanId: stackchan.id,

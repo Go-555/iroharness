@@ -4,6 +4,7 @@ import { Buffer } from "node:buffer";
 
 import { createVoicePipeline } from "../src/voice-pipeline/pipeline.js";
 import { createVoiceTurnMetrics } from "../src/voice-pipeline/metrics.js";
+import { createDynamicQuickResponder } from "../src/voice-pipeline/quick-responder.js";
 
 const FRAME = new Int16Array(512);
 const UTTERANCE = new Int16Array(1600);
@@ -684,4 +685,155 @@ test("vad errors are normalized to error events, pushAudio never throws", async 
   const errors = sink.events.filter((event) => event.type === "error");
   assert.equal(errors.length, 1);
   assert.match(errors[0].message, /bad frame/);
+});
+
+// ---------------------------------------------------------------------------
+// Dynamic quick responder (fireFor) — Task 14
+// ---------------------------------------------------------------------------
+
+const buildInputSpy = () => {
+  const calls = [];
+  return {
+    calls,
+    buildInput: (transcript, options) => {
+      calls.push({ transcript, options });
+      return { source: "test", modality: "voice", text: transcript };
+    }
+  };
+};
+
+test("fireFor responder: dynamic ack speaks before sentences, quickText reaches buildInput", async () => {
+  const fireForCalls = [];
+  const quickResponder = {
+    fireFor: async (transcript, { signal } = {}) => {
+      fireForCalls.push({ transcript, signal });
+      return { text: "お、天気か。", audio: b64("dyn"), encoding: "wav", dynamic: true };
+    }
+  };
+  const spy = buildInputSpy();
+  const { scripted, sink, pipeline } = setup({
+    deltas: ["晴れだよ。"],
+    pipelineOptions: { quickResponder, buildInput: spy.buildInput }
+  });
+
+  await pushUtterance(pipeline, scripted);
+  await sink.waitFor((event) => event.type === "turn.final");
+
+  const speech = sink.emitted("speech.audio");
+  assert.equal(speech[0].quick, true, "dynamic ack is emitted first");
+  assert.equal(speech[0].text, "お、天気か。");
+  assert.deepEqual(speech[0].audio, { encoding: "wav", dataBase64: b64("dyn") });
+  assert.equal(speech[1].text, "晴れだよ。");
+
+  assert.equal(fireForCalls.length, 1);
+  assert.equal(fireForCalls[0].transcript, "やあ、いろは");
+  assert.ok(fireForCalls[0].signal instanceof AbortSignal, "fireFor receives the turn signal");
+
+  assert.equal(spy.calls.length, 1);
+  assert.deepEqual(spy.calls[0].options, { quickText: "お、天気か。" });
+});
+
+test("interrupt during fireFor bails the turn — brain is never called", async () => {
+  const gate = createGate();
+  let fired = false;
+  const quickResponder = {
+    fireFor: async () => {
+      fired = true;
+      await gate.promise;
+      return { text: "お。", audio: b64("dyn"), encoding: "wav", dynamic: true };
+    }
+  };
+  const { scripted, mockHarness, sink, pipeline } = setup({
+    pipelineOptions: { quickResponder }
+  });
+
+  await pushUtterance(pipeline, scripted);
+  await until(() => fired);
+  pipeline.interrupt("test-interrupt");
+  gate.release();
+  await settle();
+
+  assert.equal(mockHarness.calls.length, 0, "brain never opened");
+  assert.equal(sink.emitted("turn.final").length, 0, "no turn.final after bail");
+  assert.equal(sink.emitted("speech.audio").length, 0, "no ack after bail");
+  assert.equal(sink.emitted("speech.interrupted").length, 1);
+});
+
+test("static fire() ack text also flows to buildInput as quickText", async () => {
+  const quickResponder = {
+    fire: () => ({ text: "うん。", audio: b64("quick"), encoding: "wav" })
+  };
+  const spy = buildInputSpy();
+  const { scripted, sink, pipeline } = setup({
+    deltas: ["了解。"],
+    pipelineOptions: { quickResponder, buildInput: spy.buildInput }
+  });
+
+  await pushUtterance(pipeline, scripted);
+  await sink.waitFor((event) => event.type === "turn.final");
+
+  assert.equal(spy.calls.length, 1);
+  assert.deepEqual(spy.calls[0].options, { quickText: "うん。" });
+});
+
+test("no quick responder: buildInput receives quickText null", async () => {
+  const spy = buildInputSpy();
+  const { scripted, sink, pipeline } = setup({
+    deltas: ["了解。"],
+    pipelineOptions: { buildInput: spy.buildInput }
+  });
+
+  await pushUtterance(pipeline, scripted);
+  await sink.waitFor((event) => event.type === "turn.final");
+
+  assert.equal(spy.calls.length, 1);
+  assert.deepEqual(spy.calls[0].options, { quickText: null });
+});
+
+test("E2E: real dynamic responder in the pipeline — ack tracks the transcript context", async () => {
+  // The quick brain echoes a context-linked ack derived from its prompt: the
+  // transcript ("天気") reaches the lightweight call and shapes the ack.
+  const quickBrain = {
+    async *respondStream(context) {
+      const heard = context?.input?.text ?? "";
+      yield { delta: heard.includes("天気") ? "お、天気か。" : "うん。" };
+    }
+  };
+  const spy = buildInputSpy();
+  const quickTts = createMockTts();
+  const quickResponder = createDynamicQuickResponder({
+    brain: quickBrain,
+    tts: quickTts.tts
+  });
+  const { scripted, sink, pipeline } = setup({
+    deltas: ["晴れだよ。"],
+    sttText: "今日の天気どう？",
+    pipelineOptions: { buildInput: spy.buildInput, quickResponder }
+  });
+
+  await pushUtterance(pipeline, scripted);
+  await sink.waitFor((event) => event.type === "turn.final");
+
+  const speech = sink.emitted("speech.audio");
+  assert.equal(speech[0].quick, true);
+  assert.equal(speech[0].text, "お、天気か。", "ack is context-linked, not the static phrase");
+  assert.equal(speech[1].text, "晴れだよ。");
+  assert.deepEqual(spy.calls.at(-1).options, { quickText: "お、天気か。" });
+});
+
+test("fireFor returning null emits no ack and quickText stays null", async () => {
+  const quickResponder = { fireFor: async () => null };
+  const spy = buildInputSpy();
+  const { scripted, sink, pipeline } = setup({
+    deltas: ["了解。"],
+    pipelineOptions: { quickResponder, buildInput: spy.buildInput }
+  });
+
+  await pushUtterance(pipeline, scripted);
+  await sink.waitFor((event) => event.type === "turn.final");
+
+  const speech = sink.emitted("speech.audio");
+  assert.equal(speech.length, 1, "only the brain sentence speaks");
+  assert.equal(speech[0].quick, undefined);
+  assert.deepEqual(spy.calls[0].options, { quickText: null });
 });

@@ -11,6 +11,39 @@
 // fire() → { text, audio, encoding } | null
 //   Synchronously returns the next cached entry round-robin, or null if
 //   nothing is cached yet. Zero-latency — never synthesizes, never awaits.
+//
+// ---------------------------------------------------------------------------
+//
+// Dynamic quick-responder (AIAvatarKit QuickResponder parity).
+//
+// createDynamicQuickResponder({ brain, tts, fallback = null, timeoutMs = 1500,
+//                               maxChars = 20, promptPrefix = <JA default>,
+//                               voice = "iroha" })
+//   → frozen { warmup(), fireFor(transcript, { signal }) }
+//
+// fireFor(transcript, { signal }) → Promise<
+//   { text, audio, encoding, dynamic: true } | <fallback.fire() result> | null>
+//   A SEPARATE lightweight brain call generates a context-appropriate opening
+//   phrase (≤10 JA chars by prompt; maxChars is the hard collection budget),
+//   then synthesizes it via tts.stream (FIRST tts.audio event) — all bounded
+//   by ONE timeoutMs deadline. On timeout / brain error / empty text / abort /
+//   missing audio → fallback?.fire?.() ?? null (the static responder is the
+//   fallback; its result carries no `dynamic` flag).
+//
+//   Brain context shape: { input: { text: promptPrefix + "\n\n" + transcript } }
+//   — the minimal common shape both createOpenAiResponsesBrain and
+//   createCodexAppServerBrain read (context.input?.text; everything else is
+//   optional in their prompt builders).
+//
+// warmup() → Promise<number>
+//   Passthrough to fallback.warmup() when present (so callers treat static and
+//   dynamic responders uniformly); resolves 0 without a fallback.
+
+import { toBrainStream } from "./brain-stream.js";
+
+// 本家 quick_responder/base.py の日本語プロンプト準拠。
+export const DEFAULT_QUICK_PROMPT_PREFIX =
+  "$以下はユーザーの発話内容である。ユーザー発話を受け止めて、第一声として相応しい、10文字以内のごく短いフレーズを出力せよ。応答の末尾は「。」や「、」句読点や感嘆符とする。";
 
 export const createQuickResponder = ({ tts, phrases = ["うん。"] } = {}) => {
   if (!tts || typeof tts.stream !== "function") {
@@ -70,4 +103,104 @@ export const createQuickResponder = ({ tts, phrases = ["うん。"] } = {}) => {
   };
 
   return Object.freeze({ warmup, fire });
+};
+
+export const createDynamicQuickResponder = ({
+  brain,
+  tts,
+  fallback = null,
+  timeoutMs = 1500,
+  maxChars = 20,
+  promptPrefix = DEFAULT_QUICK_PROMPT_PREFIX,
+  voice = "iroha"
+} = {}) => {
+  if (
+    !brain ||
+    (typeof brain.respondStream !== "function" && typeof brain.respond !== "function")
+  ) {
+    throw new Error("createDynamicQuickResponder requires brain with respondStream() or respond()");
+  }
+  if (!tts || typeof tts.stream !== "function") {
+    throw new Error("createDynamicQuickResponder requires tts with a stream function");
+  }
+
+  // Generate the opening phrase then synthesize it — the caller races this
+  // against the deadline. `signal` combines the caller's abort with the
+  // deadline so the underlying brain request / tts call gets cancelled too.
+  const generate = async (transcript, signal) => {
+    const context = { input: { text: `${promptPrefix}\n\n${transcript}` } };
+    const stream = toBrainStream(brain, context, { signal });
+    let collected = "";
+    for await (const chunk of stream) {
+      if (signal?.aborted) break;
+      collected += typeof chunk?.delta === "string" ? chunk.delta : "";
+      if (collected.length >= maxChars) break; // budget hit — stop iterating
+    }
+    // (breaking a for-await closes the generator via iterator.return())
+    if (signal?.aborted) {
+      throw new Error("dynamic quick response aborted");
+    }
+    const text = collected.trim().slice(0, maxChars);
+    if (!text) {
+      throw new Error("dynamic quick response was empty");
+    }
+
+    let captured = null;
+    await tts.stream({
+      text,
+      voice,
+      signal,
+      onEvent: (event) => {
+        if (captured === null && event.type === "tts.audio") {
+          captured = { audio: event.audio, encoding: event.encoding ?? "wav" };
+        }
+      }
+    });
+    if (signal?.aborted) {
+      throw new Error("dynamic quick response aborted");
+    }
+    if (!captured) {
+      throw new Error("dynamic quick response tts emitted no audio");
+    }
+    return Object.freeze({
+      text,
+      audio: captured.audio,
+      encoding: captured.encoding,
+      dynamic: true
+    });
+  };
+
+  const fireFor = async (transcript, { signal } = {}) => {
+    const controller = new AbortController();
+    const onAbort = () => controller.abort();
+    if (signal?.aborted) {
+      controller.abort();
+    } else {
+      signal?.addEventListener("abort", onAbort, { once: true });
+    }
+    let timer = null;
+    try {
+      // Promise.race subscribes to BOTH promises, so a late rejection from the
+      // losing generate() is still observed — no unhandled rejection.
+      return await Promise.race([
+        new Promise((_, reject) => {
+          timer = setTimeout(() => {
+            controller.abort(); // best-effort: cancel the orphaned brain/tts work
+            reject(new Error(`dynamic quick response timed out after ${timeoutMs}ms`));
+          }, timeoutMs);
+        }),
+        generate(transcript, controller.signal)
+      ]);
+    } catch {
+      return fallback?.fire?.() ?? null;
+    } finally {
+      clearTimeout(timer); // no orphaned timers (Task 8 lesson)
+      signal?.removeEventListener("abort", onAbort);
+    }
+  };
+
+  // Passthrough so callers can treat static and dynamic responders uniformly.
+  const warmup = async () => (fallback?.warmup ? fallback.warmup() : 0);
+
+  return Object.freeze({ warmup, fireFor });
 };

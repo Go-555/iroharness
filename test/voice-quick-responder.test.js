@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createQuickResponder } from "../src/voice-pipeline/quick-responder.js";
+import {
+  createQuickResponder,
+  createDynamicQuickResponder,
+} from "../src/voice-pipeline/quick-responder.js";
 
 // ---------------------------------------------------------------------------
 // Mock TTS factory
@@ -155,4 +158,157 @@ test("constructor throws when tts.stream is not a function", () => {
     () => createQuickResponder({ tts: { stream: "not-a-function" } }),
     /tts/i,
   );
+});
+
+// ===========================================================================
+// createDynamicQuickResponder
+// ===========================================================================
+
+// Mock brain factory: respondStream yields scripted deltas. Tracks contexts
+// and how many deltas were actually pulled (for early-stop assertions).
+const makeMockBrain = ({ deltas = ["お、天気か。"], neverYields = false, throws = false } = {}) => {
+  const contexts = [];
+  let pulled = 0;
+  return {
+    contexts,
+    get pulled() {
+      return pulled;
+    },
+    async *respondStream(context) {
+      contexts.push(context);
+      if (throws) {
+        throw new Error("brain boom");
+      }
+      if (neverYields) {
+        await new Promise(() => {}); // hangs forever — only the timeout saves us
+      }
+      for (const delta of deltas) {
+        pulled += 1;
+        yield { delta };
+      }
+    },
+  };
+};
+
+const makeWarmedFallback = async (phrase = "うん。") => {
+  const fallback = createQuickResponder({ tts: makeMockTts(), phrases: [phrase] });
+  await fallback.warmup();
+  return fallback;
+};
+
+test("dynamic: fast brain → dynamic text synthesized via tts, dynamic: true", async () => {
+  const brain = makeMockBrain({ deltas: ["お、", "天気か。"] });
+  const tts = makeMockTts();
+  const qr = createDynamicQuickResponder({ brain, tts });
+
+  const result = await qr.fireFor("今日の天気どう？");
+  assert.ok(result, "fireFor should return a result");
+  assert.equal(result.text, "お、天気か。");
+  assert.equal(result.audio, Buffer.from("audio-for-お、天気か。").toString("base64"));
+  assert.equal(result.encoding, "wav");
+  assert.equal(result.dynamic, true);
+
+  // The brain receives the JA quick prompt prefix + blank line + transcript.
+  assert.equal(brain.contexts.length, 1);
+  const sent = brain.contexts[0]?.input?.text ?? "";
+  assert.ok(sent.endsWith("\n\n今日の天気どう？"), "transcript appended after blank line");
+  assert.ok(sent.includes("10文字以内"), "JA quick prompt prefix present");
+});
+
+test("dynamic: maxChars caps the text and stops pulling deltas early", async () => {
+  const deltas = Array.from({ length: 50 }, () => "ながいながい話。");
+  const brain = makeMockBrain({ deltas });
+  const tts = makeMockTts();
+  const qr = createDynamicQuickResponder({ brain, tts, maxChars: 10 });
+
+  const result = await qr.fireFor("長話して");
+  assert.ok(result);
+  assert.equal(result.dynamic, true);
+  assert.ok(result.text.length <= 10, `text within budget (got ${result.text.length})`);
+  assert.ok(brain.pulled < deltas.length, `iteration stopped early (pulled ${brain.pulled})`);
+});
+
+test("dynamic: slow brain times out → static fallback result (no dynamic flag)", async () => {
+  const brain = makeMockBrain({ neverYields: true });
+  const fallback = await makeWarmedFallback("うん。");
+  const qr = createDynamicQuickResponder({ brain, tts: makeMockTts(), fallback, timeoutMs: 30 });
+
+  const result = await qr.fireFor("もしもし");
+  assert.ok(result, "fallback result expected");
+  assert.equal(result.text, "うん。");
+  assert.equal(result.dynamic, undefined, "static fallback has no dynamic flag");
+});
+
+test("dynamic: brain throws → fallback", async () => {
+  const brain = makeMockBrain({ throws: true });
+  const fallback = await makeWarmedFallback("はい。");
+  const qr = createDynamicQuickResponder({ brain, tts: makeMockTts(), fallback });
+
+  const result = await qr.fireFor("もしもし");
+  assert.equal(result.text, "はい。");
+  assert.equal(result.dynamic, undefined);
+});
+
+test("dynamic: empty/whitespace deltas → fallback", async () => {
+  const brain = makeMockBrain({ deltas: ["", "  ", "\n"] });
+  const fallback = await makeWarmedFallback("ええ。");
+  const qr = createDynamicQuickResponder({ brain, tts: makeMockTts(), fallback });
+
+  const result = await qr.fireFor("もしもし");
+  assert.equal(result.text, "ええ。");
+});
+
+test("dynamic: failure with no fallback → null", async () => {
+  const brain = makeMockBrain({ throws: true });
+  const qr = createDynamicQuickResponder({ brain, tts: makeMockTts() });
+
+  assert.equal(await qr.fireFor("もしもし"), null);
+});
+
+test("dynamic: tts emitting no audio → fallback", async () => {
+  const brain = makeMockBrain();
+  const fallback = await makeWarmedFallback("おう。");
+  const qr = createDynamicQuickResponder({ brain, tts: makeNoAudioTts(), fallback });
+
+  const result = await qr.fireFor("もしもし");
+  assert.equal(result.text, "おう。");
+});
+
+test("dynamic: pre-aborted signal → fallback, brain text discarded", async () => {
+  const brain = makeMockBrain();
+  const fallback = await makeWarmedFallback("ん。");
+  const qr = createDynamicQuickResponder({ brain, tts: makeMockTts(), fallback });
+
+  const controller = new AbortController();
+  controller.abort();
+  const result = await qr.fireFor("もしもし", { signal: controller.signal });
+  assert.equal(result.text, "ん。");
+  assert.equal(result.dynamic, undefined);
+});
+
+test("dynamic: warmup() delegates to fallback.warmup()", async () => {
+  const brain = makeMockBrain();
+  let warmupCalls = 0;
+  const fallback = {
+    warmup: async () => {
+      warmupCalls += 1;
+      return 3;
+    },
+    fire: () => null,
+  };
+  const qr = createDynamicQuickResponder({ brain, tts: makeMockTts(), fallback });
+
+  assert.equal(await qr.warmup(), 3);
+  assert.equal(warmupCalls, 1);
+});
+
+test("dynamic: warmup() without fallback resolves 0", async () => {
+  const qr = createDynamicQuickResponder({ brain: makeMockBrain(), tts: makeMockTts() });
+  assert.equal(await qr.warmup(), 0);
+});
+
+test("dynamic: constructor validates brain and tts", () => {
+  assert.throws(() => createDynamicQuickResponder({ tts: makeMockTts() }), /brain/i);
+  assert.throws(() => createDynamicQuickResponder({ brain: {}, tts: makeMockTts() }), /brain/i);
+  assert.throws(() => createDynamicQuickResponder({ brain: makeMockBrain() }), /tts/i);
 });
