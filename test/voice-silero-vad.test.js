@@ -166,11 +166,20 @@ test("ort tensor plumbing: state carried across calls, fed back, and reset", asy
     ...PARAMS
   });
 
-  await vad.push(makeFrame(PARAMS.frameSamples));
-  // input tensor: float32 [1, frameSamples], int16 scaled by /32768
+  // distinctive ramp values so the context carry is observable
+  const frame1 = Int16Array.from(
+    { length: PARAMS.frameSamples },
+    (_, i) => i + 1
+  );
+  await vad.push(frame1);
+  // input tensor: float32 [1, 64 + frameSamples] — Silero v5 context prefix
+  // (last 64 samples of the previous frame) followed by the /32768-scaled frame
   assert.equal(calls[0].input.type, "float32");
-  assert.deepEqual(calls[0].input.dims, [1, PARAMS.frameSamples]);
-  assert.ok(Math.abs(calls[0].input.data[0] - 1000 / 32768) < 1e-6);
+  assert.deepEqual(calls[0].input.dims, [1, 64 + PARAMS.frameSamples]);
+  // first call: context prefix is all zeros
+  assert.ok(calls[0].input.data.subarray(0, 64).every((v) => v === 0));
+  // frame data sits after the prefix, scaled by /32768
+  assert.ok(Math.abs(calls[0].input.data[64] - 1 / 32768) < 1e-6);
   // sr tensor: int64 scalar BigInt
   assert.equal(calls[0].sr.type, "int64");
   assert.equal(calls[0].sr.data[0], 16000n);
@@ -179,14 +188,19 @@ test("ort tensor plumbing: state carried across calls, fed back, and reset", asy
   assert.equal(calls[0].state.data.length, 256);
   assert.ok(calls[0].state.data.every((v) => v === 0));
 
-  // second call feeds back the returned stateN
+  // second call: stateN fed back, context = last 64 scaled samples of frame1
   await vad.push(makeFrame(PARAMS.frameSamples));
   assert.equal(calls[1].state.data, nextState);
+  for (let i = 0; i < 64; i += 1) {
+    const expected = (PARAMS.frameSamples - 64 + i + 1) / 32768;
+    assert.ok(Math.abs(calls[1].input.data[i] - expected) < 1e-6);
+  }
 
-  // reset() re-zeros the recurrent state
+  // reset() re-zeros BOTH the recurrent state and the context prefix
   vad.reset();
   await vad.push(makeFrame(PARAMS.frameSamples));
   assert.ok(calls[2].state.data.every((v) => v === 0));
+  assert.ok(calls[2].input.data.subarray(0, 64).every((v) => v === 0));
 });
 
 test("push rejects frames that are not exactly frameSamples long", async () => {
@@ -228,5 +242,7 @@ test(
     const probability = await session.process(silence);
     assert.equal(typeof probability, "number");
     assert.ok(probability >= 0 && probability <= 1);
+    // silence sanity: zeros must not look like speech
+    assert.ok(probability < 0.3, `silence scored ${probability}`);
   }
 );

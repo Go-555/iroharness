@@ -26,6 +26,7 @@
 
 const PRE_ROLL_FRAMES = 10;
 const STATE_SIZE = 2 * 1 * 128; // Silero v5 recurrent state [2, 1, 128]
+const CONTEXT_SAMPLES = 64; // Silero v5 context prefix carried from the previous frame
 
 const int16ToFloat32 = (int16Frame) => {
   const out = new Float32Array(int16Frame.length);
@@ -55,9 +56,15 @@ const importOrt = async (importFn) => {
 
 // Tensor plumbing for a raw ort-style session. Keeps the Silero v5 recurrent
 // state across calls; reset() clears it.
+//
+// Silero v5 expects each input prefixed with the LAST CONTEXT_SAMPLES (64)
+// samples of the previous frame (the official OnnxWrapper feeds
+// [1, frameSamples + 64] float32). Without the prefix the model runs but
+// outputs garbage probabilities.
 const createOrtFrameRunner = ({ session, sampleRate, ortModule, importFn }) => {
   let ortPromise = null;
   let state = new Float32Array(STATE_SIZE);
+  let context = new Float32Array(CONTEXT_SAMPLES);
 
   const getOrt = () => {
     ortPromise ??= ortModule ? Promise.resolve(ortModule) : importOrt(importFn);
@@ -66,18 +73,27 @@ const createOrtFrameRunner = ({ session, sampleRate, ortModule, importFn }) => {
 
   const process = async (float32Frame) => {
     const ort = await getOrt();
+    const input = new Float32Array(CONTEXT_SAMPLES + float32Frame.length);
+    input.set(context, 0);
+    input.set(float32Frame, CONTEXT_SAMPLES);
     const feeds = {
-      input: new ort.Tensor("float32", float32Frame, [1, float32Frame.length]),
+      input: new ort.Tensor("float32", input, [1, input.length]),
       sr: new ort.Tensor("int64", BigInt64Array.from([BigInt(sampleRate)]), []),
       state: new ort.Tensor("float32", state, [2, 1, 128])
     };
     const result = await session.run(feeds);
     state = result.stateN.data;
+    // Carry the last CONTEXT_SAMPLES scaled samples into the next frame
+    // (copy — never alias a caller buffer that may be reused).
+    context = Float32Array.from(
+      float32Frame.subarray(float32Frame.length - CONTEXT_SAMPLES)
+    );
     return result.output.data[0];
   };
 
   const reset = () => {
     state = new Float32Array(STATE_SIZE);
+    context = new Float32Array(CONTEXT_SAMPLES);
   };
 
   return { process, reset };
