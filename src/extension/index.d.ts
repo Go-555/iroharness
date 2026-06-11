@@ -46,6 +46,42 @@ export interface CommandHookSpec {
 
 export function createCommandHook(spec: CommandHookSpec): HookHandler;
 
+// A brain following the standard brain contract; only `respond` is required
+// by the judge path.
+export interface JudgeBrain {
+  id?: string;
+  respond(context: Record<string, unknown>): Promise<{ text?: string }>;
+}
+
+export interface Rubric {
+  items: ReadonlyArray<{ id: string; kind: string; instruction: string }>;
+}
+
+// Exactly one of `rubric` / `prompt` provides the scoring criteria. With no
+// `judgeBrain` injected (e.g. a manifest-declared hook before injection) the
+// hook follows `failMode` when it fires; the default is "open" so a missing or
+// failing judge never mutes the character (persona-guard.md §6).
+export interface AgentHookSpec {
+  judgeBrain?: JudgeBrain | null;
+  rubric?: Rubric | null;
+  prompt?: string | null;
+  timeout?: number;
+  failMode?: "open" | "closed";
+  model?: string | null;
+}
+
+export function createAgentHook(spec: AgentHookSpec): HookHandler;
+
+export interface PersonaGuardHookSpec {
+  character: Record<string, unknown>;
+  judgeBrain?: JudgeBrain | null;
+  timeout?: number;
+  failMode?: "open" | "closed";
+  model?: string | null;
+}
+
+export function createPersonaGuardHook(spec: PersonaGuardHookSpec): HookHandler;
+
 export interface CommandManifestEntry {
   type: "command";
   command: string;
