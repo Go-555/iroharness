@@ -887,10 +887,10 @@ test("a step may choose its recipe from the ask_bank menu via chooseRecipe", asy
 
   // the callback received the ask_bank menu: structure + text, active only
   assert.ok(Array.isArray(seenListing.recipes));
-  assert.deepEqual(
-    seenListing.recipes.map((entry) => entry.id).sort(),
-    ["researcher", "tax-helper"],
-  );
+  assert.deepEqual(seenListing.recipes.map((entry) => entry.id).sort(), [
+    "researcher",
+    "tax-helper",
+  ]);
   assert.equal(typeof seenListing.text, "string");
   assert.match(seenListing.text, /researcher/);
 
@@ -942,4 +942,54 @@ test("a step without recipe and without chooseRecipe is rejected up front", () =
       }),
     /recipe/,
   );
+});
+
+// ---- M-2: the Hanaita closes each step's worker after the step settles -------
+
+test("a step's worker is closed after the step completes (M-2)", async () => {
+  const root = makeBank();
+  writeRecipe(root, "active", "researcher");
+  const closed = [];
+  const { hanaita } = makeHanaita({
+    root,
+    createRunner: ({ id }) => ({
+      id,
+      run: async () => ({ status: "completed", summary: `${id} done` }),
+      close: () => {
+        closed.push(id);
+      },
+    }),
+  });
+
+  const result = await hanaita.delegateGoal({
+    title: "tidy",
+    steps: [{ id: "s1", recipe: "researcher" }],
+  }).summary;
+
+  assert.equal(result.status, "completed");
+  assert.deepEqual(closed, ["researcher"]);
+});
+
+test("a step's worker is closed even when the step fails (M-2)", async () => {
+  const root = makeBank();
+  writeRecipe(root, "active", "researcher");
+  const closed = [];
+  const { hanaita } = makeHanaita({
+    root,
+    createRunner: ({ id }) => ({
+      id,
+      run: async () => ({ status: "failed", summary: "boom" }),
+      close: () => {
+        closed.push(id);
+      },
+    }),
+  });
+
+  const result = await hanaita.delegateGoal({
+    title: "tidy",
+    steps: [{ id: "s1", recipe: "researcher" }],
+  }).summary;
+
+  assert.equal(result.status, "failed");
+  assert.deepEqual(closed, ["researcher"]);
 });

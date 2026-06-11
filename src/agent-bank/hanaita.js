@@ -257,98 +257,111 @@ export const createHanaita = ({
     // Invariant 3: the worker runs INSIDE the existing scoped Work Runner
     // wrapper — its policy / permission / workspace checks are the live path.
     const worker = createRunner({ id: recipeId, recipe });
-    const scoped = createScopedWorkRunnerMicroHarness({
-      id: recipeId,
-      worker,
-      policy: workRunnerPolicy,
-      allowedWorkspaces,
-      defaultWorkspace,
-      capabilities: recipe.toolset ?? [],
-    });
-
-    const task = Object.freeze({
-      id: ticketId,
-      title: step.title ?? step.id,
-      purpose: step.slice ?? goal.description ?? "",
-      metadata: Object.freeze(
-        step.workspace ? { workspace: step.workspace } : {},
-      ),
-    });
-
-    // Recursive delegation (W-1): a specialist may delegate a sub-goal, but
-    // only through the SAME gate + guards (no bypass): the sub-goal re-runs
-    // the permission gate with the ROOT caller's audience (a specialist
-    // cannot claim broader permissions), sits one level deeper for maxDepth,
-    // and draws down the shared hire/token trackers.
-    const delegate = (subGoal) =>
-      delegateInternal(subGoal, { audience, depth: depth + 1, trackers });
-
-    // Verify loop (4.4): run → verify → send back with feedback → ... → cap.
-    // Retries stay INSIDE the one delegation: 1 ticket = 1 run; only the
-    // final outcome is folded onto the board.
-    let attempts = 0;
-    let feedback = null;
-    while (attempts < maxVerifyAttempts) {
-      attempts += 1;
-      const result = await scoped.run(task, {
-        audience,
-        slice: makeSlice(feedback),
-        delegate,
+    try {
+      const scoped = createScopedWorkRunnerMicroHarness({
+        id: recipeId,
+        worker,
+        policy: workRunnerPolicy,
+        allowedWorkspaces,
+        defaultWorkspace,
+        capabilities: recipe.toolset ?? [],
       });
-      trackers.tokensUsed += reportedTokens(result);
 
-      if (result?.status !== "completed") {
-        blackboard.reject({
-          runId,
-          output: {
-            status: "failed",
-            summary: result?.summary ?? "specialist run failed",
-          },
+      const task = Object.freeze({
+        id: ticketId,
+        title: step.title ?? step.id,
+        purpose: step.slice ?? goal.description ?? "",
+        metadata: Object.freeze(
+          step.workspace ? { workspace: step.workspace } : {},
+        ),
+      });
+
+      // Recursive delegation (W-1): a specialist may delegate a sub-goal, but
+      // only through the SAME gate + guards (no bypass): the sub-goal re-runs
+      // the permission gate with the ROOT caller's audience (a specialist
+      // cannot claim broader permissions), sits one level deeper for maxDepth,
+      // and draws down the shared hire/token trackers.
+      const delegate = (subGoal) =>
+        delegateInternal(subGoal, { audience, depth: depth + 1, trackers });
+
+      // Verify loop (4.4): run → verify → send back with feedback → ... → cap.
+      // Retries stay INSIDE the one delegation: 1 ticket = 1 run; only the
+      // final outcome is folded onto the board.
+      let attempts = 0;
+      let feedback = null;
+      while (attempts < maxVerifyAttempts) {
+        attempts += 1;
+        const result = await scoped.run(task, {
+          audience,
+          slice: makeSlice(feedback),
+          delegate,
         });
-        throw new Error(
-          `step_failed: step ${step.id} failed: ${result?.summary ?? "unknown"}`,
-        );
+        trackers.tokensUsed += reportedTokens(result);
+
+        if (result?.status !== "completed") {
+          blackboard.reject({
+            runId,
+            output: {
+              status: "failed",
+              summary: result?.summary ?? "specialist run failed",
+            },
+          });
+          throw new Error(
+            `step_failed: step ${step.id} failed: ${result?.summary ?? "unknown"}`,
+          );
+        }
+
+        const reasons = await runVerifiers({ step, recipe, result });
+        if (reasons.length === 0) {
+          const output = { status: "completed", summary: result.summary ?? "" };
+          blackboard.confirm({
+            ticketId,
+            runId,
+            output,
+            artifacts: result.artifacts ?? [],
+          });
+          // The step record is the ONLY thing that leaves the orchestration
+          // for this step (§6.3 reverse isolation): confirmed summary and
+          // bookkeeping, never the runner's raw output or verify chatter.
+          return {
+            stepId: step.id,
+            recipeId,
+            ticketId,
+            status: "completed",
+            summary: output.summary,
+            attempts,
+          };
+        }
+        feedback = Object.freeze([...reasons]);
       }
 
-      const reasons = await runVerifiers({ step, recipe, result });
-      if (reasons.length === 0) {
-        const output = { status: "completed", summary: result.summary ?? "" };
-        blackboard.confirm({
-          ticketId,
-          runId,
-          output,
-          artifacts: result.artifacts ?? [],
-        });
-        // The step record is the ONLY thing that leaves the orchestration for
-        // this step (§6.3 reverse isolation): confirmed summary and
-        // bookkeeping, never the runner's raw output or verify chatter.
-        return {
-          stepId: step.id,
-          recipeId,
-          ticketId,
-          status: "completed",
-          summary: output.summary,
-          attempts,
-        };
+      // feedback is null when the loop never ran (maxVerifyAttempts < 1):
+      // surface a meaningful exhaustion message instead of a TypeError.
+      const failureReasons = feedback ?? [
+        "verify attempts exhausted before any run (maxVerifyAttempts < 1)",
+      ];
+      blackboard.reject({
+        runId,
+        output: {
+          status: "failed",
+          summary: `verify rejected after ${attempts} attempt(s): ${failureReasons.join("; ")}`,
+        },
+      });
+      throw new Error(
+        `verify_exhausted: step ${step.id} was rejected ${attempts} time(s) and was cut off: ${failureReasons.join("; ")}`,
+      );
+    } finally {
+      // M-2: the step's worker is closed once the step settles (completed,
+      // failed, or verify-exhausted) — retries within the verify loop share
+      // the one worker; nothing outlives the step. Best-effort and idempotent
+      // alongside factory.close() (the default factory tolerates re-close):
+      // a throwing close must not mask the step outcome.
+      try {
+        worker.close?.();
+      } catch {
+        // the step outcome stands; nothing useful to add
       }
-      feedback = Object.freeze([...reasons]);
     }
-
-    // feedback is null when the loop never ran (maxVerifyAttempts < 1):
-    // surface a meaningful exhaustion message instead of a TypeError.
-    const failureReasons = feedback ?? [
-      "verify attempts exhausted before any run (maxVerifyAttempts < 1)",
-    ];
-    blackboard.reject({
-      runId,
-      output: {
-        status: "failed",
-        summary: `verify rejected after ${attempts} attempt(s): ${failureReasons.join("; ")}`,
-      },
-    });
-    throw new Error(
-      `verify_exhausted: step ${step.id} was rejected ${attempts} time(s) and was cut off: ${failureReasons.join("; ")}`,
-    );
   };
 
   // The vertical thread (4.3): the Hanaita assigns every READY step (all
