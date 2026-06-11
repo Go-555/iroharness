@@ -428,6 +428,15 @@ recall(role)                # optional: summon a known regular by name
 > policy/workspace enforcement (invariant 3). Hiring is active-folder-only
 > (invariant 1). `check_progress` / `recall` are still unbuilt.
 
+> **Opt-in scope of the zone gate (Phase 5b / 5.3, bantou M-2a):** the zone
+> gate on the `createIroHarness` work route is **additive and opt-in** — it is
+> enforced only in integrations that actually wire the exported policy in via
+> `createIroHarness({ workRunnerPolicy })`. Running `iroharness view export`
+> alone does NOT apply it: the exported `work-runner-policy.json` is inert
+> data until a harness is constructed with it. An integration that omits
+> `workRunnerPolicy` keeps the exact pre-5.3 behavior (user permission policy
+> only, no zone table on top).
+
 ### Layer 2 — what the Hanaita holds (hidden from the face)
 
 ```
