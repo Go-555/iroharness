@@ -133,7 +133,7 @@ test("CLI init creates a minimal IroHarness app", () => {
   assert.match(app, /createHttpBrain/);
   assert.match(app, /createConfiguredBrain/);
   assert.match(app, /IROHARNESS_VOICE_BRAIN_ENDPOINT/);
-  assert.match(app, /IROHARNESS_DEEP_BRAIN_ENDPOINT/);
+  assert.match(app, /IROHARNESS_TEXT_BRAIN_ENDPOINT/);
   assert.match(app, /IROHARNESS_BRAIN_AUTH_TOKEN/);
   assert.match(app, /loadEnvFile/);
   assert.match(app, /existsSync/);
@@ -168,7 +168,8 @@ test("CLI init creates a minimal IroHarness app", () => {
   );
   assert.match(identity, /reply engine, body renderer, platform, or/);
   assert.match(memory, /Use Project OS for tickets/);
-  assert.match(voice, /prefer low latency/);
+  assert.match(voice, /natural Japanese/);
+  assert.match(voice, /easy to read aloud/);
 
   const readme = readFileSync(join(appDir, "README.md"), "utf8");
   assert.match(readme, /\?view=overlay/);
@@ -179,7 +180,7 @@ test("CLI init creates a minimal IroHarness app", () => {
   assert.match(readme, /npm run doctor/);
   assert.match(readme, /IROHARNESS_ADMIN_TOKEN/);
   assert.match(readme, /IROHARNESS_VOICE_BRAIN_ENDPOINT/);
-  assert.match(readme, /IROHARNESS_DEEP_BRAIN_ENDPOINT/);
+  assert.match(readme, /IROHARNESS_TEXT_BRAIN_ENDPOINT/);
   assert.match(readme, /actor, audience, route, state, and/);
   assert.match(readme, /VOICE\.md/);
   assert.match(readme, /SOUL\.md, IDENTITY\.md, MEMORY\.md, and VOICE\.md/);
@@ -193,7 +194,7 @@ test("CLI init creates a minimal IroHarness app", () => {
   assert.match(envExample, /IROHARNESS_BRAIN_AUTH_TOKEN=/);
   assert.match(envExample, /IROHARNESS_VOICE_BRAIN_ENDPOINT=/);
   assert.match(envExample, /IROHARNESS_TEXT_BRAIN_MODEL=/);
-  assert.match(envExample, /IROHARNESS_DEEP_BRAIN_ENDPOINT=/);
+  assert.doesNotMatch(envExample, /IROHARNESS_DEEP_BRAIN_ENDPOINT=/);
   assert.match(envExample, /YOUTUBE_API_KEY=/);
   assert.match(envExample, /DISCORD_BOT_TOKEN=/);
   assert.match(envExample, /IROHARNESS_ENABLE_OBS=0/);
@@ -557,6 +558,7 @@ test("CLI connect prepares Slack and StackChan onboarding files", () => {
     "ws://100.64.0.10:4182/device/stackchan/realtime",
   );
   assert.equal(firmwareConfig.device_token, "device-secret-test");
+  assert.equal(firmwareConfig.mic_magnification, 32);
   assert.deepEqual(firmwareConfigCopy, firmwareConfig);
   assert.equal(
     firmwareConfig.iroharness.invoke_url,

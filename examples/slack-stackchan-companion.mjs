@@ -19,10 +19,19 @@ import {
   createCodexAppServerBrain,
   createCodexAppServerMicroHarness,
   createM5StackBodyBridge,
+  createOpenAiResponsesBrain,
   createStackChanRealtimeSessionHandler,
   createSlackEventsRuntime,
   createSlackMessageAdapter
 } from "../src/adapters/index.js";
+import {
+  createAudioPacer,
+  createQuickResponder,
+  createSileroVad,
+  createVoicePipeline,
+  createVoiceTurnMetrics,
+  loadSileroSession
+} from "../src/voice-pipeline/index.js";
 
 const requireEnv = (name) => {
   const value = process.env[name];
@@ -250,9 +259,19 @@ const createCharacterFromRuntime = ({ profileDir }) => {
 const createBrainForSlot = ({ slot, codexWorkspace }) => {
   const prefix = `IROHARNESS_${slot.toUpperCase()}_BRAIN`;
   const provider = process.env[`${prefix}_PROVIDER`] || "echo";
+  const model =
+    process.env[`${prefix}_MODEL`] || process.env.CODEX_BRAIN_MODEL || process.env.CODEX_MODEL || "gpt-5.4";
+  if (provider === "openai") {
+    return createOpenAiResponsesBrain({
+      id: `${slot}-openai-${model}`,
+      slot,
+      apiKey: process.env.OPENAI_API_KEY,
+      baseUrl: process.env.OPENAI_BASE_URL || "https://api.openai.com/v1",
+      model,
+      maxOutputTokens: Number(process.env[`${prefix}_MAX_TOKENS`] || (slot === "voice" ? "96" : "700"))
+    });
+  }
   if (provider === "codex") {
-    const model =
-      process.env[`${prefix}_MODEL`] || process.env.CODEX_BRAIN_MODEL || process.env.CODEX_MODEL || "gpt-5.4";
     return createCodexAppServerBrain({
       id: `${slot}-codex-${model}`,
       slot,
@@ -265,6 +284,18 @@ const createBrainForSlot = ({ slot, codexWorkspace }) => {
 
 const createStackChanStt = () => {
   const provider = process.env.IROHARNESS_STACKCHAN_STT_PROVIDER || "http";
+  if (provider === "aiavatar" || provider === "aiavatar-silero-openai") {
+    const endpoint =
+      process.env.IROHARNESS_STACKCHAN_AIAVATAR_STT_ENDPOINT ||
+      process.env.IROHARNESS_STACKCHAN_STT_ENDPOINT ||
+      "http://127.0.0.1:4183/stt";
+    const authorization = process.env.IROHARNESS_STACKCHAN_STT_AUTHORIZATION;
+    return createHttpStreamingStt({
+      id: "stackchan-aiavatar-silero-stt",
+      endpoint,
+      headers: authorization ? { authorization } : {}
+    });
+  }
   if (provider === "mock") {
     const transcript = process.env.IROHARNESS_STACKCHAN_MOCK_TRANSCRIPT || "こんにちは";
     return Object.freeze({
@@ -309,7 +340,9 @@ const createStackChanStt = () => {
       subscriptionKey: process.env.AZURE_SPEECH_KEY || null,
       authorizationToken: process.env.AZURE_SPEECH_AUTHORIZATION_TOKEN || null,
       language: process.env.AZURE_SPEECH_LANGUAGE || "ja-JP",
-      sampleRate: Number(process.env.IROHARNESS_STACKCHAN_AUDIO_SAMPLE_RATE || "16000")
+      mode: process.env.AZURE_SPEECH_STT_MODE || "classic",
+      sampleRate: Number(process.env.IROHARNESS_STACKCHAN_AUDIO_SAMPLE_RATE || "16000"),
+      debugAudioDir: process.env.IROHARNESS_STACKCHAN_STT_DEBUG_AUDIO_DIR || null
     });
   }
   const endpoint = process.env.IROHARNESS_STACKCHAN_STT_ENDPOINT;
@@ -324,6 +357,28 @@ const createStackChanStt = () => {
   });
 };
 
+// Minimal real RIFF/WAVE (PCM16 mono 16000Hz) with silent samples so the
+// gateway's strict parsePcm16Wav normalization accepts mock TTS audio and the
+// hardware-free E2E exercises the actual speech.audio path.
+const buildSilentWavBase64 = ({ sampleRate = 16000, samples = 160 } = {}) => {
+  const dataBytes = samples * 2;
+  const header = Buffer.alloc(44);
+  header.write("RIFF", 0, "ascii");
+  header.writeUInt32LE(36 + dataBytes, 4);
+  header.write("WAVE", 8, "ascii");
+  header.write("fmt ", 12, "ascii");
+  header.writeUInt32LE(16, 16); // fmt chunk size
+  header.writeUInt16LE(1, 20); // PCM
+  header.writeUInt16LE(1, 22); // mono
+  header.writeUInt32LE(sampleRate, 24);
+  header.writeUInt32LE(sampleRate * 2, 28); // byte rate
+  header.writeUInt16LE(2, 32); // block align
+  header.writeUInt16LE(16, 34); // bits per sample
+  header.write("data", 36, "ascii");
+  header.writeUInt32LE(dataBytes, 40);
+  return Buffer.concat([header, Buffer.alloc(dataBytes)]).toString("base64");
+};
+
 const createStackChanTts = () => {
   const provider = process.env.IROHARNESS_STACKCHAN_TTS_PROVIDER || "none";
   if (provider === "mock") {
@@ -331,7 +386,7 @@ const createStackChanTts = () => {
       id: "stackchan-mock-tts",
       kind: "tts",
       async stream({ text, onEvent = () => {} }) {
-        const audio = Buffer.from(`mock-audio:${text || ""}`).toString("base64");
+        const audio = buildSilentWavBase64();
         const events = [
           {
             type: "tts.audio",
@@ -359,7 +414,10 @@ const createStackChanTts = () => {
     id: "stackchan-aivis-tts",
     baseUrl: process.env.AIVIS_SPEECH_BASE_URL || "http://127.0.0.1:10101",
     speaker: process.env.AIVIS_SPEECH_SPEAKER,
-    useCancellableSynthesis: process.env.AIVIS_SPEECH_CANCELLABLE === "1"
+    useCancellableSynthesis: process.env.AIVIS_SPEECH_CANCELLABLE === "1",
+    // Engine-side resample so the device payload and the pacer's clock agree
+    // on one rate (44.1kHz passthrough was a cause of choppy playback).
+    outputSamplingRate: Number(process.env.IROHARNESS_STACKCHAN_TTS_SAMPLE_RATE || "24000")
   });
 };
 
@@ -384,9 +442,105 @@ const transcribeStackChanAudio = async ({ stt, audio, fallbackText }) => {
   return transcriptEvent?.text || fallbackText;
 };
 
-const createSlackStackChanCompanion = () => {
-  const botToken = requireEnv("SLACK_BOT_TOKEN");
-  const signingSecret = requireEnv("SLACK_SIGNING_SECRET");
+// Shared by createSileroVad (frameSamples) AND the session handler
+// (pipelineFrameSamples): the handler re-chunks wire audio into exactly
+// this many samples per frame, so the two must never drift.
+const STACKCHAN_VAD_FRAME_SAMPLES = Number(
+  process.env.IROHARNESS_STACKCHAN_VAD_FRAME_SAMPLES || "512"
+);
+
+// Streaming voice mode (IROHARNESS_STACKCHAN_STREAMING=1): builds the
+// voice pipeline that the realtime session handler consumes via DI.
+// Requires IROHARNESS_SILERO_MODEL (path to silero_vad.onnx) — without it
+// the companion stays on the legacy in-handler VAD path.
+const createStackChanVoicePipeline = async ({ harness, stt, tts, stackchanId, getSession }) => {
+  if (process.env.IROHARNESS_STACKCHAN_STREAMING !== "1") {
+    return null;
+  }
+  if (!stt || !tts) {
+    console.log(
+      "IROHARNESS_STACKCHAN_STREAMING=1 needs StackChan STT and TTS providers; staying on the legacy voice path."
+    );
+    return null;
+  }
+  const modelPath = process.env.IROHARNESS_SILERO_MODEL;
+  if (!modelPath) {
+    console.log(
+      "IROHARNESS_STACKCHAN_STREAMING=1 requires IROHARNESS_SILERO_MODEL (path to silero_vad.onnx); staying on the legacy voice path."
+    );
+    return null;
+  }
+  const micSampleRate = Number(process.env.IROHARNESS_STACKCHAN_AUDIO_SAMPLE_RATE || "16000");
+  let sileroSession;
+  try {
+    sileroSession = await loadSileroSession({ modelPath, sampleRate: micSampleRate });
+  } catch (error) {
+    throw new Error(
+      `Failed to load Silero VAD (check IROHARNESS_SILERO_MODEL path: ${modelPath}): ${error.message}`,
+      { cause: error }
+    );
+  }
+  const vad = createSileroVad({
+    session: sileroSession,
+    sampleRate: micSampleRate,
+    threshold: Number(process.env.IROHARNESS_STACKCHAN_VAD_THRESHOLD || "0.5"),
+    silenceMs: Number(process.env.IROHARNESS_STACKCHAN_VAD_SILENCE_MS || "650"),
+    minSpeechMs: Number(process.env.IROHARNESS_STACKCHAN_VAD_MIN_SPEECH_MS || "250"),
+    maxSpeechMs: Number(process.env.IROHARNESS_STACKCHAN_VAD_MAX_SPEECH_MS || "30000"),
+    frameSamples: STACKCHAN_VAD_FRAME_SAMPLES
+  });
+  const pacer = createAudioPacer({
+    sampleRate: Number(process.env.IROHARNESS_STACKCHAN_TTS_SAMPLE_RATE || "24000"),
+    sleepFn: (ms) => new Promise((resolveSleep) => setTimeout(resolveSleep, ms))
+  });
+  const quickResponder = createQuickResponder({
+    tts,
+    phrases: [process.env.IROHARNESS_STACKCHAN_IMMEDIATE_ACK_TEXT || "うん。"]
+  });
+  const cachedPhrases = await quickResponder.warmup();
+  console.log(`StackChan streaming voice: quick responder warmed (${cachedPhrases} phrase(s) cached)`);
+  const deviceId = stackchanId;
+  return createVoicePipeline({
+    vad,
+    stt,
+    harness,
+    tts,
+    pacer,
+    quickResponder,
+    metrics: createVoiceTurnMetrics(),
+    voice: process.env.IROHARNESS_STACKCHAN_VOICE || "iroha",
+    sampleRate: micSampleRate,
+    maxSentences: Number(process.env.IROHARNESS_VOICE_MAX_SENTENCES || "30"),
+    // Mirrors what the legacy voice-turn path passes to harness.receive.
+    buildInput: (transcript) => ({
+      source: "m5stack",
+      modality: "voice",
+      text: transcript,
+      actor: {
+        platform: "m5stack",
+        platformUserId: process.env.IROHARNESS_STACKCHAN_USER_PLATFORM_ID || deviceId,
+        displayName: deviceId
+      },
+      metadata: {
+        deviceId,
+        channel: process.env.IROHARNESS_STACKCHAN_CHANNEL || "local",
+        realtimeSessionId: "stackchan-realtime"
+      }
+    }),
+    // Translation lives in the session handler — forward pipeline events to
+    // the active realtime session's handlePipelineEvent.
+    onEvent: (event) => {
+      getSession()?.handlePipelineEvent?.(event)?.catch?.((error) => {
+        console.error(error.stack || error.message);
+      });
+    }
+  });
+};
+
+const createSlackStackChanCompanion = async () => {
+  const botToken = process.env.SLACK_BOT_TOKEN || null;
+  const signingSecret = process.env.SLACK_SIGNING_SECRET || null;
+  const slackEnabled = Boolean(botToken && signingSecret);
   const stackchanDeviceToken = requireEnv("STACKCHAN_DEVICE_TOKEN");
   const port = Number(process.env.PORT || "4182");
   const host = process.env.HOST || "127.0.0.1";
@@ -415,6 +569,14 @@ const createSlackStackChanCompanion = () => {
       }
     });
   }
+  userRegistry.registerUser({
+    id: process.env.IROHARNESS_STACKCHAN_USER_ID || "stackchan-device",
+    displayName: process.env.IROHARNESS_STACKCHAN_USER_NAME || "StackChan",
+    role: process.env.IROHARNESS_STACKCHAN_USER_ROLE || "member",
+    identities: {
+      m5stack: process.env.IROHARNESS_STACKCHAN_USER_PLATFORM_ID || stackchan.id
+    }
+  });
 
   const microHarnesses =
     process.env.IROHARNESS_RUN_CODEX === "1"
@@ -440,11 +602,18 @@ const createSlackStackChanCompanion = () => {
     router: createHeuristicRouter(),
     brains: {
       voice: createBrainForSlot({ slot: "voice", codexWorkspace }),
-      text: createBrainForSlot({ slot: "text", codexWorkspace }),
-      deep: createBrainForSlot({ slot: "deep", codexWorkspace })
+      text: createBrainForSlot({ slot: "text", codexWorkspace })
     },
     devices: [stackchan],
     microHarnesses
+  });
+  let activeRealtimeSession = null;
+  const voicePipeline = await createStackChanVoicePipeline({
+    harness,
+    stt: stackchanStt,
+    tts: stackchanTts,
+    stackchanId: stackchan.id,
+    getSession: () => activeRealtimeSession
   });
   const realtimeHandler =
     stackchanStt && stackchanTts
@@ -453,9 +622,26 @@ const createSlackStackChanCompanion = () => {
           harness,
           stt: stackchanStt,
           tts: stackchanTts,
+          voicePipeline,
+          pipelineFrameSamples: STACKCHAN_VAD_FRAME_SAMPLES,
           deviceToken: stackchanDeviceToken,
           voice: process.env.IROHARNESS_STACKCHAN_VOICE || "iroha",
           latencyBudgetMs: Number(process.env.IROHARNESS_STACKCHAN_LATENCY_BUDGET_MS || "1000"),
+          sttAutoFinalMs: Number(process.env.IROHARNESS_STACKCHAN_STT_AUTO_FINAL_MS || "1800"),
+          sttAutoFinalMinBytes: Number(process.env.IROHARNESS_STACKCHAN_STT_AUTO_FINAL_MIN_BYTES || "32000"),
+          vadThresholdDb: Number(process.env.IROHARNESS_STACKCHAN_VAD_THRESHOLD_DB || "-38"),
+          vadSilenceMs: Number(process.env.IROHARNESS_STACKCHAN_VAD_SILENCE_MS || "700"),
+          vadMinSpeechMs: Number(process.env.IROHARNESS_STACKCHAN_VAD_MIN_SPEECH_MS || "250"),
+          vadMaxSpeechMs: Number(process.env.IROHARNESS_STACKCHAN_VAD_MAX_SPEECH_MS || "8000"),
+          vadMode:
+            process.env.IROHARNESS_STACKCHAN_VAD_MODE ||
+            (process.env.IROHARNESS_STACKCHAN_STT_PROVIDER === "aiavatar" ||
+            process.env.IROHARNESS_STACKCHAN_STT_PROVIDER === "aiavatar-silero-openai"
+              ? "provider"
+              : "node"),
+          minAudioBytes: Number(process.env.IROHARNESS_STACKCHAN_MIN_AUDIO_BYTES || "320"),
+          speechChunkBytes: Number(process.env.IROHARNESS_STACKCHAN_SPEECH_CHUNK_BYTES || "512"),
+          immediateAckText: process.env.IROHARNESS_STACKCHAN_IMMEDIATE_ACK_TEXT || "",
           createQueue: () =>
             createSpeechPlaybackQueue({
               id: "stackchan-speech-queue"
@@ -464,36 +650,38 @@ const createSlackStackChanCompanion = () => {
       : null;
 
   const seenEventIds = new Set();
-  const runtime = createSlackEventsRuntime({
-    botToken,
-    harness,
-    adapter: createSlackMessageAdapter({
-      mentionOnly: process.env.SLACK_MENTION_ONLY !== "0",
-      botUserId: process.env.SLACK_BOT_USER_ID || null
-    }),
-    responseFormatter({ result }) {
-      if (result.kind === "permission_denied") {
-        return result.text;
-      }
-      return result.text || result.output?.summary || null;
-    },
-    onResult({ turn, result, reply }) {
-      console.log(
-        JSON.stringify({
-          from: turn.actor.displayName,
-          userId: turn.actor.platformUserId,
-          text: turn.text,
-          resultKind: result.kind,
-          route: result.route?.kind || null,
-          stackchan: stackchan.snapshot()?.payload || null,
-          replied: Boolean(reply)
-        })
-      );
-    },
-    onError(error) {
-      console.error(error.stack || error.message);
-    }
-  });
+  const runtime = slackEnabled
+    ? createSlackEventsRuntime({
+        botToken,
+        harness,
+        adapter: createSlackMessageAdapter({
+          mentionOnly: process.env.SLACK_MENTION_ONLY !== "0",
+          botUserId: process.env.SLACK_BOT_USER_ID || null
+        }),
+        responseFormatter({ result }) {
+          if (result.kind === "permission_denied") {
+            return result.text;
+          }
+          return result.text || result.output?.summary || null;
+        },
+        onResult({ turn, result, reply }) {
+          console.log(
+            JSON.stringify({
+              from: turn.actor.displayName,
+              userId: turn.actor.platformUserId,
+              text: turn.text,
+              resultKind: result.kind,
+              route: result.route?.kind || null,
+              stackchan: stackchan.snapshot()?.payload || null,
+              replied: Boolean(reply)
+            })
+          );
+        },
+        onError(error) {
+          console.error(error.stack || error.message);
+        }
+      })
+    : null;
 
   const handleDeviceInvoke = async (payload) => {
     const fallbackText =
@@ -532,18 +720,30 @@ const createSlackStackChanCompanion = () => {
         ...(payload.metadata || {})
       }
     });
+    const outputText = result.text || result.output?.summary || "";
+    const shouldSpeak =
+      stackchanTts &&
+      (payload.type === "audio" || payload.type === "ptt" || payload.speak === true);
+    const realtimeSpeech =
+      shouldSpeak && activeRealtimeSession?.accepted && typeof activeRealtimeSession.speak === "function"
+        ? await activeRealtimeSession.speak({
+            text: outputText
+          })
+        : null;
+    const localSpeech =
+      shouldSpeak && !realtimeSpeech
+        ? await stackchanTts.stream({
+            text: outputText,
+            voice: process.env.IROHARNESS_STACKCHAN_VOICE || "iroha"
+          })
+        : null;
     return {
       ok: true,
       resultKind: result.kind,
-      text: result.text || result.output?.summary || "",
+      text: outputText,
       face: stackchan.snapshot()?.payload || null,
-      speech:
-        stackchanTts && (payload.type === "audio" || payload.type === "ptt")
-          ? await stackchanTts.stream({
-              text: result.text || result.output?.summary || "",
-              voice: process.env.IROHARNESS_STACKCHAN_VOICE || "iroha"
-            })
-          : null
+      deliveredToRealtime: Boolean(realtimeSpeech),
+      speech: realtimeSpeech || localSpeech
     };
   };
 
@@ -628,6 +828,10 @@ const createSlackStackChanCompanion = () => {
       sendJson(response, 404, { ok: false, error: "not_found" });
       return;
     }
+    if (!slackEnabled || !runtime) {
+      sendJson(response, 503, { ok: false, error: "slack_disabled" });
+      return;
+    }
 
     const body = await readBody(request);
     if (!verifySlackSignature({ body, headers: request.headers, signingSecret })) {
@@ -672,7 +876,8 @@ const createSlackStackChanCompanion = () => {
       return;
     }
     const websocket = createWebSocketAdapter(socket);
-    realtimeHandler.handleConnection(websocket, {
+    let session = null;
+    session = realtimeHandler.handleConnection(websocket, {
       deviceId: stackchan.id,
       userId: url.searchParams.get("userId") || stackchan.id,
       channel: url.searchParams.get("channel") || "local",
@@ -683,11 +888,44 @@ const createSlackStackChanCompanion = () => {
             realtime: event.type,
             deviceId: event.deviceId,
             channel: event.channel,
-            sequence: event.sequence
+            sequence: event.sequence,
+            message: event.message || null,
+            messageType: event.messageType || undefined,
+            rmsDb: typeof event.rmsDb === "number" ? event.rmsDb : undefined,
+            bytes: event.bytes || undefined,
+            isSpeech: typeof event.isSpeech === "boolean" ? event.isSpeech : undefined,
+            thresholdDb: typeof event.thresholdDb === "number" ? event.thresholdDb : undefined,
+            hasText:
+              typeof event.hasText === "boolean"
+                ? event.hasText
+                : typeof event.text === "string" && event.text.length > 0
+                  ? true
+                  : undefined,
+            reason: event.reason || undefined,
+            durationMs: typeof event.durationMs === "number" ? event.durationMs : undefined,
+            sttDurationMs: typeof event.sttDurationMs === "number" ? event.sttDurationMs : undefined,
+            sinceSpeechStartMs:
+              typeof event.sinceSpeechStartMs === "number" ? event.sinceSpeechStartMs : undefined,
+            ttsDurationMs: typeof event.ttsDurationMs === "number" ? event.ttsDurationMs : undefined,
+            timeToFirstAudioMs:
+              typeof event.timeToFirstAudioMs === "number" ? event.timeToFirstAudioMs : undefined,
+            firstAudioTotalMs:
+              typeof event.firstAudioTotalMs === "number" ? event.firstAudioTotalMs : undefined,
+            totalMs: typeof event.totalMs === "number" ? event.totalMs : undefined,
+            textLength: typeof event.textLength === "number" ? event.textLength : undefined,
+            transcriptLength:
+              typeof event.transcriptLength === "number" ? event.transcriptLength : undefined,
+            resultKind: event.resultKind || undefined
           })
         );
+        if (event.type === "stackchan.closed" && activeRealtimeSession === session) {
+          activeRealtimeSession = null;
+        }
       }
     });
+    if (session.accepted) {
+      activeRealtimeSession = session;
+    }
   });
 
   return Object.freeze({
@@ -710,7 +948,7 @@ const createSlackStackChanCompanion = () => {
   });
 };
 
-const companion = createSlackStackChanCompanion();
+const companion = await createSlackStackChanCompanion();
 const urls = await companion.listen();
 console.log(`Slack Events URL: ${urls.slackEventsUrl}`);
 console.log(`StackChan face JSON: ${urls.stackchanFaceUrl}`);

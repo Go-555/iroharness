@@ -221,9 +221,41 @@ export interface Device {
   emit(event: JsonObject): void;
 }
 
+export interface BrainStreamDelta {
+  readonly delta: string;
+  readonly emotion?: string;
+  readonly final?: boolean;
+}
+
+// receiveStream resolves to one of two shapes:
+// - gate rejected/redirected: { stream: null, result } where result is exactly
+//   what receive() would have returned for the same input.
+// - happy path: { stream, finalize, abandon } — consume the stream, then call
+//   finalize(fullText, { emotion }) once to run receive()'s post-brain path,
+//   or abandon() to drop the turn and return state to idle with no speech.
+//   finalize/abandon share a one-shot latch: after either has run, finalize()
+//   resolves to null and abandon() is a no-op.
+export type ReceiveStreamResult =
+  | {
+      readonly stream: null;
+      readonly result: JsonObject;
+    }
+  | {
+      readonly stream: AsyncIterable<BrainStreamDelta>;
+      readonly finalize: (
+        fullText: string,
+        options?: { readonly emotion?: string },
+      ) => Promise<JsonObject | null>;
+      readonly abandon: () => void;
+    };
+
 export interface IroHarness {
   readonly character: CharacterProfile;
   receive(input: TurnInput): Promise<JsonObject>;
+  receiveStream(
+    input: TurnInput,
+    options?: { readonly signal?: AbortSignal },
+  ): Promise<ReceiveStreamResult>;
   state(): CharacterState;
   brains(): readonly BrainSummary[];
   projectOs(): ProjectOsSnapshot;
@@ -316,7 +348,6 @@ export function createIroHarness(input: {
   readonly brains: {
     readonly voice: Brain;
     readonly text: Brain;
-    readonly deep?: Brain;
   };
   readonly devices?: readonly Device[];
   readonly microHarnesses?: readonly MicroHarness[];

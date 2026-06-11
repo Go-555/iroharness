@@ -20,15 +20,19 @@ Status labels:
 | Project OS | built-in | `createInMemoryProjectOs`, `createFileProjectOs`, `createProjectOsMarkdown` | Tracks tickets, runs, artifacts, and durable state. |
 | Audience registry | built-in | `createInMemoryUserRegistry`, `createFileUserRegistry`, `createPostgresUserRegistry` | Links platform IDs to one user. |
 | Permissions | built-in | `createPermissionPolicy`, `createAudienceContextPolicy` | Gates deep discussion, work delegation, stream control, and user management. |
-| Brain routing | built-in | `createHeuristicRouter`, `createEchoBrain`, `createHttpBrain`, generated `.env` brain slots | Supports voice/text/deep/work routing while keeping identity stable. |
-| Codex OAuth brain | adapter | `createCodexAppServerBrain`, `docs/brains.md` | Uses the host machine's Codex OAuth session as a selectable text/deep brain model. |
-| Provider brain gateway | example | `examples/provider-brain-gateway.mjs` | Routes voice/text/deep slots to OpenAI, Claude, or local OpenAI-compatible providers. |
+| Brain routing | built-in | `createHeuristicRouter`, `createEchoBrain`, `createHttpBrain`, generated `.env` brain slots | Supports voice/text/work routing while keeping identity stable. |
+| Codex OAuth brain | adapter | `createCodexAppServerBrain`, `docs/brains.md` | Uses the host machine's Codex OAuth session as a selectable voice or text brain model. |
+| Provider brain gateway | example | `examples/provider-brain-gateway.mjs` | Routes voice/text slots to OpenAI, Claude, or local OpenAI-compatible providers. |
 | Realtime voice contract | contract | `createRealtimeVoiceSession`, STT/TTS interfaces, schemas | JavaScript contract exists; production STT/TTS providers are replaceable. |
 | HTTP STT/TTS adapters | adapter | `createHttpStreamingStt`, `createHttpStreamingTts` | Bridge production STT/TTS providers through provider-owned HTTP endpoints. |
 | Azure Speech STT adapter | adapter | `createAzureSpeechStt` | Uses Azure Speech short-audio REST recognition for PTT and recorded device audio. |
 | AivisSpeech TTS adapter | adapter | `createAivisSpeechTts` | Uses AivisSpeech Engine's VOICEVOX-compatible `/audio_query` and `/synthesis` flow. |
 | Speech playback queue | contract | `createSpeechPlaybackQueue`, `protocols/speech-queue.schema.json` | Normalizes queued, started, completed, interrupted, and cleared speech events for bodies. |
 | StackChan realtime relay | adapter | `createStackChanRealtimeRelay`, `createStackChanRealtimeSessionHandler`, `protocols/stackchan-realtime-message.schema.json` | WebSocket audio chunk and speech playback relay plus firmware-facing session handler for the sub-second StackChan path. |
+| Streaming voice pipeline | built-in | `createVoicePipeline`, `src/voice-pipeline/` | VAD → STT → sentence-split streaming TTS → pacer loop. Emits `speech.audio`, `turn.final`, and `metrics` events. Enabled via `IROHARNESS_STACKCHAN_STREAMING=1`. |
+| Silero VAD | built-in w/ optional `onnxruntime-node` | `createSileroVad`, `src/voice-pipeline/silero-vad.js` | Node.js ONNX-based VAD. Requires `onnxruntime-node` and a Silero model file; without them the example stays on the legacy voice path. |
+| Streaming brains | adapter | `toBrainStream`, `createOpenAiResponsesBrain`, Codex app-server `respondStream` | OpenAI Responses API SSE and Codex app-server streaming paths; both implement the `respondStream` async-iterator contract. |
+| Harness `receiveStream` | built-in | `harness.receiveStream()`, `src/index.js` | Streaming turn entry point: yields brain deltas and exposes `abandon()` for barge-in without double-finalizing state. |
 | Rust realtime core | contract | `crates/realtime-core`, `createRustRealtimeCoreBinding`, `createRustRealtimeCoreCabiAdapter` | Rust crate exposes JSONL plus native/WASM C ABI fast-path bindings. |
 
 ## Micro Harnesses

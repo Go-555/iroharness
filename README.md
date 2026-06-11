@@ -41,7 +41,7 @@ Slack / Web / VS Code / M5Stack / Even G2 / Live2D / MotionPNGTuber
 |---|---|
 | 人格の中心管理 | `SOUL.md`、`IDENTITY.md`、`MEMORY.md`、`VOICE.md` を読み込み、同じ人格を複数の入口で使える |
 | Project OS | goals、stories、specs、tickets、runs、artifacts を永続状態として扱える |
-| モデル切り替え | voice / text / deep / work の brain slot を分け、音声は軽量、テキストは高品質、深い議論は強いモデルにできる。text/deep brain は Codex OAuth 経由の model 選択にも対応 |
+| モデル切り替え | voice / text / work の経路を分け、音声は軽量、テキストは高品質、実作業は worker に委譲できる。text brain は Codex OAuth 経由の model 選択にも対応 |
 | micro harness 委譲 | Codex app-server、Claude Code CLI、OpenClaw、Hermes、HTTP worker、JSONL process、text process に仕事を投げる adapter がある |
 | ブラウザ companion | ローカルWeb UI、OBS overlay、audience admin、SSE event stream、OpenAPI を持つ開発サーバーを起動できる |
 | 配信・Slack対応 | OBS Browser Source、OBS WebSocket、YouTube Live Chat polling、Discord bot、Slack Events、Slack + Codex companion の実装例がある |
@@ -293,7 +293,7 @@ const iroha = createIroHarness({
   router: createHeuristicRouter(),
   brains: {
     voice: createEchoBrain("voice-fast"),
-    text: createEchoBrain("text-deep")
+    text: createEchoBrain("text-standard")
   },
   devices: [createConsoleDevice("console")],
   microHarnesses: [
@@ -507,8 +507,7 @@ firmware runtime は [firmware/stackchan-runtime](./firmware/stackchan-runtime) 
 IroHarness は人格とモデル選択を分離します。
 
 - `voice`: 低レイテンシー、短い返答、割り込み前提
-- `text`: Slack、Discord、Web chat 用の自然な会話
-- `deep`: 開発者との深い議論、設計、戦略、調査
+- `text`: Slack、Discord、Web chat 用の自然な会話。深い議論、設計、戦略、調査もここに集約
 - `work`: Codex、Claude Code、OpenClaw、Hermes などへの作業委譲
 
 例です。
@@ -519,15 +518,13 @@ npm run example:brain-gateway
 npm run example:provider-brain-gateway
 ```
 
-Codex OAuth 済みのホストでは、text/deep brain 自体をCodex modelにできます。
+Codex OAuth 済みのホストでは、text brain 自体をCodex modelにできます。
 
 ```bash
 codex login
 
 IROHARNESS_TEXT_BRAIN_PROVIDER=codex \
-IROHARNESS_TEXT_BRAIN_MODEL=gpt-5.4 \
-IROHARNESS_DEEP_BRAIN_PROVIDER=codex \
-IROHARNESS_DEEP_BRAIN_MODEL=gpt-5.5 \
+IROHARNESS_TEXT_BRAIN_MODEL=gpt-5.5 \
 npm run example:slack-codex
 ```
 
@@ -536,7 +533,6 @@ npm run example:slack-codex
 ```bash
 IROHARNESS_VOICE_BRAIN_ENDPOINT=http://127.0.0.1:8788/voice
 IROHARNESS_TEXT_BRAIN_ENDPOINT=http://127.0.0.1:8788/text
-IROHARNESS_DEEP_BRAIN_ENDPOINT=http://127.0.0.1:8788/deep
 IROHARNESS_BRAIN_AUTH_TOKEN=optional-bearer-token
 ```
 
@@ -695,7 +691,6 @@ model-slot routing をローカルで試す場合は、別shellで demo brain ga
 npm run example:brain-gateway
 IROHARNESS_VOICE_BRAIN_ENDPOINT=http://127.0.0.1:8788/voice \
 IROHARNESS_TEXT_BRAIN_ENDPOINT=http://127.0.0.1:8788/text \
-IROHARNESS_DEEP_BRAIN_ENDPOINT=http://127.0.0.1:8788/deep \
 npm run demo:browser
 ```
 

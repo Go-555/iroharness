@@ -3,6 +3,8 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 
 // Plain one-way import of the skills subsystem (no cycle back into this file).
 import { createSkillContextListing, gateSkills } from "./skills/index.js";
+// Plain one-way import of the streaming brain contract (brain-stream.js has no imports).
+import { toBrainStream } from "./voice-pipeline/brain-stream.js";
 // Plain one-way import of the shared Work Runner delegation gate (5.3) —
 // adapters/index.js imports nothing back from this file.
 import { evaluateWorkRunnerDelegation } from "./adapters/index.js";
@@ -1497,12 +1499,6 @@ export const createAudienceContextPolicy = ({
     if (route.kind === "voice") {
       return "brief";
     }
-    if (
-      route.kind === "deep" &&
-      hasPermission(permissions, "deep_discussion")
-    ) {
-      return "deep";
-    }
     if (hasPermission(permissions, "deep_discussion")) {
       return "standard";
     }
@@ -1619,10 +1615,10 @@ export const createHeuristicRouter = () => {
     }
     if (!isWork) {
       return freezeCopy({
-        kind: input.modality === "voice" ? "voice" : isDeep ? "deep" : "text",
+        kind: input.modality === "voice" ? "voice" : "text",
         harnessId: null,
         reason: isDeep
-          ? "Deep discussion signal detected"
+          ? "Deep discussion signal detected; using text brain"
           : "No work signal detected",
       });
     }
@@ -1635,9 +1631,9 @@ export const createHeuristicRouter = () => {
     if (!selectedHarness && input.modality !== "voice") {
       if (isDeep) {
         return freezeCopy({
-          kind: "deep",
+          kind: "text",
           harnessId: null,
-          reason: "Deep discussion signal detected",
+          reason: "Deep discussion signal detected; using text brain",
         });
       }
     }
@@ -2347,6 +2343,7 @@ export const createHttpStreamingStt = ({
     start({ onEvent = () => {} } = {}) {
       let sequence = 0;
       let closed = false;
+      const sessionId = createId(`${id}_session`);
       const emit = (event) => {
         const nextEvent = createRealtimeAdapterEvent({ id, sequence, event });
         sequence += 1;
@@ -2385,6 +2382,8 @@ export const createHttpStreamingStt = ({
           }
           return post({
             type: "audio",
+            sessionId,
+            session_id: sessionId,
             audio: chunk?.audio || chunk?.data || null,
             text: typeof chunk === "string" ? chunk : chunk?.text || null,
             final: Boolean(chunk?.final),
@@ -2395,7 +2394,12 @@ export const createHttpStreamingStt = ({
             return Object.freeze([]);
           }
           closed = true;
-          return post({ type: "end", final: true });
+          return post({
+            type: "end",
+            sessionId,
+            session_id: sessionId,
+            final: true,
+          });
         },
         cancel(reason = "cancelled") {
           if (closed) {
@@ -3020,7 +3024,6 @@ export const createIroHarness = ({
       [
         ["voice", brains.voice],
         ["text", brains.text],
-        ["deep", brains.deep],
       ]
         .filter(([, brain]) => Boolean(brain))
         .map(([slot, brain]) =>
@@ -3074,7 +3077,14 @@ export const createIroHarness = ({
       value.text,
     );
 
-  const receive = async (input) => {
+  // Shared pre-brain gate sequence for receive() and receiveStream().
+  // Runs: input validation → actor resolution → thinking state → routing →
+  // scopes/permissions → audience → turn:before hook → permission gate →
+  // work/stream redirects (incl. tool:before hook) → brain selection +
+  // persona/skill context assembly. Returns either
+  //   { done: true, result }  — a gate rejected/redirected the turn, or
+  //   { done: false, input, route, actor, audience, brain, brainContext }.
+  const prepareTurn = async (input) => {
     if (!hasRequiredInputFields(input)) {
       throw new Error(
         "input.source, input.modality, and input.text are required",
@@ -3119,18 +3129,24 @@ export const createIroHarness = ({
         { protectedKeys: ["actor"] },
       );
       if (turnResult.blocked) {
-        return rejectByHook(input, route, actor, audience, turnResult.reason);
+        return {
+          done: true,
+          result: rejectByHook(input, route, actor, audience, turnResult.reason),
+        };
       }
       const rewritten = turnResult.context.input ?? input;
       if (!hasRequiredInputFields(rewritten)) {
         // fail-closed: a transform that drops a required field is rejected, not run.
-        return rejectByHook(
-          input,
-          route,
-          actor,
-          audience,
-          "turn:before transform produced an invalid input",
-        );
+        return {
+          done: true,
+          result: rejectByHook(
+            input,
+            route,
+            actor,
+            audience,
+            "turn:before transform produced an invalid input",
+          ),
+        };
       }
       input = rewritten;
     }
@@ -3141,7 +3157,10 @@ export const createIroHarness = ({
       input,
     });
     if (!permission.allowed) {
-      return rejectByPermission(input, route, actor, permission, audience);
+      return {
+        done: true,
+        result: await rejectByPermission(input, route, actor, permission, audience),
+      };
     }
 
     if (route.kind === "work" && route.harnessId) {
@@ -3155,20 +3174,23 @@ export const createIroHarness = ({
           audience,
         });
         if (!gate.ok) {
-          return rejectByPermission(
-            input,
-            route,
-            actor,
-            freezeCopy({
-              allowed: false,
-              permission: "delegate_work",
-              reason:
-                gate.reason === "permission_required"
-                  ? "delegate_work permission is required"
-                  : "Work Runner delegation is denied for this view",
-            }),
-            audience,
-          );
+          return {
+            done: true,
+            result: await rejectByPermission(
+              input,
+              route,
+              actor,
+              freezeCopy({
+                allowed: false,
+                permission: "delegate_work",
+                reason:
+                  gate.reason === "permission_required"
+                    ? "delegate_work permission is required"
+                    : "Work Runner delegation is denied for this view",
+              }),
+              audience,
+            ),
+          };
         }
       }
       if (hooks) {
@@ -3178,42 +3200,49 @@ export const createIroHarness = ({
           { protectedKeys: ["actor"] },
         );
         if (toolResult.blocked) {
-          return rejectByHook(input, route, actor, audience, toolResult.reason);
+          return {
+            done: true,
+            result: rejectByHook(input, route, actor, audience, toolResult.reason),
+          };
         }
         const rewritten = toolResult.context.input ?? input;
         if (!hasRequiredInputFields(rewritten)) {
           // fail-closed: a degraded input never reaches runMicroHarness.
-          return rejectByHook(
-            input,
-            route,
-            actor,
-            audience,
-            "tool:before transform produced an invalid input",
-          );
+          return {
+            done: true,
+            result: rejectByHook(
+              input,
+              route,
+              actor,
+              audience,
+              "tool:before transform produced an invalid input",
+            ),
+          };
         }
         input = rewritten;
       }
-      return runMicroHarness(
-        input,
-        route,
-        actor,
-        audience,
-        permission,
-        actorPermissions,
-        contextScopes,
-      );
+      return {
+        done: true,
+        result: await runMicroHarness(
+          input,
+          route,
+          actor,
+          audience,
+          permission,
+          actorPermissions,
+          contextScopes,
+        ),
+      };
     }
 
     if (route.kind === "stream") {
-      return runStreamController(input, route, actor, audience);
+      return {
+        done: true,
+        result: await runStreamController(input, route, actor, audience),
+      };
     }
 
-    const brain =
-      route.kind === "voice"
-        ? brains.voice
-        : route.kind === "deep"
-          ? brains.deep || brains.text
-          : brains.text;
+    const brain = route.kind === "voice" ? brains.voice : brains.text;
     const satisfied = resolveSatisfiedRequirements(satisfiedRequirements, {
       input,
       actor,
@@ -3234,17 +3263,32 @@ export const createIroHarness = ({
           }),
         })
       : Object.freeze([]);
-    let response = await brain.respond({
-      character,
+    return {
+      done: false,
       input,
+      route,
       actor,
       audience,
-      route,
-      state,
-      projectOs: projectOs.snapshot(),
-      skills: skillListing,
-    });
+      brain,
+      brainContext: {
+        character,
+        input,
+        actor,
+        audience,
+        route,
+        state,
+        projectOs: projectOs.snapshot(),
+        skills: skillListing,
+      },
+    };
+  };
 
+  // Shared post-brain path for receive() and receiveStream().finalize:
+  // response:before hook → speaking state + speech emit → idle state → result.
+  const finalizeResponse = async (
+    { input, route, actor, audience, brain },
+    response,
+  ) => {
     if (hooks) {
       const responseResult = await hooks.dispatch(
         "response:before",
@@ -3304,6 +3348,59 @@ export const createIroHarness = ({
       text: response.text,
       brainId: brain.id,
     });
+  };
+
+  const receive = async (input) => {
+    const prepared = await prepareTurn(input);
+    if (prepared.done) {
+      return prepared.result;
+    }
+    const response = await prepared.brain.respond(prepared.brainContext);
+    return finalizeResponse(prepared, response);
+  };
+
+  // Streaming entry point with the same 関所 (gate sequence) as receive().
+  // Resolves to { stream: null, result } when a gate rejects/redirects the
+  // turn (result is exactly what receive() would return), or to
+  // { stream, finalize, abandon } on the happy path. The caller consumes the
+  // stream, then calls finalize(fullText, { emotion }) once to run receive()'s
+  // post-brain path (response:before hook, speaking/idle states, speech emit),
+  // or abandon() to drop the turn (e.g. barge-in with no follow-up) and return
+  // the state to idle without any speech emit. finalize/abandon share a
+  // one-shot latch: after either has run, finalize() returns null and
+  // abandon() is a no-op, so a turn is never spoken twice or spoken after
+  // being abandoned.
+  const receiveStream = async (input, { signal } = {}) => {
+    const prepared = await prepareTurn(input);
+    if (prepared.done) {
+      return freezeCopy({ stream: null, result: prepared.result });
+    }
+    const stream = toBrainStream(prepared.brain, prepared.brainContext, {
+      signal,
+    });
+    let settled = false;
+    const finalize = async (fullText, { emotion } = {}) => {
+      if (settled) {
+        return null;
+      }
+      settled = true;
+      return finalizeResponse(prepared, { text: fullText, emotion });
+    };
+    const abandon = () => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      // Same idle transition finalizeResponse ends with, minus the speech.
+      setState({
+        mode: MODES.idle,
+        emotion: "attentive",
+        speechText: null,
+        mouth: "closed",
+        motion: MODES.idle,
+      });
+    };
+    return freezeCopy({ stream, finalize, abandon });
   };
 
   const rejectByHook = (input, route, actor, audience, reason) => {
@@ -3611,6 +3708,7 @@ export const createIroHarness = ({
   return Object.freeze({
     character: freezeCopy(character),
     receive,
+    receiveStream,
     state: () => state,
     brains: brainSummary,
     projectOs: () => projectOs.snapshot(),

@@ -24,7 +24,7 @@ IroHarness mapping:
 - Browser companion and OBS overlay cover the browser-first surface.
 - MotionPNGTuber, Live2D, VRM, M5Stack, Even G2, and AIAvatarKit bridges keep
   body rendering replaceable.
-- Voice/text/deep brain slots keep model choice outside the character identity.
+- Voice/text brain slots keep model choice outside the character identity.
 - Audience registry and permissions add durable user identity across platforms.
 - Project OS adds durable work state beyond stream chat history.
 
@@ -80,7 +80,7 @@ Useful ideas:
 
 IroHarness mapping:
 
-- Generated apps already configure voice/text/deep brain slots and body bridges.
+- Generated apps already configure voice/text brain slots and body bridges.
 - Realtime STT/TTS contracts, barge-in, latency metrics, and Rust C ABI fast
   path cover the server-side fast loop boundary.
 - M5Stack and Even G2 bridges treat physical devices as bodies for the same

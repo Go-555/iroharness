@@ -1,0 +1,4 @@
+# This repo is hand-formatted; a user-level Claude Code PostToolUse hook runs
+# `prettier --write` after every Edit/Write. Ignore everything so the hook
+# cannot reformat whole files into feature commits (see plan Task 3 incident).
+*

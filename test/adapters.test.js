@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { chmodSync, mkdtempSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -25,6 +25,7 @@ import {
   createMotionPngTuberRendererBridge,
   createObsStreamController,
   createObsWebSocketAdapter,
+  createOpenAiResponsesBrain,
   createOpenClawMicroHarness,
   createPlatformAdapterRegistry,
   createScopedWorkRunnerMicroHarness,
@@ -42,6 +43,33 @@ import {
   createVsCodeCompanionWebviewHtml
 } from "../src/adapters/index.js";
 import { createInMemoryUserRegistry, createSpeechPlaybackQueue } from "../src/index.js";
+
+const createPcm16WavBase64 = ({ sampleRate = 24000, channels = 1, samples = [0, 1000, -1000, 0] } = {}) => {
+  const data = Buffer.alloc(samples.length * 2);
+  samples.forEach((sample, index) => data.writeInt16LE(sample, index * 2));
+  const wav = Buffer.alloc(44 + data.length);
+  wav.write("RIFF", 0, "ascii");
+  wav.writeUInt32LE(36 + data.length, 4);
+  wav.write("WAVE", 8, "ascii");
+  wav.write("fmt ", 12, "ascii");
+  wav.writeUInt32LE(16, 16);
+  wav.writeUInt16LE(1, 20);
+  wav.writeUInt16LE(channels, 22);
+  wav.writeUInt32LE(sampleRate, 24);
+  wav.writeUInt32LE(sampleRate * channels * 2, 28);
+  wav.writeUInt16LE(channels * 2, 32);
+  wav.writeUInt16LE(16, 34);
+  wav.write("data", 36, "ascii");
+  wav.writeUInt32LE(data.length, 40);
+  data.copy(wav, 44);
+  return wav.toString("base64");
+};
+
+const createPcm16Base64 = ({ samples = [0, 1000, -1000, 0] } = {}) => {
+  const data = Buffer.alloc(samples.length * 2);
+  samples.forEach((sample, index) => data.writeInt16LE(sample, index * 2));
+  return data.toString("base64");
+};
 
 const createFakeObsWebSocket = ({ sent }) => {
   return class FakeObsWebSocket {
@@ -436,10 +464,12 @@ test("AIAvatarKit bridge device posts speech and state events", async () => {
 
 test("Azure Speech STT adapter posts buffered audio and emits final transcript", async () => {
   const calls = [];
+  const debugAudioDir = mkdtempSync(join(tmpdir(), "iroharness-stt-debug-"));
   const stt = createAzureSpeechStt({
     id: "azure-test",
     region: "japaneast",
     subscriptionKey: "key-test",
+    debugAudioDir,
     fetchImpl: async (endpoint, options) => {
       calls.push({
         endpoint,
@@ -471,10 +501,49 @@ test("Azure Speech STT adapter posts buffered audio and emits final transcript",
   assert.equal(stt.kind, "stt");
   assert.match(calls[0].endpoint, /japaneast\.stt\.speech\.microsoft\.com/);
   assert.equal(calls[0].headers["Ocp-Apim-Subscription-Key"], "key-test");
-  assert.equal(calls[0].byteLength, 3);
+  assert.equal(calls[0].byteLength, 47);
+  const debugEvent = events.find((event) => event.type === "stt.debug_audio_saved");
+  assert.equal(readFileSync(debugEvent.path).toString("ascii", 0, 4), "RIFF");
   assert.equal(finalEvents[0].type, "stt.final");
   assert.equal(finalEvents[0].text, "こんにちは。");
   assert.equal(events.at(-1).adapterId, "azure-test");
+});
+
+test("Azure Speech STT adapter can use fast transcription", async () => {
+  const calls = [];
+  const stt = createAzureSpeechStt({
+    id: "azure-fast-test",
+    region: "japaneast",
+    subscriptionKey: "key-test",
+    mode: "fast",
+    language: "ja-JP",
+    fetchImpl: async (endpoint, options) => {
+      calls.push({
+        endpoint,
+        headers: options.headers,
+        body: options.body
+      });
+      return {
+        ok: true,
+        status: 200,
+        async text() {
+          return JSON.stringify({
+            combinedPhrases: [{ text: "こんにちは、いろは。" }]
+          });
+        }
+      };
+    }
+  });
+  const session = stt.start();
+
+  session.push({ audio: { dataBase64: Buffer.from("pcm").toString("base64") } });
+  const finalEvents = await session.end();
+
+  assert.match(calls[0].endpoint, /japaneast\.api\.cognitive\.microsoft\.com/);
+  assert.equal(calls[0].headers["Ocp-Apim-Subscription-Key"], "key-test");
+  assert.equal(calls[0].headers["content-type"], undefined);
+  assert.equal(calls[0].body instanceof FormData, true);
+  assert.equal(finalEvents[0].text, "こんにちは、いろは。");
 });
 
 test("AivisSpeech TTS adapter calls audio_query then synthesis", async () => {
@@ -640,7 +709,10 @@ test("StackChan realtime session handler accepts firmware audio and returns spee
           {
             type: "tts.audio",
             text,
-            audio: "wav-base64",
+            audio: createPcm16WavBase64({
+              sampleRate: 24000,
+              samples: [0, 800, -800, 0]
+            }),
             encoding: "wav",
             final: false
           },
@@ -685,6 +757,355 @@ test("StackChan realtime session handler accepts firmware audio and returns spee
   assert.equal(events.some((event) => event.type === "stackchan.accepted"), true);
 });
 
+test("StackChan realtime session handler speaks an immediate ack before brain completion", async () => {
+  const sent = [];
+  const ttsTexts = [];
+  let resolveBrain = null;
+  const brainReleased = new Promise((resolve) => {
+    resolveBrain = resolve;
+  });
+  const socket = createFakeServerSocket({ sent });
+  const handler = createStackChanRealtimeSessionHandler({
+    deviceToken: "device-token",
+    immediateAckText: "うん。",
+    harness: {
+      async receive(turn) {
+        await brainReleased;
+        return {
+          kind: "spoken",
+          text: `返事: ${turn.text}`
+        };
+      }
+    },
+    stt: {
+      id: "fake-stt",
+      start({ onEvent }) {
+        return {
+          async push() {
+            return [];
+          },
+          async end() {
+            const event = {
+              type: "stt.final",
+              text: "こんにちは",
+              final: true
+            };
+            onEvent(event);
+            return [event];
+          },
+          cancel() {
+            return null;
+          }
+        };
+      }
+    },
+    tts: {
+      id: "fake-tts",
+      async stream({ text, onEvent }) {
+        ttsTexts.push(text);
+        const events = [
+          {
+            type: "tts.audio",
+            text,
+            audio: createPcm16WavBase64(),
+            encoding: "wav",
+            final: false
+          },
+          {
+            type: "tts.completed",
+            text,
+            audio: "",
+            final: true
+          }
+        ];
+        events.forEach(onEvent);
+        return events;
+      }
+    }
+  });
+
+  handler.handleConnection(socket, {
+    deviceId: "stackchan",
+    token: "device-token"
+  });
+  socket.receive({
+    type: "audio.chunk",
+    dataBase64: Buffer.from("pcm").toString("base64"),
+    final: true
+  });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  assert.deepEqual(ttsTexts, ["うん。"]);
+  assert.equal(sent.some((message) => message.type === "speech.audio" && message.role === "ack"), true);
+  assert.equal(sent.some((message) => message.type === "response.final"), false);
+
+  resolveBrain();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  assert.deepEqual(ttsTexts, ["うん。", "返事: こんにちは"]);
+  assert.equal(sent.some((message) => message.type === "speech.audio" && message.role === "answer"), true);
+  assert.equal(sent.at(-1).type, "response.final");
+});
+
+test("StackChan realtime session handler finalizes mic audio on VAD silence", async () => {
+  const sent = [];
+  const turns = [];
+  const socket = createFakeServerSocket({ sent });
+  const handler = createStackChanRealtimeSessionHandler({
+    deviceToken: "device-token",
+    sttAutoFinalMs: 0,
+    vadThresholdDb: -40,
+    vadSilenceMs: 1,
+    vadMinSpeechMs: 0,
+    harness: {
+      async receive(turn) {
+        turns.push(turn);
+        return {
+          kind: "spoken",
+          text: `返事: ${turn.text}`
+        };
+      }
+    },
+    stt: {
+      id: "fake-stt",
+      start({ onEvent }) {
+        return {
+          async push() {
+            const event = {
+              type: "stt.audio_buffered",
+              byteLength: 4,
+              final: false
+            };
+            onEvent(event);
+            return [event];
+          },
+          async end() {
+            const event = {
+              type: "stt.final",
+              text: "おはよう",
+              final: true
+            };
+            onEvent(event);
+            return [event];
+          },
+          cancel() {
+            return null;
+          }
+        };
+      }
+    },
+    tts: {
+      id: "fake-tts",
+      async stream({ text, onEvent }) {
+        const events = [
+          {
+            type: "tts.audio",
+            text,
+            audio: createPcm16WavBase64(),
+            encoding: "wav",
+            final: false
+          },
+          {
+            type: "tts.completed",
+            text,
+            audio: "",
+            final: true
+          }
+        ];
+        events.forEach(onEvent);
+        return events;
+      }
+    }
+  });
+
+  handler.handleConnection(socket, {
+    deviceId: "stackchan",
+    token: "device-token"
+  });
+  socket.receive({
+    type: "start",
+    session_id: "avatar-session"
+  });
+  socket.receive({
+    type: "data",
+    session_id: "avatar-session",
+    audio_data: createPcm16Base64({ samples: [0, 0, 0, 0] })
+  });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(turns.length, 0);
+
+  socket.receive({
+    type: "data",
+    session_id: "avatar-session",
+    audio_data: createPcm16Base64({ samples: [4000, -4000, 4000, -4000] })
+  });
+  await new Promise((resolve) => setTimeout(resolve, 2));
+  socket.receive({
+    type: "data",
+    session_id: "avatar-session",
+    audio_data: createPcm16Base64({ samples: [0, 0, 0, 0] })
+  });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  assert.equal(turns[0].text, "おはよう");
+  assert.equal(turns[0].metadata.sttFinalizeReason, "vad-silence");
+  assert.equal(sent.some((message) => message.type === "chunk"), true);
+});
+
+test("StackChan realtime session handler can let the STT provider own VAD finalization", async () => {
+  const sent = [];
+  const turns = [];
+  const pushedAudio = [];
+  const socket = createFakeServerSocket({ sent });
+  const handler = createStackChanRealtimeSessionHandler({
+    deviceToken: "device-token",
+    vadMode: "provider",
+    sttAutoFinalMs: 0,
+    vadThresholdDb: -1,
+    harness: {
+      async receive(turn) {
+        turns.push(turn);
+        return {
+          kind: "spoken",
+          text: `返事: ${turn.text}`
+        };
+      }
+    },
+    stt: {
+      id: "provider-vad-stt",
+      start({ onEvent }) {
+        return {
+          async push(chunk) {
+            pushedAudio.push(chunk.audio);
+            const event = {
+              type: "stt.final",
+              text: "シレロで聞こえた",
+              final: true
+            };
+            onEvent(event);
+            return [event];
+          },
+          async end() {
+            throw new Error("provider VAD final should not require Node-side end");
+          },
+          cancel() {
+            return null;
+          }
+        };
+      }
+    },
+    tts: {
+      id: "fake-tts",
+      async stream({ text, onEvent }) {
+        const events = [
+          {
+            type: "tts.audio",
+            text,
+            audio: createPcm16WavBase64(),
+            encoding: "wav",
+            final: false
+          },
+          {
+            type: "tts.completed",
+            text,
+            audio: "",
+            final: true
+          }
+        ];
+        events.forEach(onEvent);
+        return events;
+      }
+    }
+  });
+
+  handler.handleConnection(socket, {
+    deviceId: "stackchan",
+    token: "device-token"
+  });
+  socket.receive({
+    type: "start",
+    session_id: "avatar-session"
+  });
+  socket.receive({
+    type: "data",
+    session_id: "avatar-session",
+    audio_data: createPcm16Base64({ samples: [0, 0, 0, 0] })
+  });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  assert.equal(pushedAudio.length, 1);
+  assert.equal(turns[0].text, "シレロで聞こえた");
+  assert.equal(turns[0].metadata.sttFinalizeReason, "provider-vad");
+  assert.equal(sent.some((message) => message.type === "chunk"), true);
+});
+
+test("StackChan realtime session handler clears firmware processing on empty STT", async () => {
+  const sent = [];
+  const turns = [];
+  const socket = createFakeServerSocket({ sent });
+  const handler = createStackChanRealtimeSessionHandler({
+    deviceToken: "device-token",
+    harness: {
+      async receive(turn) {
+        turns.push(turn);
+        return {
+          kind: "spoken",
+          text: `返事: ${turn.text}`
+        };
+      }
+    },
+    stt: {
+      id: "empty-stt",
+      start({ onEvent }) {
+        return {
+          async push() {
+            return [];
+          },
+          async end() {
+            const event = {
+              type: "stt.final",
+              text: "",
+              final: true
+            };
+            onEvent(event);
+            return [event];
+          },
+          cancel() {
+            return null;
+          }
+        };
+      }
+    },
+    tts: {
+      id: "fake-tts",
+      async stream() {
+        return [];
+      }
+    }
+  });
+
+  handler.handleConnection(socket, {
+    deviceId: "stackchan",
+    token: "device-token"
+  });
+  socket.receive({
+    type: "start",
+    session_id: "avatar-session"
+  });
+  socket.receive({
+    type: "data",
+    session_id: "avatar-session",
+    audio_data: createPcm16Base64({ samples: [4000, -4000, 4000, -4000] }),
+    final: true
+  });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  assert.equal(turns.length, 0);
+  assert.equal(sent.some((message) => message.type === "accepted"), true);
+  assert.equal(sent.at(-1).type, "final");
+  assert.equal(sent.at(-1).text, "");
+});
+
 test("StackChan realtime session handler speaks AIAvatarStackChan websocket messages", async () => {
   const sent = [];
   const turns = [];
@@ -723,9 +1144,11 @@ test("StackChan realtime session handler speaks AIAvatarStackChan websocket mess
           {
             type: "tts.audio",
             text,
-            audio: "pcm-base64",
-            encoding: "pcm_s16le",
-            sampleRate: 24000,
+            audio: createPcm16WavBase64({
+              sampleRate: 24000,
+              samples: Array.from({ length: 5000 }, (_, index) => (index % 2 === 0 ? 1200 : -1200))
+            }),
+            encoding: "wav",
             final: false
           },
           {
@@ -741,7 +1164,7 @@ test("StackChan realtime session handler speaks AIAvatarStackChan websocket mess
     }
   });
 
-  handler.handleConnection(socket, {
+  const session = handler.handleConnection(socket, {
     deviceId: "stackchan",
     token: "device-token"
   });
@@ -767,10 +1190,18 @@ test("StackChan realtime session handler speaks AIAvatarStackChan websocket mess
   assert.equal(sent.some((message) => message.type === "accepted"), true);
   assert.equal(sent.some((message) => message.type === "start"), true);
   assert.equal(sent.some((message) => message.type === "chunk"), true);
+  const chunk = sent.find((message) => message.type === "chunk");
+  assert.equal(chunk.metadata.audio_format.codec, "pcm16");
+  assert.equal(chunk.metadata.audio_format.sample_rate, 24000);
+  assert.equal(Buffer.from(chunk.audio_data, "base64").length <= 512, true);
+  assert.equal(sent.filter((message) => message.type === "chunk").length > 2, true);
   assert.equal(sent.at(-1).type, "final");
   assert.equal(sent.at(-1).session_id, "avatar-session");
   assert.equal(turns[0].modality, "text");
   assert.equal(turns[0].metadata.aiAvatarSessionId, "avatar-session");
+
+  await session.speak({ text: "外から話す" });
+  assert.equal(sent.filter((message) => message.type === "chunk").length > 4, true);
 });
 
 test("StackChan realtime session handler rejects invalid device token", () => {
@@ -802,6 +1233,401 @@ test("StackChan realtime session handler rejects invalid device token", () => {
   assert.equal(session.accepted, false);
   assert.equal(sent[0].type, "error");
   assert.equal(sent[0].code, "invalid_device_token");
+});
+
+const createFakeVoicePipeline = () => {
+  const pushed = [];
+  const interrupts = [];
+  return {
+    pushed,
+    interrupts,
+    async pushAudio(frame) {
+      pushed.push(Int16Array.from(frame));
+    },
+    interrupt(reason) {
+      interrupts.push(reason);
+    },
+    snapshot() {
+      return { state: "idle", turnCount: 0 };
+    }
+  };
+};
+
+const createStreamingSessionFixture = ({
+  voicePipeline = null,
+  ttsWav = null,
+  pipelineFrameSamples = undefined
+} = {}) => {
+  const sent = [];
+  const events = [];
+  const turns = [];
+  const sttStarts = [];
+  const socket = createFakeServerSocket({ sent });
+  const handler = createStackChanRealtimeSessionHandler({
+    deviceToken: "device-token",
+    voicePipeline,
+    ...(pipelineFrameSamples ? { pipelineFrameSamples } : {}),
+    harness: {
+      async receive(turn) {
+        turns.push(turn);
+        return {
+          kind: "spoken",
+          text: `返事: ${turn.text}`
+        };
+      }
+    },
+    stt: {
+      id: "recording-stt",
+      start(options) {
+        sttStarts.push(options);
+        return {
+          async push() {
+            return [];
+          },
+          async end() {
+            return [];
+          },
+          cancel() {
+            return null;
+          }
+        };
+      }
+    },
+    tts: {
+      id: "fake-tts",
+      async stream({ text, onEvent }) {
+        const ttsEvents = [
+          {
+            type: "tts.audio",
+            text,
+            audio: ttsWav || createPcm16WavBase64(),
+            encoding: "wav",
+            final: false
+          },
+          {
+            type: "tts.completed",
+            text,
+            audio: "",
+            final: true
+          }
+        ];
+        ttsEvents.forEach(onEvent);
+        return ttsEvents;
+      }
+    }
+  });
+  const session = handler.handleConnection(socket, {
+    deviceId: "stackchan",
+    token: "device-token",
+    onEvent(event) {
+      events.push(event);
+    }
+  });
+  return { sent, events, turns, sttStarts, socket, session };
+};
+
+test("StackChan realtime session handler streaming mode pushes decoded frames into the voice pipeline", async () => {
+  const pipeline = createFakeVoicePipeline();
+  const { sent, sttStarts, socket } = createStreamingSessionFixture({
+    voicePipeline: pipeline,
+    pipelineFrameSamples: 2
+  });
+  socket.receive({
+    type: "audio.chunk",
+    dataBase64: createPcm16Base64({ samples: [4000, -4000, 1234, -1234] })
+  });
+  socket.receive({
+    type: "data",
+    session_id: "avatar-session",
+    audio_data: createPcm16Base64({ samples: [77, -77] })
+  });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  assert.equal(pipeline.pushed.length, 3);
+  assert.deepEqual([...pipeline.pushed[0]], [4000, -4000]);
+  assert.deepEqual([...pipeline.pushed[1]], [1234, -1234]);
+  assert.deepEqual([...pipeline.pushed[2]], [77, -77]);
+  assert.equal(sttStarts.length, 0);
+  assert.equal(sent.some((message) => message.type === "stt.event"), false);
+});
+
+test("StackChan realtime session handler streaming speech.audio matches the legacy speak wire shape", async () => {
+  const ttsWav = createPcm16WavBase64({
+    sampleRate: 24000,
+    samples: Array.from({ length: 2000 }, (_, index) => (index % 2 === 0 ? 900 : -900))
+  });
+  const legacy = createStreamingSessionFixture({ ttsWav });
+  await legacy.session.speak({ text: "こんにちは世界" });
+  const goldenChunks = legacy.sent.filter((message) => message.type === "speech.audio");
+
+  const pipeline = createFakeVoicePipeline();
+  const streaming = createStreamingSessionFixture({ voicePipeline: pipeline, ttsWav });
+  await streaming.session.handlePipelineEvent({
+    type: "speech.audio",
+    text: "こんにちは世界",
+    audio: { encoding: "wav", dataBase64: ttsWav }
+  });
+  const streamedChunks = streaming.sent.filter((message) => message.type === "speech.audio");
+
+  assert.equal(goldenChunks.length > 1, true);
+  const comparable = ({ sequence, timestamp, itemId, ...rest }) => rest;
+  assert.deepEqual(streamedChunks.map(comparable), goldenChunks.map(comparable));
+});
+
+test("StackChan realtime session handler streaming interrupt reaches the pipeline and the wire", async () => {
+  const pipeline = createFakeVoicePipeline();
+  const { sent, socket } = createStreamingSessionFixture({ voicePipeline: pipeline });
+  socket.receive({
+    type: "interrupt"
+  });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  assert.deepEqual(pipeline.interrupts, ["device-interrupt"]);
+  assert.equal(
+    sent.some((message) => message.type === "speech.interrupted" && message.reason === "device-interrupt"),
+    true
+  );
+});
+
+test("StackChan realtime session handler streaming socket close aborts the pipeline", async () => {
+  const pipeline = createFakeVoicePipeline();
+  const { socket } = createStreamingSessionFixture({ voicePipeline: pipeline });
+  socket.close();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  assert.deepEqual(pipeline.interrupts, ["disconnect"]);
+});
+
+test("StackChan realtime session handler streaming turn.final sends response.final with metrics", async () => {
+  const pipeline = createFakeVoicePipeline();
+  const { sent, events, session } = createStreamingSessionFixture({ voicePipeline: pipeline });
+  await session.handlePipelineEvent({
+    type: "turn.final",
+    text: "全文です",
+    metrics: { first_audio_total_ms: 850, total_ms: 1200 }
+  });
+
+  const finalMessage = sent.find((message) => message.type === "response.final");
+  assert.equal(finalMessage.text, "全文です");
+  assert.deepEqual(finalMessage.metrics, { first_audio_total_ms: 850, total_ms: 1200 });
+  assert.equal(
+    events.some(
+      (event) => event.type === "stackchan.latency.pipeline_turn" && event.firstAudioTotalMs === 850
+    ),
+    true
+  );
+});
+
+test("StackChan realtime session handler streaming stt.empty returns the session to listening", async () => {
+  const pipeline = createFakeVoicePipeline();
+  const { sent, socket, session } = createStreamingSessionFixture({
+    voicePipeline: pipeline,
+    pipelineFrameSamples: 2
+  });
+  await session.handlePipelineEvent({ type: "stt.empty" });
+
+  assert.equal(sent.some((message) => message.type === "stt.empty"), true);
+
+  socket.receive({
+    type: "audio.chunk",
+    dataBase64: createPcm16Base64({ samples: [10, -10] })
+  });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(pipeline.pushed.length, 1);
+});
+
+test("StackChan realtime session handler streaming re-chunks wire audio into VAD-sized frames", async () => {
+  const pipeline = createFakeVoicePipeline();
+  const { socket } = createStreamingSessionFixture({ voicePipeline: pipeline });
+
+  const first = Array.from({ length: 1300 }, (_, index) => index);
+  socket.receive({
+    type: "audio.chunk",
+    dataBase64: createPcm16Base64({ samples: first })
+  });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  assert.deepEqual(
+    pipeline.pushed.map((frame) => frame.length),
+    [512, 512]
+  );
+  assert.deepEqual([...pipeline.pushed[0]], first.slice(0, 512));
+  assert.deepEqual([...pipeline.pushed[1]], first.slice(512, 1024));
+
+  // 276 samples retained; +300 → 576 → one more 512 frame, 64 left over.
+  const second = Array.from({ length: 300 }, (_, index) => 2000 + index);
+  socket.receive({
+    type: "audio.chunk",
+    dataBase64: createPcm16Base64({ samples: second })
+  });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  assert.deepEqual(
+    pipeline.pushed.map((frame) => frame.length),
+    [512, 512, 512]
+  );
+  assert.deepEqual([...pipeline.pushed[2]], [...first.slice(1024), ...second.slice(0, 236)]);
+});
+
+test("StackChan realtime session handler streaming buffers sub-frame wire audio until a frame fills", async () => {
+  const pipeline = createFakeVoicePipeline();
+  const { socket } = createStreamingSessionFixture({ voicePipeline: pipeline });
+
+  socket.receive({
+    type: "audio.chunk",
+    dataBase64: createPcm16Base64({ samples: Array.from({ length: 100 }, () => 7) })
+  });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(pipeline.pushed.length, 0);
+
+  socket.receive({
+    type: "audio.chunk",
+    dataBase64: createPcm16Base64({ samples: Array.from({ length: 412 }, () => 9) })
+  });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.deepEqual(
+    pipeline.pushed.map((frame) => frame.length),
+    [512]
+  );
+});
+
+test("StackChan realtime session handler streaming interrupt clears the residual audio buffer", async () => {
+  const pipeline = createFakeVoicePipeline();
+  const { socket } = createStreamingSessionFixture({ voicePipeline: pipeline });
+
+  socket.receive({
+    type: "audio.chunk",
+    dataBase64: createPcm16Base64({ samples: Array.from({ length: 300 }, () => 1) })
+  });
+  socket.receive({ type: "interrupt" });
+  socket.receive({
+    type: "audio.chunk",
+    dataBase64: createPcm16Base64({ samples: Array.from({ length: 300 }, () => 2) })
+  });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  // 300 + 300 would have crossed 512 — the interrupt must drop the stale
+  // tail, so no combined frame is ever pushed.
+  assert.equal(pipeline.pushed.length, 0);
+});
+
+test("StackChan realtime session handler streaming sends response.start once per turn before first audio", async () => {
+  const pipeline = createFakeVoicePipeline();
+  const { sent, session } = createStreamingSessionFixture({ voicePipeline: pipeline });
+  const wav = createPcm16WavBase64();
+
+  await session.handlePipelineEvent({
+    type: "speech.audio",
+    text: "一文目。",
+    audio: { encoding: "wav", dataBase64: wav }
+  });
+  await session.handlePipelineEvent({
+    type: "speech.audio",
+    text: "二文目。",
+    audio: { encoding: "wav", dataBase64: wav }
+  });
+  await session.handlePipelineEvent({
+    type: "turn.final",
+    text: "一文目。二文目。",
+    metrics: null
+  });
+
+  const firstTurnStarts = sent.filter((message) => message.type === "response.start");
+  assert.equal(firstTurnStarts.length, 1);
+  assert.equal(firstTurnStarts[0].text, "一文目。");
+  const startIndex = sent.findIndex((message) => message.type === "response.start");
+  const firstAudioIndex = sent.findIndex((message) => message.type === "speech.audio");
+  assert.equal(startIndex >= 0 && startIndex < firstAudioIndex, true);
+
+  await session.handlePipelineEvent({
+    type: "speech.audio",
+    text: "次のターン。",
+    audio: { encoding: "wav", dataBase64: wav }
+  });
+  const allStarts = sent.filter((message) => message.type === "response.start");
+  assert.equal(allStarts.length, 2);
+  assert.equal(allStarts[1].text, "次のターン。");
+});
+
+test("StackChan realtime session handler streaming device interrupt sends exactly one speech.interrupted", async () => {
+  const pipeline = createFakeVoicePipeline();
+  const { sent, socket, session } = createStreamingSessionFixture({ voicePipeline: pipeline });
+
+  // Mid-turn: a turn is active (response.start already out).
+  await session.handlePipelineEvent({
+    type: "speech.audio",
+    text: "話している途中",
+    audio: { encoding: "wav", dataBase64: createPcm16WavBase64() }
+  });
+  // Wire interrupt → direct reply; the real pipeline also emits a
+  // speech.interrupted event with the same reason — it must be deduped.
+  socket.receive({ type: "interrupt" });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  await session.handlePipelineEvent({ type: "speech.interrupted", reason: "device-interrupt" });
+
+  assert.deepEqual(pipeline.interrupts, ["device-interrupt"]);
+  assert.equal(sent.filter((message) => message.type === "speech.interrupted").length, 1);
+});
+
+test("StackChan realtime session handler legacy mode exposes no handlePipelineEvent", () => {
+  const { session } = createStreamingSessionFixture({ voicePipeline: null });
+  assert.equal("handlePipelineEvent" in session, false);
+});
+
+test("StackChan realtime session handler streaming translates rejection, error and interruption events", async () => {
+  const pipeline = createFakeVoicePipeline();
+  const { sent, session } = createStreamingSessionFixture({ voicePipeline: pipeline });
+
+  await session.handlePipelineEvent({
+    type: "turn.rejected",
+    result: { kind: "permission_denied", text: "だめです" }
+  });
+  assert.equal(
+    sent.some((message) => message.type === "response.start" && message.text === "だめです"),
+    true
+  );
+  assert.equal(
+    sent.some((message) => message.type === "response.final" && message.text === "だめです"),
+    true
+  );
+
+  await session.handlePipelineEvent({ type: "error", stage: "tts", message: "boom" });
+  assert.equal(
+    sent.some((message) => message.type === "error" && message.message === "boom" && message.stage === "tts"),
+    true
+  );
+
+  await session.handlePipelineEvent({ type: "speech.interrupted", reason: "barge-in" });
+  assert.equal(
+    sent.some((message) => message.type === "speech.interrupted" && message.reason === "barge-in"),
+    true
+  );
+});
+
+test("StackChan realtime session handler error event resets pipelineTurnStarted so next turn gets response.start", async () => {
+  const pipeline = createFakeVoicePipeline();
+  const { sent, session } = createStreamingSessionFixture({ voicePipeline: pipeline });
+
+  // Start a turn so pipelineTurnStarted becomes true.
+  await session.handlePipelineEvent({
+    type: "speech.audio",
+    text: "一文目。",
+    audio: { encoding: "wav", dataBase64: createPcm16WavBase64() }
+  });
+  const startsBeforeError = sent.filter((m) => m.type === "response.start").length;
+  assert.equal(startsBeforeError, 1);
+
+  // An error mid-turn should reset the flag without a turn.final.
+  await session.handlePipelineEvent({ type: "error", stage: "tts", message: "boom" });
+
+  // The next speech.audio must emit a fresh response.start (flag was reset).
+  await session.handlePipelineEvent({
+    type: "speech.audio",
+    text: "次のターン。",
+    audio: { encoding: "wav", dataBase64: createPcm16WavBase64() }
+  });
+  const startsAfterError = sent.filter((m) => m.type === "response.start").length;
+  assert.equal(startsAfterError, 2);
 });
 
 test("Codex app-server micro harness starts thread and returns assistant deltas", async () => {
@@ -976,6 +1802,66 @@ test("Codex app-server brain uses selected model and returns assistant deltas", 
   assert.match(transport.requests[2].params.input[0].text, /こんにちは/);
 });
 
+test("OpenAI Responses brain posts voice prompt and normalizes spoken text", async () => {
+  const calls = [];
+  const brain = createOpenAiResponsesBrain({
+    id: "voice-openai",
+    slot: "voice",
+    apiKey: "test-key",
+    baseUrl: "https://api.test/v1",
+    model: "gpt-voice-test",
+    maxOutputTokens: 64,
+    fetchImpl: async (endpoint, options) => {
+      calls.push({ endpoint, body: JSON.parse(options.body), headers: options.headers });
+      return {
+        ok: true,
+        async text() {
+          return JSON.stringify({
+            output_text: "**OK**、聞こえてるよ。"
+          });
+        }
+      };
+    }
+  });
+
+  const output = await brain.respond({
+    character: {
+      id: "iroha",
+      name: "Iroha",
+      soul: "Stable macro identity.",
+      voiceStyle: "自然な日本語で短く"
+    },
+    actor: {
+      user: {
+        displayName: "Owner"
+      }
+    },
+    audience: {
+      relationship: "owner"
+    },
+    input: {
+      modality: "voice",
+      text: "こんにちは"
+    },
+    route: {
+      kind: "voice"
+    },
+    state: {},
+    projectOs: {
+      tickets: []
+    }
+  });
+
+  assert.equal(output.text, "うん、聞こえてるよ。");
+  assert.equal(output.raw.provider, "openai");
+  assert.equal(calls[0].endpoint, "https://api.test/v1/responses");
+  assert.equal(calls[0].headers.authorization, "Bearer test-key");
+  assert.equal(calls[0].body.model, "gpt-voice-test");
+  assert.equal(calls[0].body.max_output_tokens, 64);
+  assert.match(calls[0].body.instructions, /音声会話用/);
+  assert.match(calls[0].body.input, /こんにちは/);
+});
+
 test("JSONL process micro harness sends one task and parses final JSON line", async () => {
   const dir = mkdtempSync(join(tmpdir(), "iroharness-process-"));
   const scriptPath = join(dir, "worker.mjs");
@@ -1008,6 +1894,20 @@ test("JSONL process micro harness sends one task and parses final JSON line", as
   assert.equal(output.status, "completed");
   assert.equal(output.summary, "processed ticket_2");
 });
+
+/**
+ * Poll `predicate` until it returns true or `timeoutMs` elapses.
+ * Used instead of a fixed sleep when waiting for child-process output
+ * so the suite does not flake under parallel load.
+ */
+const waitFor = async (predicate, { timeoutMs = 2000, intervalMs = 10 } = {}) => {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (predicate()) return true;
+    await new Promise((r) => setTimeout(r, intervalMs));
+  }
+  return predicate();
+};
 
 test("JSONL realtime core process streams events and keeps local interruption state", async () => {
   const dir = mkdtempSync(join(tmpdir(), "iroharness-realtime-core-"));
@@ -1056,16 +1956,17 @@ test("JSONL realtime core process streams events and keeps local interruption st
   // child node process can take longer than 50ms to spawn and echo its acks,
   // which made this assertion flaky (load-dependent), while standalone runs
   // always passed. The deadline keeps a hung child from stalling the suite.
-  const ackDeadline = Date.now() + 5000;
-  while (
-    Date.now() < ackDeadline &&
-    !(
-      received.some((message) => message.op === "publish") &&
-      received.some((message) => message.op === "shouldInterrupt")
-    )
-  ) {
-    await new Promise((resolve) => setTimeout(resolve, 25));
-  }
+  assert.ok(
+    await waitFor(
+      () =>
+        received.some((message) => message.op === "publish") &&
+        received.some((message) => message.op === "shouldInterrupt"),
+      { timeoutMs: 5000 }
+    ),
+    "child process did not echo publish/shouldInterrupt within timeout"
+  );
+
+
   const snapshot = core.snapshot();
   core.close();
 
@@ -1347,7 +2248,7 @@ test("dev server exposes public health metadata without audience records", async
       brains() {
         return [
           { slot: "voice", id: "voice-fast" },
-          { slot: "text", id: "text-deep" }
+          { slot: "text", id: "text-standard" }
         ];
       },
       projectOs() {
@@ -1386,7 +2287,7 @@ test("dev server exposes public health metadata without audience records", async
   assert.equal(response.json.adminProtected, true);
   assert.deepEqual(response.json.brains, [
     { slot: "voice", id: "voice-fast" },
-    { slot: "text", id: "text-deep" }
+    { slot: "text", id: "text-standard" }
   ]);
   assert.equal(response.json.bodies[0].id, "motionpngtuber");
   assert.equal(response.json.platforms.includes("youtube"), true);
@@ -2103,6 +3004,58 @@ test("Discord bot runtime identifies, receives messages, and replies", async () 
   assert.equal(restCalls[0].url, "https://discord.com/api/v10/channels/channel_1/messages");
   assert.equal(JSON.parse(restCalls[0].options.body).content, "reply to Fan One");
   runtime.stop();
+});
+
+test("createAivisSpeechTts overrides outputSamplingRate when configured", async () => {
+  const calls = [];
+  const fetchImpl = async (url, opts) => {
+    calls.push({ url: String(url), body: opts?.body });
+    if (String(url).includes("audio_query")) {
+      return {
+        ok: true,
+        status: 200,
+        async text() {
+          return JSON.stringify({ outputSamplingRate: 44100 });
+        }
+      };
+    }
+    return {
+      ok: true,
+      status: 200,
+      async arrayBuffer() {
+        return new ArrayBuffer(44);
+      }
+    };
+  };
+  const tts = createAivisSpeechTts({ speaker: 1, fetchImpl, outputSamplingRate: 24000 });
+  await tts.stream({ text: "テスト" });
+  assert.match(calls[1].body, /"outputSamplingRate":24000/);
+});
+
+test("createAivisSpeechTts keeps engine outputSamplingRate when option is absent", async () => {
+  const calls = [];
+  const fetchImpl = async (url, opts) => {
+    calls.push({ url: String(url), body: opts?.body });
+    if (String(url).includes("audio_query")) {
+      return {
+        ok: true,
+        status: 200,
+        async text() {
+          return JSON.stringify({ outputSamplingRate: 44100 });
+        }
+      };
+    }
+    return {
+      ok: true,
+      status: 200,
+      async arrayBuffer() {
+        return new ArrayBuffer(44);
+      }
+    };
+  };
+  const tts = createAivisSpeechTts({ speaker: 1, fetchImpl });
+  await tts.stream({ text: "テスト" });
+  assert.match(calls[1].body, /"outputSamplingRate":44100/);
 });
 
 test("Discord bot runtime ignores messages from itself", async () => {

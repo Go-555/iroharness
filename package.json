@@ -99,6 +99,9 @@
     "url": "https://github.com/Go-555/iroharness/issues"
   },
   "homepage": "https://github.com/Go-555/iroharness#readme",
+  "optionalDependencies": {
+    "onnxruntime-node": "^1.26.0"
+  },
   "engines": {
     "node": ">=20"
   },

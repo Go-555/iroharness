@@ -69,7 +69,7 @@ const createHarness = () => {
     router: createHeuristicRouter(),
     brains: {
       voice: createEchoBrain("voice-fast"),
-      text: createEchoBrain("text-deep")
+      text: createEchoBrain("text-standard")
     },
     devices: [recorder],
     microHarnesses: [createStubMicroHarness("codex", ["code"])]
@@ -91,7 +91,7 @@ test("voice input uses the voice brain without creating a PJOS ticket", async ()
   assert.equal(recorder.events().some((event) => event.type === "speech"), true);
 });
 
-test("deep text input uses the deep brain when configured", async () => {
+test("deep text input uses the text brain", async () => {
   const projectOs = createInMemoryProjectOs();
   const userRegistry = createInMemoryUserRegistry();
   userRegistry.registerUser({
@@ -112,8 +112,7 @@ test("deep text input uses the deep brain when configured", async () => {
     router: createHeuristicRouter(),
     brains: {
       voice: createNamedBrain("voice-fast", "voice"),
-      text: createNamedBrain("text-standard", "text"),
-      deep: createNamedBrain("text-deep", "deep")
+      text: createNamedBrain("text-standard", "text")
     }
   });
 
@@ -129,12 +128,12 @@ test("deep text input uses the deep brain when configured", async () => {
   });
 
   assert.equal(result.kind, "response");
-  assert.equal(result.route.kind, "deep");
-  assert.equal(result.brainId, "text-deep");
-  assert.equal(result.text, "deep");
+  assert.equal(result.route.kind, "text");
+  assert.equal(result.brainId, "text-standard");
+  assert.equal(result.text, "text");
 });
 
-test("developer deep discussion keeps character identity while exposing audience context", async () => {
+test("developer deep discussion keeps character identity on the text brain", async () => {
   const calls = [];
   const projectOs = createInMemoryProjectOs();
   const userRegistry = createInMemoryUserRegistry();
@@ -157,12 +156,11 @@ test("developer deep discussion keeps character identity while exposing audience
     router: createHeuristicRouter(),
     brains: {
       voice: createNamedBrain("voice-fast", "voice"),
-      text: createNamedBrain("text-standard", "text"),
-      deep: Object.freeze({
-        id: "text-deep",
+      text: Object.freeze({
+        id: "text-standard",
         async respond(context) {
           calls.push(context);
-          return { text: "deep", emotion: "focused" };
+          return { text: "text", emotion: "focused" };
         }
       })
     }
@@ -180,13 +178,14 @@ test("developer deep discussion keeps character identity while exposing audience
   });
 
   assert.equal(result.kind, "response");
-  assert.equal(result.brainId, "text-deep");
+  assert.equal(result.brainId, "text-standard");
   assert.equal(result.audience.tier, "trusted");
-  assert.equal(result.audience.responseDepth, "deep");
+  assert.equal(result.audience.responseDepth, "standard");
   assert.equal(result.audience.canDeepDiscuss, true);
   assert.equal(result.audience.identityStable, true);
   assert.equal(calls[0].character.soul, "Stable identity across all bodies.");
   assert.equal(calls[0].audience.relationship, "core-developer");
+  assert.equal(calls[0].route.kind, "text");
 });
 
 test("fan deep discussion is denied by permission without changing personality", async () => {
@@ -209,8 +208,7 @@ test("fan deep discussion is denied by permission without changing personality",
     router: createHeuristicRouter(),
     brains: {
       voice: createNamedBrain("voice-fast", "voice"),
-      text: createNamedBrain("text-standard", "text"),
-      deep: createNamedBrain("text-deep", "deep")
+      text: createNamedBrain("text-standard", "text")
     }
   });
 
@@ -253,8 +251,7 @@ test("voice input keeps the low-latency voice brain even with deep words", async
     router: createHeuristicRouter(),
     brains: {
       voice: createNamedBrain("voice-fast", "voice"),
-      text: createNamedBrain("text-standard", "text"),
-      deep: createNamedBrain("text-deep", "deep")
+      text: createNamedBrain("text-standard", "text")
     }
   });
 
@@ -277,9 +274,9 @@ test("voice input keeps the low-latency voice brain even with deep words", async
 test("HTTP brain posts full macro context and returns model response", async () => {
   const calls = [];
   const brain = createHttpBrain({
-    id: "deep-http",
+    id: "text-http",
     endpoint: "http://brain.local/respond",
-    model: "deep-model",
+    model: "text-model",
     fetchImpl: async (_endpoint, options) => {
       calls.push(JSON.parse(options.body));
       return {
@@ -298,18 +295,18 @@ test("HTTP brain posts full macro context and returns model response", async () 
   const response = await brain.respond({
     character: { id: "iroha" },
     actor: { user: { id: "developer" } },
-    audience: { responseDepth: "deep", permissions: ["deep_discussion"] },
+    audience: { responseDepth: "standard", permissions: ["deep_discussion"] },
     input: { text: "設計相談" },
-    route: { kind: "deep" },
+    route: { kind: "text" },
     state: { mode: "thinking" },
     projectOs: { tickets: [] }
   });
 
   assert.equal(response.text, "HTTP brain response");
   assert.equal(response.emotion, "focused");
-  assert.equal(calls[0].model, "deep-model");
-  assert.equal(calls[0].audience.responseDepth, "deep");
-  assert.equal(calls[0].route.kind, "deep");
+  assert.equal(calls[0].model, "text-model");
+  assert.equal(calls[0].audience.responseDepth, "standard");
+  assert.equal(calls[0].route.kind, "text");
 });
 
 test("work input delegates to a micro harness and records ticket/run state", async () => {
@@ -410,7 +407,7 @@ test("moderators can run stream operations through the stream controller", async
     router: createHeuristicRouter(),
     brains: {
       voice: createEchoBrain("voice-fast"),
-      text: createEchoBrain("text-deep")
+      text: createEchoBrain("text-standard")
     },
     devices: [recorder],
     streamController
@@ -459,7 +456,7 @@ test("fans cannot run stream operations without manage_stream permission", async
     router: createHeuristicRouter(),
     brains: {
       voice: createEchoBrain("voice-fast"),
-      text: createEchoBrain("text-deep")
+      text: createEchoBrain("text-standard")
     },
     streamController
   });

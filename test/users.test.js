@@ -29,7 +29,7 @@ const createBaseHarness = ({ userRegistry }) =>
     router: createHeuristicRouter(),
     brains: {
       voice: createEchoBrain("voice-fast"),
-      text: createEchoBrain("text-deep")
+      text: createEchoBrain("text-standard")
     },
     devices: [createRecorderDevice("recorder")],
     microHarnesses: [createStubMicroHarness("codex", ["code"])]

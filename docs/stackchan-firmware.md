@@ -11,9 +11,13 @@ and AIAvatarKit. It already covers voice conversation, push-to-talk, pluggable
 server-side STT/LLM/TTS, expressions, blinking, mouth animation, vision, touch
 events, and agent harness integration.
 
-IroHarness has not copied source code from AIAvatarStackChan yet. If code is
-imported later, preserve the upstream MIT license notice and keep the copied
-runtime isolated from the macro harness core.
+The firmware runtime under `firmware/stackchan-runtime/` is an IroHarness-owned
+tracked copy derived from AIAvatarStackChan (MIT license). The upstream MIT
+license notice is preserved in `LICENSE.aiavatarstackchan` and
+`THIRD_PARTY_NOTICES.md` inside that directory. The runtime is kept isolated
+from the macro harness core. Per the absorption architecture the plan is to
+split it into a dedicated `iroharness-stackchan-firmware` repository once the
+PlatformIO release cadence diverges from the npm package cadence.
 
 ## Boundary
 
@@ -22,7 +26,7 @@ Keep this split:
 | Layer | SSOT |
 |---|---|
 | Core SSOT | character identity, memory, voice style, Project OS, policies, audience registry, connection records |
-| Brain provider config | LLM/STT/TTS provider endpoints, models, credentials, OAuth sessions, routing by voice/text/deep/work slot |
+| Brain provider config | LLM/STT/TTS provider endpoints, models, credentials, OAuth sessions, routing by voice/text/work path |
 | Trusted StackChan gateway | device auth, actor mapping, device events, realtime session admission, redacted trusted view |
 | StackChan device runtime | Wi-Fi, display, touch, mic, speaker, camera, servo, LEDs, local reconnect, local buffering |
 | Wire protocol | start/data/invoke/stop, accepted/final/tool/vision, TTS audio chunks, face/lip-sync state, health |
@@ -128,7 +132,7 @@ Do not create a second LLM/STT/TTS configuration system inside StackChan.
 IroHarness owns provider selection through the existing brain and realtime
 contracts:
 
-- voice/text/deep/work brain slots are documented in [brains.md](./brains.md)
+- voice/text/work routing is documented in [brains.md](./brains.md)
 - streaming STT/TTS and barge-in are documented in [realtime.md](./realtime.md)
 - StackChan uses the same providers through the trusted device gateway
 
@@ -136,7 +140,7 @@ This means:
 
 - firmware sends microphone frames or audio invoke payloads
 - host-side STT converts audio to text
-- IroHarness routes the turn to the selected voice/text/deep brain
+- IroHarness routes the turn to the selected voice/text brain or work runner
 - host-side TTS returns audio chunks
 - firmware plays chunks and renders face/lip-sync state
 
@@ -238,7 +242,7 @@ PCM conversion.
 Split the firmware runtime only when the toolchain forces it:
 
 ```text
-iroharness-stackchan-runtime/
+iroharness-stackchan-firmware/
 ```
 
 Reasons to split:
@@ -284,4 +288,4 @@ target once the upstream-compatible gateway is implemented.
 5. Measure real CoreS3 microphone-to-first-audio latency against the Mac mini
    host.
 6. Decide whether the runtime stays in this repository or splits into
-   `iroharness-stackchan-runtime`.
+   `iroharness-stackchan-firmware`.
