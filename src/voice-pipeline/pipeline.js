@@ -21,9 +21,17 @@
 //      Whitespace-only sentences are skipped (Markdown "\n" noise). maxSentences
 //      caps runaway turns (abort + one error stage:"guard").
 //   5. One sentence's tts failure → error stage:"tts", next sentence continues.
-//   6. Brain death / timeout / zero speakable sentences → fallbackPhrase via tts
-//      (best effort), error stage:"brain", finalize with partial text.
+//   6. Brain death / inactivity timeout / zero speakable sentences →
+//      fallbackPhrase via tts (best effort), error stage:"brain", finalize
+//      with partial text.
 //   7. finalize(fullText) → turn.final { text, metrics } → pacer/metrics reset.
+//
+// stageTimeoutMs.brain is an INACTIVITY timeout: it bounds the gap between
+// consecutive brain deltas, not the wall-clock of the whole turn — tts and
+// pacing time never count against the brain, so a long healthy answer is safe.
+//
+// Callers must await pushAudio serially (one mic loop) — vad.push assumes a
+// single frame in flight.
 //
 // barge-in (interrupt() or vad speech.start while a turn runs) fires BOTH the
 // per-turn AbortSignal and the latched abandon() — abandon alone only resets
@@ -36,6 +44,16 @@
 // For "wav" payloads the same approximation is used — the header bytes inflate
 // the estimate by <1% on real utterances, which only makes pacing slightly
 // more conservative (never starves the device).
+//
+// Per-sentence synthesis captures the FIRST tts.audio event only — this
+// assumes adapters that emit one audio event per stream() call (mock, Aivis).
+// A multi-chunk streaming TTS adapter would lose later chunks.
+//
+// Documented assumption: after a stage timeout (a tts.stream() that outlives
+// stageTimeoutMs.tts, or a brain delta resolving after the inactivity timeout)
+// the orphaned operation is discarded but may still be running — an orphaned
+// speak can briefly overlap the fallback synthesis against the same tts
+// adapter. Adapters are expected to tolerate concurrent stream() calls.
 //
 // Errors never escape pushAudio — every failure is normalized to
 // onEvent({ type: "error", stage, message }).
@@ -159,6 +177,11 @@ export const createVoicePipeline = ({
         args.signal = turn.controller.signal;
       }
       await withTimeout(tts.stream(args), timeouts.tts, "tts");
+      // Check abort BEFORE marking: an interrupted turn's in-flight synthesis
+      // resuming late must not stamp marks into the next utterance's metrics.
+      if (turn.interrupted || (!force && turn.controller.signal.aborted)) {
+        return;
+      }
       if (!captured) {
         throw new Error("tts emitted no audio");
       }
@@ -213,16 +236,41 @@ export const createVoicePipeline = ({
 
   const consumeStream = async (turn, ctx, stream) => {
     const splitter = createSentenceSplitter();
-    for await (const chunk of stream) {
-      if (turn.interrupted || turn.controller.signal.aborted) break;
-      const delta = typeof chunk?.delta === "string" ? chunk.delta : "";
-      ctx.fullText += delta;
-      const sentences = splitter.push(delta);
-      if (sentences.length > 0) {
-        metrics?.mark("llm.first_sentence"); // first-wins
+    const iterator = stream[Symbol.asyncIterator]();
+    let finished = false;
+    try {
+      while (true) {
+        // Inactivity timeout: time only the wait for the NEXT delta — tts and
+        // pacing time below must never count against the brain.
+        const { value: chunk, done } = await withTimeout(
+          iterator.next(),
+          timeouts.brain,
+          "brain"
+        );
+        if (done) {
+          finished = true;
+          break;
+        }
+        if (turn.interrupted || turn.controller.signal.aborted) break;
+        const delta = typeof chunk?.delta === "string" ? chunk.delta : "";
+        ctx.fullText += delta;
+        const sentences = splitter.push(delta);
+        if (sentences.some((sentence) => sentence.trim())) {
+          metrics?.mark("llm.first_sentence"); // first-wins; whitespace-only never marks
+        }
+        await speakSentences(turn, ctx, sentences);
+        if (turn.interrupted || turn.controller.signal.aborted || ctx.guardTripped) break;
       }
-      await speakSentences(turn, ctx, sentences);
-      if (turn.interrupted || turn.controller.signal.aborted || ctx.guardTripped) break;
+    } finally {
+      if (!finished) {
+        // Best-effort generator cleanup — never awaited: a brain suspended on
+        // a pending await would block return() until that await settles.
+        try {
+          iterator.return?.()?.catch?.(() => {});
+        } catch {
+          // ignore — cleanup only
+        }
+      }
     }
     if (!turn.interrupted && !turn.controller.signal.aborted && !ctx.guardTripped) {
       await speakSentences(turn, ctx, splitter.flush());
@@ -276,7 +324,8 @@ export const createVoicePipeline = ({
     }
     turn.abandon = opened.abandon;
 
-    // 4–7. Consume deltas → sentences → tts, guarded by the brain timeout.
+    // 4–7. Consume deltas → sentences → tts, guarded by the brain
+    // inactivity timeout (per-delta, inside consumeStream).
     const ctx = {
       fullText: "",
       sentenceCount: 0,
@@ -286,7 +335,7 @@ export const createVoicePipeline = ({
     };
     let brainFailure = null;
     try {
-      await withTimeout(consumeStream(turn, ctx, opened.stream), timeouts.brain, "brain");
+      await consumeStream(turn, ctx, opened.stream);
     } catch (error) {
       if (turn.interrupted) return;
       brainFailure = message(error);
@@ -360,8 +409,13 @@ export const createVoicePipeline = ({
       const events = await vad.push(int16Frame);
       for (const event of events ?? []) {
         if (event.type === "speech.start") {
-          metrics?.mark("speech.start");
           if (active) interrupt("barge-in"); // auto barge-in: same path as interrupt()
+          // New-utterance boundary: wipe stale first-wins marks left by
+          // interrupted / early-exit turns (stt.empty, rejection, errors)
+          // BEFORE marking. Not inside interrupt() — that would wipe the new
+          // utterance's own speech.start on barge-in.
+          metrics?.reset();
+          metrics?.mark("speech.start");
           state = "listening";
         } else if (event.type === "speech.end") {
           metrics?.mark("speech.end");

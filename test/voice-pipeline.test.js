@@ -448,6 +448,105 @@ test("a brain that throws mid-turn keeps spoken sentences and speaks the fallbac
   assert.equal(sink.emitted("turn.final")[0].text, "言いかけ。");
 });
 
+test("brain inactivity timeout trips the fallback but keeps spoken sentences", async () => {
+  const makeStream = () =>
+    (async function* () {
+      yield { delta: "言いかけ。" };
+      await new Promise(() => {}); // brain goes silent — never yields again
+    })();
+  const { scripted, mockHarness, sink, pipeline } = setup({
+    makeStream,
+    pipelineOptions: { stageTimeoutMs: { brain: 25 } }
+  });
+
+  await pushUtterance(pipeline, scripted);
+  const final = await sink.waitFor((event) => event.type === "turn.final");
+
+  assert.deepEqual(
+    sink.emitted("speech.audio").map((event) => event.text),
+    ["言いかけ。", "少々調子が悪いや。"]
+  );
+  const errors = sink.events.filter((event) => event.type === "error" && event.stage === "brain");
+  assert.equal(errors.length, 1);
+  assert.match(errors[0].message, /brain timed out/);
+  assert.equal(mockHarness.calls[0].signal.aborted, true, "silent brain must be aborted");
+  assert.deepEqual(mockHarness.finalized, ["言いかけ。"], "finalize with partial text");
+  assert.equal(final.text, "言いかけ。");
+});
+
+test("slow tts/pacing does not count against the brain inactivity timeout", async () => {
+  // Two sentences, each taking 60ms of tts time, under a 30ms brain timeout:
+  // a wall-clock guard would trip here; the inactivity guard must not.
+  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  const tts = {
+    async stream({ text, onEvent = () => {} }) {
+      await sleep(60);
+      onEvent({ type: "tts.audio", audio: b64(`audio:${text}`), encoding: "pcm16" });
+      return [];
+    }
+  };
+  const scripted = createScriptedVad();
+  const mockStt = createMockStt();
+  const mockHarness = createMockHarness({
+    makeStream: () => streamOfDeltas(["一。", "二。"])()
+  });
+  const sink = createEventSink();
+  const pipeline = createVoicePipeline({
+    vad: scripted.vad,
+    stt: mockStt.stt,
+    harness: mockHarness.harness,
+    tts,
+    buildInput,
+    onEvent: sink.onEvent,
+    stageTimeoutMs: { brain: 30 }
+  });
+
+  await pushUtterance(pipeline, scripted);
+  const final = await sink.waitFor((event) => event.type === "turn.final");
+
+  assert.deepEqual(
+    sink.emitted("speech.audio").map((event) => event.text),
+    ["一。", "二。"]
+  );
+  assert.equal(sink.events.filter((event) => event.type === "error").length, 0);
+  assert.equal(final.text, "一。二。");
+});
+
+test("metrics reset on new utterance: the turn after a barge-in gets clean marks", async () => {
+  let now = 0;
+  const metrics = createVoiceTurnMetrics({ nowFn: () => (now += 10) });
+  const gate = createGate();
+  const { scripted, mockTts, sink, pipeline } = setup({
+    deltas: ["応答。"],
+    ttsOptions: { gates: new Map([["応答。", gate]]) },
+    pipelineOptions: { metrics }
+  });
+
+  // turn 1 — runs until its sentence is mid-tts
+  await pushUtterance(pipeline, scripted);
+  await until(() => mockTts.calls.length === 1);
+
+  // turn 2's utterance starts: auto barge-in + metrics reset boundary
+  scripted.script([{ type: "speech.start" }]);
+  await pipeline.pushAudio(FRAME);
+  gate.release(); // turn 1's orphaned tts resumes — must not stamp marks
+  await settle();
+
+  scripted.script([{ type: "speech.end", audio: UTTERANCE }]);
+  await pipeline.pushAudio(FRAME);
+  const final = await sink.waitFor((event) => event.type === "turn.final");
+
+  // nowFn ticks +10 per mark; all six marks belong to turn 2 alone.
+  assert.deepEqual(final.metrics, {
+    vad_close_ms: 10,
+    stt_ms: 10,
+    llm_first_sentence_ms: 10,
+    tts_first_audio_ms: 10,
+    first_audio_total_ms: 30,
+    total_ms: 40
+  });
+});
+
 test("full happy turn records metrics and resets them after turn.final", async () => {
   let now = 0;
   const metrics = createVoiceTurnMetrics({ nowFn: () => (now += 10) });
