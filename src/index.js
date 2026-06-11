@@ -3,6 +3,9 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 
 // Plain one-way import of the skills subsystem (no cycle back into this file).
 import { createSkillContextListing, gateSkills } from "./skills/index.js";
+// Plain one-way import of the shared Work Runner delegation gate (5.3) —
+// adapters/index.js imports nothing back from this file.
+import { evaluateWorkRunnerDelegation } from "./adapters/index.js";
 
 const MODES = Object.freeze({
   idle: "idle",
@@ -2988,6 +2991,11 @@ export const createIroHarness = ({
   skills = null,
   satisfiedRequirements = [],
   hooks = null,
+  // Phase 5b (5.3, optional & additive): the view's work-runner-policy.json.
+  // When set, the work route also passes the shared Work Runner delegation
+  // gate (public view: denied; trusted: delegate_work permission required;
+  // owner: allowed) — the same single gate every other delegate path uses.
+  workRunnerPolicy = null,
 }) => {
   if (!character || !character.id || !character.name) {
     throw new Error("character.id and character.name are required");
@@ -2997,6 +3005,15 @@ export const createIroHarness = ({
   }
   if (!brains || !brains.voice || !brains.text) {
     throw new Error("brains.voice and brains.text are required");
+  }
+  if (
+    workRunnerPolicy &&
+    workRunnerPolicy.kind !== "iroharness.workRunnerPolicy"
+  ) {
+    // fail-closed: a mis-shaped policy is a configuration error, not a pass
+    throw new Error(
+      "workRunnerPolicy must be the view's work-runner policy (iroharness.workRunnerPolicy)",
+    );
   }
   const brainSummary = () =>
     Object.freeze(
@@ -3128,6 +3145,32 @@ export const createIroHarness = ({
     }
 
     if (route.kind === "work" && route.harnessId) {
+      // Phase 5b (5.3): when a view policy is configured, the work route
+      // passes the SAME shared gate as delegate_goal and the scoped runner —
+      // a public view never delegates, even for an actor holding
+      // delegate_work; a trusted view requires it (role or override).
+      if (workRunnerPolicy) {
+        const gate = evaluateWorkRunnerDelegation({
+          policy: workRunnerPolicy,
+          audience,
+        });
+        if (!gate.ok) {
+          return rejectByPermission(
+            input,
+            route,
+            actor,
+            freezeCopy({
+              allowed: false,
+              permission: "delegate_work",
+              reason:
+                gate.reason === "permission_required"
+                  ? "delegate_work permission is required"
+                  : "Work Runner delegation is denied for this view",
+            }),
+            audience,
+          );
+        }
+      }
       if (hooks) {
         const toolResult = await hooks.dispatch(
           "tool:before",

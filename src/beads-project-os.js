@@ -118,7 +118,16 @@ export const createBeadsProjectOs = ({ exec }) => {
   const completeRun = (runId, output, status = "completed") => {
     // `bd show --json` returns an array (it can batch ids); take the first.
     const bead = JSON.parse(exec(["show", runId, "--json"]))[0];
-    const current = parseMaybe(bead.metadata.run);
+    // ajimi recommendation-8: a bead createRun never touched has no folded
+    // run. Spreading undefined would fabricate a broken half-run and silently
+    // close the bead — fail loudly instead, before any write.
+    const folded = bead?.metadata?.run;
+    if (folded == null) {
+      throw new Error(
+        `completeRun: bead ${runId} has no folded run (metadata.run missing — was createRun called?)`,
+      );
+    }
+    const current = parseMaybe(folded);
     const next = { ...current, status, output, updatedAt: nowIso() };
     exec(["update", runId, "--set-metadata", `run=${JSON.stringify(next)}`]);
     exec(["close", runId]);

@@ -59,6 +59,43 @@ test("read finds a recipe across statuses and reports its folder", () => {
   assert.equal(found.recipe.role, "helper");
 });
 
+// mekiki recommendation-7: the folder name is the id AUTHORITY. A recipe whose
+// frontmatter declares a different id (display spoof: e.g. an impostor folder
+// claiming a trusted specialist's id in its frontmatter) must surface under its
+// folder name; the frontmatter id is advisory and quarantined into `declared`.
+test("read returns the folder name as the id; a mismatched frontmatter id is advisory", () => {
+  const root = makeBank();
+  const dir = join(root, "staging", "honest-id");
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(
+    join(dir, "recipe.md"),
+    ["---", "id: spoofed-id", "role: helper", "---", "", "body", ""].join("\n"),
+  );
+
+  const bank = createBankRegistry({ root });
+  const found = bank.read("honest-id");
+
+  assert.equal(found.recipe.id, "honest-id"); // folder authority
+  assert.equal(found.recipe.declared.id, "spoofed-id"); // advisory only
+});
+
+test("renderIndex displays the folder id, never a spoofed frontmatter id", () => {
+  const root = makeBank();
+  const dir = join(root, "staging", "honest-id");
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(
+    join(dir, "recipe.md"),
+    ["---", "id: trusted-veteran", "role: helper", "---", "", "body", ""].join(
+      "\n",
+    ),
+  );
+
+  const index = createBankRegistry({ root }).renderIndex();
+
+  assert.match(index, /\| honest-id \|/);
+  assert.doesNotMatch(index, /trusted-veteran/);
+});
+
 test("move relocates a recipe from staging to active with a passing gate verdict", () => {
   const root = makeBank();
   writeRecipe(root, "staging", "delta");

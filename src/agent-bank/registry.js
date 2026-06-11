@@ -11,32 +11,17 @@ import {
 } from "node:fs";
 import { join } from "node:path";
 
+import { assertValidRecipeId, BANK_STATUSES } from "./ids.js";
 import {
   consumePromotionVerdict,
   isPassingPromotionVerdict,
 } from "./promotion.js";
 import { parseRecipe } from "./recipe.js";
 
-export const BANK_STATUSES = Object.freeze(["staging", "active", "archived"]);
-
-// Fix 3: single id validator applied at every entry point that turns an id
-// into a filesystem path. Rejects traversal ("..", "../x"), separators, and
-// anything not starting with an alphanumeric (so "." and ".hidden" fail too).
-const RECIPE_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
-
-export const assertValidRecipeId = (id) => {
-  if (
-    typeof id !== "string" ||
-    !RECIPE_ID_PATTERN.test(id) ||
-    id.includes("/") ||
-    id.includes("\\") ||
-    id === "." ||
-    id === ".."
-  ) {
-    throw new Error(`invalid recipe id: ${JSON.stringify(id)}`);
-  }
-  return id;
-};
+// BANK_STATUSES and the Fix 3 id validator live in ids.js (dependency-free, so
+// leaf modules can use them without import cycles); re-exported here because
+// this module is their historical home.
+export { assertValidRecipeId, BANK_STATUSES } from "./ids.js";
 
 export const createBankRegistry = ({ root }) => {
   const statusDir = (status) => join(root, status);
@@ -57,7 +42,16 @@ export const createBankRegistry = ({ root }) => {
     for (const status of BANK_STATUSES) {
       const file = recipeFile(status, id);
       if (existsSync(file)) {
-        return { status, recipe: parseRecipe(readFileSync(file, "utf8")) };
+        const recipe = parseRecipe(readFileSync(file, "utf8"));
+        // mekiki recommendation-7: the FOLDER NAME is the id authority, same
+        // as the folder is the status authority (B-2). A frontmatter id that
+        // disagrees is advisory only — quarantined into `declared` so a
+        // recipe cannot display-spoof another specialist's id.
+        if (recipe.id !== id) {
+          recipe.declared.id = recipe.id;
+        }
+        recipe.id = id;
+        return { status, recipe };
       }
     }
     throw new Error(`recipe not found: ${id}`);

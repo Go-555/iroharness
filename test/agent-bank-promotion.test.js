@@ -108,6 +108,53 @@ test("evaluatePromotion never issues a passing verdict without a recipe id", () 
   assert.match(verdict.reasons.join(" "), /recipe id/i);
 });
 
+// ajimi (boundary fixation): the threshold comparisons are strict `<`, so a
+// value EXACTLY at the threshold passes. These tests document that semantics
+// as the spec — they must not be "fixed" to `<=` without a design decision.
+test("exact-threshold values (calls, success rate, avgScore) all pass the gate", () => {
+  const verdict = evaluatePromotion({
+    ...passingInputs,
+    // calls == minCalls (3), successRate == minSuccessRate (4/5 = 0.8),
+    // avgScore == minScore (4.0): all sit exactly on the line.
+    ledgerEntry: { calls: 5, success: 4, avgScore: 4.0 },
+  });
+  assert.equal(verdict.promote, true);
+  assert.deepEqual(verdict.reasons, []);
+});
+
+test("calls exactly at minCalls passes; one below blocks", () => {
+  const at = evaluatePromotion({
+    ...passingInputs,
+    ledgerEntry: { calls: 3, success: 3, avgScore: 4.0 },
+  });
+  assert.equal(at.promote, true);
+
+  const below = evaluatePromotion({
+    ...passingInputs,
+    ledgerEntry: { calls: 2, success: 2, avgScore: 4.0 },
+  });
+  assert.equal(below.promote, false);
+  assert.match(below.reasons.join(" "), /calls/i);
+});
+
+test("success rate just below the threshold blocks", () => {
+  const result = evaluatePromotion({
+    ...passingInputs,
+    ledgerEntry: { calls: 4, success: 3, avgScore: 4.6 }, // 0.75 < 0.8
+  });
+  assert.equal(result.promote, false);
+  assert.match(result.reasons.join(" "), /success rate/i);
+});
+
+test("avgScore just below minScore blocks", () => {
+  const result = evaluatePromotion({
+    ...passingInputs,
+    ledgerEntry: { calls: 3, success: 3, avgScore: 3.999 },
+  });
+  assert.equal(result.promote, false);
+  assert.match(result.reasons.join(" "), /avgScore/i);
+});
+
 test("shouldDecay flags an active recipe idle beyond the window", () => {
   assert.equal(
     shouldDecay({
@@ -128,4 +175,41 @@ test("shouldDecay keeps a recently used recipe", () => {
     }),
     false,
   );
+});
+
+// ajimi (boundary fixation): the decay comparison is strict `>` — idle for
+// EXACTLY maxIdleDays does not decay; one millisecond past the window does.
+test("shouldDecay keeps a recipe idle for exactly maxIdleDays", () => {
+  assert.equal(
+    shouldDecay({
+      lastUsed: "2026-05-07T00:00:00Z",
+      now: "2026-06-06T00:00:00Z", // exactly 30 days later
+      maxIdleDays: 30,
+    }),
+    false,
+  );
+});
+
+test("shouldDecay flags a recipe one millisecond past the window", () => {
+  assert.equal(
+    shouldDecay({
+      lastUsed: "2026-05-07T00:00:00Z",
+      now: "2026-06-06T00:00:00.001Z",
+      maxIdleDays: 30,
+    }),
+    true,
+  );
+});
+
+// Known behavior (fixed by test, not changed): a recipe with NO lastUsed —
+// an active recipe that was never used — never decays. shouldDecay returns
+// false for a missing lastUsed, making never-used actives "immortal" until a
+// future design decision says otherwise.
+test("shouldDecay never flags a recipe without a lastUsed (never-used actives are immortal)", () => {
+  for (const lastUsed of [null, undefined, ""]) {
+    assert.equal(
+      shouldDecay({ lastUsed, now: "2099-01-01T00:00:00Z", maxIdleDays: 30 }),
+      false,
+    );
+  }
 });

@@ -59,25 +59,29 @@
 
 | Task | 内容 | DoD | Depends | Status |
 |------|------|-----|---------|--------|
-| 3.1 | `mint_specialist`: task から recipe(role/prompt/toolset) を生成＋ **要求 toolset を allowlist と intersect（許可外は剥がす/拒否）** | サンプル task から schema 妥当な recipe.md が `staging/` に生成され、許可外ツール要求が剥がれる/拒否される負テストが通る (B-1) | 3.1依存→ 1.1, 1.5, 5.1 | cc:TODO |
-| 3.2 | 生成 recipe の永続化連携 ＝ **書込先を scoped workspace 内に限定**。host グローバル agent dir（`~/.claude/agents/` 等）への書込は owner 明示承認時のみ・既定禁止 | scoped workspace への書込は成功、host グローバルへの書込が既定で拒否される境界テストが通る（mock 可） (B-4) | 3.1, 0.2 | cc:TODO |
-| 3.3 | 生成 recipe のサンドボックス検証（Work Runner 隔離試走） | 未検証 recipe は active へ昇格できないことを保証するテストが通る（2.2 合成ガードの sandbox-verified 条件を満たす） | 3.1, 2.2 | cc:TODO |
+| 3.1 | `mint_specialist`: task から recipe(role/prompt/toolset) を生成＋ **要求 toolset を allowlist と intersect（許可外は剥がす/拒否）** | サンプル task から schema 妥当な recipe.md が `staging/` に生成され、許可外ツール要求が剥がれる/拒否される負テストが通る (B-1) | 3.1依存→ 1.1, 1.5, 5.1 | cc:DONE |
+| 3.2 | 生成 recipe の永続化連携 ＝ **書込先を scoped workspace 内に限定**。host グローバル agent dir（`~/.claude/agents/` 等）への書込は owner 明示承認時のみ・既定禁止 | scoped workspace への書込は成功、host グローバルへの書込が既定で拒否される境界テストが通る（mock 可） (B-4) | 3.1, 0.2 | cc:DONE |
+| 3.3 | 生成 recipe のサンドボックス検証（Work Runner 隔離試走） | 未検証 recipe は active へ昇格できないことを保証するテストが通る（2.2 合成ガードの sandbox-verified 条件を満たす） | 3.1, 2.2 | cc:DONE |
 
 ## Phase 4: Hanaita orchestration（delegate_goal）
 
 | Task | 内容 | DoD | Depends | Status |
 |------|------|-----|---------|--------|
-| 4.1 | `delegate_goal` ツール（async）＝ **既存 permission policy / work-runner-policy を必ず経由** | goal 投入→要約が非同期で返る統合テスト、かつ **public view が delegate_goal を呼ぶと拒否**される負テストが通る (B-3) | 1.2, 5.1 | cc:TODO |
-| 4.2 | context slice 配布 ＋ 黒板 post/read（Project OS 経由・双方向隔離） | 職人は黒板の確定成果のみ受け取り生 context を継がない。**逆方向＝orchestration の中間 chatter が Iroha の identity context を汚さない**ことも保証するテストが通る (§6.3) | 4.1, 0.1 | cc:TODO |
-| 4.3 | 縦糸采配（star: assign→verify→next）＋ pipeline / fan-out | 2 職人の pipeline と fan-in が 1 goal を完遂するテストが通る | 4.2 | cc:TODO |
-| 4.4 | verify ループ（mekiki=質 / bantou=権限 → 差し戻し → 上限打切り） | 不合格成果が差し戻され反復上限で打ち切られるテストが通る | 4.3 | cc:TODO |
-| 4.5 | コスト/暴走ガード: `max_specialists_per_goal` / `max_depth`（再帰 delegate）/ `token_budget` を policy 化 | 各上限超過で goal が打ち切られる負テストが通る。minted specialist の再帰 delegate も depth 上限に従う (W-1) | 4.1 | cc:TODO |
+| 4.1 | `delegate_goal` ツール（async）＝ **既存 permission policy / work-runner-policy を必ず経由** | goal 投入→要約が非同期で返る統合テスト、かつ **public view が delegate_goal を呼ぶと拒否**される負テストが通る (B-3) | 1.2, 5.1 | cc:DONE |
+| 4.2 | context slice 配布 ＋ 黒板 post/read（Project OS 経由・双方向隔離） | 職人は黒板の確定成果のみ受け取り生 context を継がない。**逆方向＝orchestration の中間 chatter が Iroha の identity context を汚さない**ことも保証するテストが通る (§6.3) | 4.1, 0.1 | cc:DONE |
+| 4.3 | 縦糸采配（star: assign→verify→next）＋ pipeline / fan-out | 2 職人の pipeline と fan-in が 1 goal を完遂するテストが通る | 4.2 | cc:DONE |
+| 4.4 | verify ループ（mekiki=質 / bantou=権限 → 差し戻し → 上限打切り） | 不合格成果が差し戻され反復上限で打ち切られるテストが通る | 4.3 | cc:DONE |
+| 4.5 | コスト/暴走ガード: `max_specialists_per_goal` / `max_depth`（再帰 delegate）/ `token_budget` を policy 化 | 各上限超過で goal が打ち切られる負テストが通る。minted specialist の再帰 delegate も depth 上限に従う (W-1) | 4.1 | cc:DONE |
 
 ## Phase 5b: 隔離の最終硬化
 
 | Task | 内容 | DoD | Depends | Status |
 |------|------|-----|---------|--------|
-| 5.3 | Work Runner 隔離の徹底（work-runner-policy 連携・全経路） | public view は delegate 不可、trusted は許可制、owner のみ runner-scoped で可、を全 delegate 経路で保証するテストが通る | 5.1, 4.1, 3.3 | cc:TODO |
+| 5.3 | Work Runner 隔離の徹底（work-runner-policy 連携・全経路） | public view は delegate 不可、trusted は許可制、owner のみ runner-scoped で可、を全 delegate 経路で保証するテストが通る | 5.1, 4.1, 3.3 | cc:DONE |
+
+> **全 Phase 完了**（2026-06-10）。§6.2 チャネル跨ぎ復帰と §6.3 face graceful recovery は
+> MVP 外として未実装（下表のスコープ判断どおり）。Hanaita の実 micro-harness 配線
+> （`createRunner` / `runTrial` 注入点）と ask_bank は今後の配線課題として docs に明記済み。
 
 ## §6.2 / §6.3 設計要素のスコープ判断（要・親方確認）
 

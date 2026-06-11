@@ -82,7 +82,12 @@ beads の流儀は「1委譲 = 1 bead」。run を独立レコードとして別
 - 既存 `createInMemoryProjectOs` / `createFileProjectOs`（JSON）は**残す**（テスト・フォールバック）＝ 完全非破壊
 - **将来の拡張余地（今は YAGNI）**：retry/verify ループで「1 ticket に複数 run」が要るようになって初めて、その時に子 bead 等で拡張する。現状（1委譲1run）では不要。
 
-### 3.2 まさお推奨に忠実に「軽く」使う（彫り込まない）
+> ⚠️ **既知制約（beads バックエンドと in-memory/file 実装の契約ドリフト。mekiki W-C）**
+> beads バックエンド（`src/beads-project-os.js`）は 6 メソッドの「口」は保つが、以下 3 点で in-memory/file 実装と挙動が異なる。**コードは直していない（文書化のみ）**——直すのは将来の beads 実配線時。下流（ledger / promotion / 本体 `runMicroHarness`）はいずれにも依存していないため現状実害なし。
+>
+> 1. **`updateTicket` は `patch.status` 以外を黙って捨てる**。in-memory 実装は patch 全体をマージし、更新後の ticket を返し、不在 id には throw する。beads 版は `projectStatus` への畳み込みだけを行い、**戻り値なし・不在チェックなし**（存在しない id でも黙って `bd update` が走るだけ）。
+> 2. **`snapshot()` の ticket に `metadata` フィールドがない**。`createTicket` で渡した追加 metadata は bead には畳まれるが、`beadsToSnapshot` は ticket への写し出しで `metadata` を復元しない（owner/executor 等の既知フィールドのみ写す）。in-memory 実装の ticket は `metadata` を保持する。
+> 3. **`acceptance` 配列は非可逆**。`createTicket` で `--acceptance` に `join("\n")` で畳み、snapshot では `[bead.acceptance_criteria]` の **1 要素配列**として返る。複数要素の acceptance は往復で形が変わる（要素境界が失われる）。
 
 > まさおさん：「粒度は早々にモデルに吸収される。**過度に作り込むな**。最小の理解は **Claude Code の TODO ツールの置き換え**。プロジェクト規模で分割するものではない」
 
@@ -164,17 +169,18 @@ beads の流儀は「1委譲 = 1 bead」。run を独立レコードとして別
 
 ---
 
-## 7. 実装状況（2026-06-08 時点）
+## 7. 実装状況（2026-06-10 時点）
 
 | 部位 | 状態 |
 |---|---|
 | `ProjectOs` 契約・本体配線 | **実装済み**（`createInMemoryProjectOs` / `createFileProjectOs` ＋ 本体・adapter が契約に依存） |
-| Bank コア（recipe/registry/ledger/seed/昇格ガード） | **実装済み・テスト green**（worktree `feat/agent-bank`）。mint / persist-guard は Phase 3 の仕掛かり（本トランシェ未収録） |
+| Bank コア（recipe/registry/ledger/seed/昇格ガード） | **実装済み・テスト green** |
+| **Phase 3 動的生成（mint / persist-guard / sandbox 検証）** | **実装済み・テスト green・本トランシェ収録**。mint は id 検証＋frontmatter 注入拒否＋allowlist intersect＋staging ガード必須経由、persist は scoped workspace 限定（host グローバル dir は既定拒否・owner 承認のみ）、sandbox 検証は bank root の `verification-ledger.json` が権威（昇格ガードは記録優先で導出、`runTrial` への実 Work Runner 配線は今後） |
 | **beads バックエンド（`createBeadsProjectOs`・道A／6メソッド保持）** | **実装済み**（`src/beads-project-os.js`）。ユニット（fake exec）11 green ＋ **実 bd 統合テスト 1 green**、全体 204 green |
 | **本体 `runMicroHarness`** | **無改修**（道A＝6メソッド契約と snapshot 互換を保持したため。既存テスト全 green） |
 | snapshot メモ化（レイテンシ実測の上で） | **未了**（要否を実測で判断＝§9） |
-| 協力して動く（素の beads ループでの orchestration） | **未着手**（方針は確定：formula 不使用、素の ready/claim/close） |
-| 設計書 `agent-bank.md` | あり（Agent Bank 中心の旧構成・本書に合わせ要更新） |
+| 協力して動く（Hanaita orchestration / `delegate_goal`・Phase 4） | **実装済み・テスト green**（`src/agent-bank/hanaita.js`＋`blackboard.js`。切り身配布・黒板＝ProjectOs 6メソッド経由（in-memory / beads 同一契約をテストで保証）・star/pipeline/fan-out・verify ループ・コストガード W-1。職人実行は `createRunner` 注入式で **実 micro-harness への配線は未了**。formula 不使用の方針どおり） |
+| 設計書 `agent-bank.md` | あり（2026-06-10 改訂済み：beads 整合＋Phase 3 実装状況を反映） |
 | git 履歴 | 一部乱れ（commit と実体がズレ・要棚卸し） |
 
 ---

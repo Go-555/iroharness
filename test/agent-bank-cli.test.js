@@ -6,6 +6,7 @@ import test from "node:test";
 
 import { createBankRegistry } from "../src/agent-bank/registry.js";
 import { runBankCommand } from "../src/agent-bank/cli.js";
+import { runSandboxVerification } from "../src/agent-bank/sandbox.js";
 import { seedHarnessRecipe } from "../src/agent-bank/seed.js";
 
 const makeBank = () => mkdtempSync(join(tmpdir(), "agent-bank-cli-"));
@@ -65,7 +66,13 @@ test("bank promote refuses when the composite gate is not satisfied", () => {
   assert.deepEqual(createBankRegistry({ root }).list("staging"), ["weak"]);
 });
 
-test("bank promote moves a recipe to active when the gate passes", () => {
+// Record-or-nothing (bantou M-2b): the CLI always passes the bank root, so a
+// recorded sandbox pass — not the promotionContext self-report — is what
+// satisfies the gate in these passing-path tests.
+const recordSandboxPass = (root, id) =>
+  runSandboxVerification({ root, id, runTrial: () => ({ passed: true }) });
+
+test("bank promote moves a recipe to active when the gate passes", async () => {
   const root = makeBank();
   // B-1: origin authority is the seed manifest, so a builtin must be
   // registered through seed (frontmatter `source` claims are ignored).
@@ -76,6 +83,7 @@ test("bank promote moves a recipe to active when the gate passes", () => {
     harness: { capabilities: [] },
     status: "staging",
   });
+  await recordSandboxPass(root, "tax-v3");
   const runs = [
     {
       harnessId: "tax-v3",
@@ -158,9 +166,10 @@ test("bank promote refuses a minted recipe without --owner-approve", () => {
   ]);
 });
 
-test("bank promote promotes a minted recipe with --owner-approve", () => {
+test("bank promote promotes a minted recipe with --owner-approve", async () => {
   const root = makeBank();
   writeRecipe(root, "staging", "minted-one", "minted");
+  await recordSandboxPass(root, "minted-one");
 
   const result = runBankCommand({
     root,
@@ -193,7 +202,7 @@ test("bank promote treats a self-declared builtin as minted (manifest is the aut
   assert.deepEqual(createBankRegistry({ root }).list("staging"), ["impostor"]);
 });
 
-test("bank promote allows a manifest-recorded (seeded) builtin without --owner-approve", () => {
+test("bank promote allows a manifest-recorded (seeded) builtin without --owner-approve", async () => {
   const root = makeBank();
   seedHarnessRecipe({
     root,
@@ -202,6 +211,7 @@ test("bank promote allows a manifest-recorded (seeded) builtin without --owner-a
     harness: { capabilities: ["code"] },
     status: "staging",
   });
+  await recordSandboxPass(root, "codex");
 
   const result = runBankCommand({
     root,
@@ -212,6 +222,127 @@ test("bank promote allows a manifest-recorded (seeded) builtin without --owner-a
 
   assert.equal(result.exitCode, 0);
   assert.deepEqual(createBankRegistry({ root }).list("active"), ["codex"]);
+});
+
+// mekiki W-D: `bank sweep` is the decay executor wired into the CLI.
+test("bank sweep archives decayed actives and reports them", () => {
+  const root = makeBank();
+  writeRecipe(root, "active", "stale");
+  writeRecipe(root, "active", "fresh");
+  const projectOs = fakeProjectOs([
+    {
+      harnessId: "stale",
+      status: "completed",
+      output: null,
+      updatedAt: "2026-01-01T00:00:00Z",
+    },
+    {
+      harnessId: "fresh",
+      status: "completed",
+      output: null,
+      updatedAt: "2026-06-09T00:00:00Z",
+    },
+  ]);
+
+  const result = runBankCommand({
+    root,
+    argv: ["sweep"],
+    projectOs,
+    now: "2026-06-10T00:00:00Z",
+  });
+
+  assert.equal(result.exitCode, 0);
+  assert.match(result.output, /archived stale/);
+  assert.match(result.output, /kept: 1/);
+  const registry = createBankRegistry({ root });
+  assert.deepEqual(registry.list("archived"), ["stale"]);
+  assert.deepEqual(registry.list("active"), ["fresh"]);
+});
+
+test("bank sweep --dry-run reports candidates without moving them", () => {
+  const root = makeBank();
+  writeRecipe(root, "active", "stale");
+  const projectOs = fakeProjectOs([
+    {
+      harnessId: "stale",
+      status: "completed",
+      output: null,
+      updatedAt: "2026-01-01T00:00:00Z",
+    },
+  ]);
+
+  const result = runBankCommand({
+    root,
+    argv: ["sweep", "--dry-run"],
+    projectOs,
+    now: "2026-06-10T00:00:00Z",
+  });
+
+  assert.equal(result.exitCode, 0);
+  assert.match(result.output, /would archive stale/);
+  assert.deepEqual(createBankRegistry({ root }).list("active"), ["stale"]);
+});
+
+test("bank sweep honors --max-idle-days", () => {
+  const root = makeBank();
+  writeRecipe(root, "active", "barely-idle");
+  const projectOs = fakeProjectOs([
+    {
+      harnessId: "barely-idle",
+      status: "completed",
+      output: null,
+      updatedAt: "2026-06-05T00:00:00Z", // 5 days idle
+    },
+  ]);
+
+  // Default 30 days: kept.
+  const kept = runBankCommand({
+    root,
+    argv: ["sweep"],
+    projectOs,
+    now: "2026-06-10T00:00:00Z",
+  });
+  assert.equal(kept.exitCode, 0);
+  assert.deepEqual(createBankRegistry({ root }).list("active"), [
+    "barely-idle",
+  ]);
+
+  // Tightened to 3 days: archived.
+  const swept = runBankCommand({
+    root,
+    argv: ["sweep", "--max-idle-days", "3"],
+    projectOs,
+    now: "2026-06-10T00:00:00Z",
+  });
+  assert.equal(swept.exitCode, 0);
+  assert.deepEqual(createBankRegistry({ root }).list("archived"), [
+    "barely-idle",
+  ]);
+});
+
+test("bank sweep rejects a malformed --max-idle-days", () => {
+  const root = makeBank();
+
+  const result = runBankCommand({
+    root,
+    argv: ["sweep", "--max-idle-days", "soon"],
+    projectOs: fakeProjectOs([]),
+  });
+
+  assert.equal(result.exitCode, 1);
+  assert.match(result.output, /max-idle-days/);
+});
+
+test("bank sweep reports cleanly when nothing decays", () => {
+  const root = makeBank();
+  const result = runBankCommand({
+    root,
+    argv: ["sweep"],
+    projectOs: fakeProjectOs([]),
+  });
+
+  assert.equal(result.exitCode, 0);
+  assert.match(result.output, /nothing to archive/i);
 });
 
 // Fix 3: an argv-supplied id is validated before it reaches the filesystem.

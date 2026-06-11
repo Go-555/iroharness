@@ -4,6 +4,8 @@
 // recipe's own frontmatter. Returns { ok, reasons } so the composite promotion
 // gate (Phase 2.2) can combine it with threshold + sandbox + folder checks.
 
+import { lookupSandboxVerification } from "./sandbox.js";
+
 export const canPromoteToActive = ({
   securityReview,
   origin,
@@ -56,6 +58,13 @@ export const evaluatePromotion = ({
   securityReview,
   origin,
   ownerApproval = false,
+  // Phase 3.3 + bantou M-2b / mekiki W-1: when the bank root is provided,
+  // sandbox verification comes EXCLUSIVELY from the authoritative record
+  // (verification-ledger.json, written by runSandboxVerification) —
+  // record-or-nothing. A missing record means NOT verified; the caller's
+  // self-reported `sandboxVerified` is never consulted. Only without a root
+  // does the legacy self-report path apply (compat).
+  root,
 } = {}) => {
   const reasons = [];
   const entry = ledgerEntry || { calls: 0, success: 0, avgScore: null };
@@ -77,7 +86,19 @@ export const evaluatePromotion = ({
       `avgScore ${entry.avgScore} < required ${thresholds.minScore}`,
     );
   }
-  if (sandboxVerified !== true) {
+  let sandboxOk = sandboxVerified === true;
+  if (root !== undefined) {
+    if (typeof recipeId === "string" && recipeId.length > 0) {
+      // Record-or-nothing: the recorded outcome is the only authority. No
+      // record (null) means not verified — the self-report is NOT a fallback.
+      const record = lookupSandboxVerification({ root, id: recipeId });
+      sandboxOk = record !== null && record.verified === true;
+    } else {
+      // No id to look up: cannot be record-verified.
+      sandboxOk = false;
+    }
+  }
+  if (!sandboxOk) {
     reasons.push("not sandbox-verified");
   }
 
@@ -106,7 +127,17 @@ export const evaluatePromotion = ({
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-// Decay: an active recipe idle beyond the window is retired to archived.
+/**
+ * Decay predicate: an active recipe idle beyond the window is retired to
+ * archived (executor: sweepDecayedRecipes in sweep.js).
+ *
+ * Semantics (pinned by tests):
+ * - Strict `>`: idle for EXACTLY maxIdleDays does NOT decay.
+ * - KNOWN BEHAVIOR: a missing/empty `lastUsed` (an active recipe that was
+ *   never used, so it has no ledger entry) returns false — never-used actives
+ *   are "immortal" and survive every sweep. Changing that (e.g. decay from
+ *   promotion date) is a future design decision, deliberately not made here.
+ */
 export const shouldDecay = ({ lastUsed, now, maxIdleDays }) => {
   if (!lastUsed) {
     return false;
