@@ -16,8 +16,26 @@ import { createBankRegistry } from "./registry.js";
 const formatScore = (score) =>
   Number.isFinite(score) ? `${Math.round(score * 100) / 100}` : "n/a";
 
+// L-1: the role is recipe-authored (self-declared) text shown to the CHOOSING
+// LLM, so it is defanged before it reaches the menu: collapsed to one line
+// and truncated to a fixed budget. A recipe cannot smuggle multi-line layout
+// or an essay-length steering prompt into the menu through its role field.
+const ROLE_MAX_LENGTH = 80;
+
+const oneLineRole = (role, id) => {
+  const collapsed =
+    typeof role === "string" ? role.replace(/\s+/g, " ").trim() : "";
+  const base = collapsed || id;
+  return base.length > ROLE_MAX_LENGTH
+    ? `${base.slice(0, ROLE_MAX_LENGTH - 1)}…`
+    : base;
+};
+
 const renderMenu = (recipes) => {
-  const lines = ["# Agent Bank — active regulars"];
+  const lines = [
+    "# Agent Bank — active regulars",
+    "(note: track record is derived from recorded runs and cannot be self-reported; role and capabilities are self-declared by the recipe)",
+  ];
   if (recipes.length === 0) {
     lines.push("(no active recipes)");
   }
@@ -48,10 +66,7 @@ export const askBank = ({ root, projectOs = null } = {}) => {
     const stats = Object.hasOwn(ledger, id) ? ledger[id] : null;
     return Object.freeze({
       id,
-      role:
-        typeof recipe.role === "string" && recipe.role.trim()
-          ? recipe.role
-          : id,
+      role: oneLineRole(recipe.role, id),
       capabilities: Object.freeze(
         Array.isArray(recipe.toolset) ? [...recipe.toolset] : [],
       ),
