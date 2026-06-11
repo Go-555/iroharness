@@ -372,3 +372,51 @@ test("DEFAULT_BUILTIN_RUNTIMES maps exactly the two approved runtimes", () => {
     "claude-code": "claude-code",
   });
 });
+
+// ---- H-1: the smoke isolation is wired to the RUNTIME boundary ---------------
+// The trial workspace must be the runner's actual execution boundary: the
+// codex thread/turn cwd and sandboxPolicy.writableRoots point at the trial
+// workspace, NOT at the factory's construction-time cwd.
+
+test("the smoke trial runs the runner with the trial workspace as cwd/writableRoots", async () => {
+  const { createSmokeTrial, runSandboxVerification } =
+    await import("../src/agent-bank/sandbox.js");
+  const root = makeBank();
+  seedHarnessRecipe({
+    root,
+    id: "codex",
+    role: "coding contractor",
+    harness: { capabilities: ["code", "files", "review"] },
+  });
+  const transport = createFakeCodexTransport({ reply: "OK" });
+  const factoryCwd = mkdtempSync(join(tmpdir(), "factory-cwd-"));
+  const createRunner = createDefaultRunnerFactory({
+    root,
+    cwd: factoryCwd, // construction-time cwd — must NOT leak into the smoke
+    runtimeOptions: { codex: { transport, timeoutMs: 1000 } },
+  });
+
+  const runTrial = createSmokeTrial({ createRunner });
+  const result = await runSandboxVerification({ root, id: "codex", runTrial });
+  assert.equal(result.verified, true);
+
+  const threadStart = transport.requests.find(
+    (request) => request.method === "thread/start",
+  );
+  const turnStart = transport.requests.find(
+    (request) => request.method === "turn/start",
+  );
+  // negative: the factory construction cwd is NOT the execution boundary
+  assert.notEqual(threadStart.params.cwd, factoryCwd);
+  assert.notEqual(turnStart.params.cwd, factoryCwd);
+  // positive: the isolated trial workspace IS the execution boundary
+  assert.match(threadStart.params.cwd, /iroharness-smoke-/);
+  assert.match(turnStart.params.cwd, /iroharness-smoke-/);
+  assert.deepEqual(turnStart.params.sandboxPolicy.writableRoots, [
+    turnStart.params.cwd,
+  ]);
+  assert.match(
+    turnStart.params.sandboxPolicy.writableRoots[0],
+    /iroharness-smoke-/,
+  );
+});

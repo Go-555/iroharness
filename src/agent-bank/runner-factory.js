@@ -107,7 +107,12 @@ export const createDefaultRunnerFactory = ({
     return mintedRuntime;
   };
 
-  const createRunner = ({ id, recipe }) => {
+  // H-1: a caller may pin the runner's EXECUTION boundary per call (`cwd`) —
+  // the smoke trial passes its isolated trial workspace here so the child
+  // process cwd (and codex's default sandboxPolicy.writableRoots, which
+  // derive from cwd) point at the trial workspace, not at the factory's
+  // construction-time cwd.
+  const createRunner = ({ id, recipe, cwd: runCwd = null }) => {
     assertValidRecipeId(id);
     const runtimeKey = resolveRuntimeKey(id);
     const builder = runtimeKey ? RUNTIME_BUILDERS[runtimeKey] : null;
@@ -120,7 +125,7 @@ export const createDefaultRunnerFactory = ({
     }
     const worker = builder({
       id,
-      cwd,
+      cwd: runCwd ?? cwd,
       options: runtimeOptions[runtimeKey] ?? {},
     });
     created.push(worker);

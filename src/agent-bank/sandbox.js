@@ -117,8 +117,12 @@ export const runSandboxVerification = async ({
 //
 // Boots the recipe on a REAL runner (createRunner, e.g.
 // createDefaultRunnerFactory from runner-factory.js) inside an ISOLATED
-// scoped workspace (a fresh temp dir unless the caller scopes one), hands it
-// a fixed contract-check task, and judges only the response FORM: status
+// scoped workspace (a fresh temp dir unless the caller scopes one). The
+// isolation is wired to the RUNTIME boundary (H-1): the trial workspace is
+// both the scoped-runner workspace check AND the runner's per-call execution
+// cwd (for codex that also pins the cwd-derived sandboxPolicy.writableRoots).
+// The trial hands the runner a fixed contract-check task and judges only the
+// response FORM: status
 // "completed" with a non-empty summary string passes; anything else —
 // failure, malformed output, timeout, or ANY thrown error (including
 // runner_unavailable from the factory) — yields { passed: false }, so
@@ -147,7 +151,11 @@ export const createSmokeTrial = ({
     try {
       const trialWorkspace =
         workspace ?? mkdtempSync(join(tmpdir(), "iroharness-smoke-"));
-      const worker = createRunner({ id, recipe });
+      // H-1: the trial workspace is the runner's EXECUTION boundary too —
+      // passed as the per-call cwd so the child process (and codex's
+      // cwd-derived sandboxPolicy.writableRoots) actually runs inside it,
+      // not just past the scoped-runner workspace check.
+      const worker = createRunner({ id, recipe, cwd: trialWorkspace });
       const scoped = createScopedWorkRunnerMicroHarness({
         id,
         worker,
