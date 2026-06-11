@@ -81,6 +81,14 @@ export const isSandboxVerified = ({ root, id }) =>
 // Run the isolated trial and record its outcome. Only an outcome of exactly
 // { passed: true } records as verified (fail-safe); anything else records
 // verified:false, overwriting any stale pass.
+//
+// Concurrency note (L-3): the ledger update below is a non-atomic
+// read-modify-write of verification-ledger.json. The Agent Bank assumes a
+// SINGLE verifying process per bank root at a time (the CLI and the Hanaita
+// both run in-process); two concurrent verifications of different recipes
+// could lose one record. If multi-process verification ever becomes a real
+// usage, this needs file locking or an atomic rename — not built on purpose
+// (YAGNI) until then.
 export const runSandboxVerification = async ({
   root,
   id,

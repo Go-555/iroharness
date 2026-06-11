@@ -929,6 +929,27 @@ test("chooseRecipe must return a recipe id string", async () => {
   assert.match(result.reason, /choose_recipe_invalid/);
 });
 
+test("a throwing chooseRecipe fails the step, not the process", async () => {
+  const root = makeBank();
+  writeRecipe(root, "active", "researcher");
+  const { hanaita } = makeHanaita({ root });
+
+  const result = await hanaita.delegateGoal({
+    title: "picker blew up",
+    steps: [
+      {
+        id: "s1",
+        chooseRecipe: () => {
+          throw new Error("picker exploded");
+        },
+      },
+    ],
+  }).summary;
+
+  assert.equal(result.status, "failed");
+  assert.match(result.reason, /picker exploded/);
+});
+
 test("a step without recipe and without chooseRecipe is rejected up front", () => {
   const root = makeBank();
   writeRecipe(root, "active", "researcher");
