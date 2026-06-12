@@ -22,6 +22,17 @@ A full end-to-end streaming voice pipeline is now built into IroHarness
   Responses API SSE endpoint; `createCodexAppServerBrain` streams via the Codex
   app-server `respondStream` path; both implement the `respondStream` contract
   consumed by `toBrainStream`.
+- **Azure streaming STT speech detector** — `createAzureStreamDetector`
+  (`microsoft-cognitiveservices-speech-sdk`, optional dependency) streams mic
+  audio to Azure continuous recognition for true streaming transcription, with
+  two sub-modes: `gated` (default — a Silero gate opens a per-utterance Azure
+  session, so STT is billed for speech time only) and `continuous`
+  (AIAvatarKit parity, billed by mic time). The pipeline accepts any
+  `detector` implementing the speech-detector contract; the legacy
+  Silero VAD + batch STT pair is wrapped via `wrapVadSttDetector`. Interim
+  results now reach the firmware as legacy `stt.event` partials in streaming
+  mode. Env: `IROHARNESS_STACKCHAN_DETECTOR`,
+  `IROHARNESS_STACKCHAN_AZURE_STREAM_MODE`.
 - **Session handler streaming mode** — `createStackChanRealtimeSessionHandler`
   accepts a `voicePipeline` option and routes all audio frames through it,
   translating pipeline events (`speech.audio`, `turn.final`, `speech.interrupted`,

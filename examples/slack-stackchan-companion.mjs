@@ -26,6 +26,7 @@ import {
 } from "../src/adapters/index.js";
 import {
   createAudioPacer,
+  createAzureStreamDetector,
   createDynamicQuickResponder,
   resolveQuickBrain,
   createQuickResponder,
@@ -452,14 +453,104 @@ const STACKCHAN_VAD_FRAME_SAMPLES = Number(
 );
 
 // Streaming voice mode (IROHARNESS_STACKCHAN_STREAMING=1): builds the
-// voice pipeline that the realtime session handler consumes via DI.
-// Requires IROHARNESS_SILERO_MODEL (path to silero_vad.onnx) — without it
+// voice pipeline that the realtime session handler consumes via DI. The
+// VAD/STT front-end is picked by IROHARNESS_STACKCHAN_DETECTOR (see
+// createStackChanSpeechFrontend below) — when its requirements are missing
 // the companion stays on the legacy in-handler VAD path.
 // 本家 AIAvatarKit の continuation prefix（quick_responder/pro.py の DEFAULT_QRP_REQUEST_PREFIX_JA 準拠）:
 // 既に第一声 quickText を発話済みであることを本命 brain に伝え、繰り返しを
 // 抑止しつつ、外していた場合は続きの中で軌道修正させる。
 const buildQuickContinuationText = (quickText, transcript) =>
   `$以下の入力に対して、既にあなたが出力済みの「${quickText}」や類似の表現は再出力せず、その続きのみを出力せよ。もし「${quickText}」が本来応答すべき内容にそぐわない場合は、続きの中でうまく適切な方向に補正すること:\n\n${transcript}`;
+
+// Loads the Silero VAD from IROHARNESS_SILERO_MODEL with the shared VAD env
+// config. Used both as the standalone silero detector front-end and as the
+// gate for the azure-stream gated sub-mode. Returns null when no model path
+// is configured.
+const loadStackChanSileroVad = async ({ micSampleRate }) => {
+  const modelPath = process.env.IROHARNESS_SILERO_MODEL;
+  if (!modelPath) {
+    return null;
+  }
+  let sileroSession;
+  try {
+    sileroSession = await loadSileroSession({ modelPath, sampleRate: micSampleRate });
+  } catch (error) {
+    throw new Error(
+      `Failed to load Silero VAD (check IROHARNESS_SILERO_MODEL path: ${modelPath}): ${error.message}`,
+      { cause: error }
+    );
+  }
+  return createSileroVad({
+    session: sileroSession,
+    sampleRate: micSampleRate,
+    threshold: Number(process.env.IROHARNESS_STACKCHAN_VAD_THRESHOLD || "0.5"),
+    silenceMs: Number(process.env.IROHARNESS_STACKCHAN_VAD_SILENCE_MS || "650"),
+    minSpeechMs: Number(process.env.IROHARNESS_STACKCHAN_VAD_MIN_SPEECH_MS || "250"),
+    maxSpeechMs: Number(process.env.IROHARNESS_STACKCHAN_VAD_MAX_SPEECH_MS || "30000"),
+    frameSamples: STACKCHAN_VAD_FRAME_SAMPLES
+  });
+};
+
+// Speech front-end (Task 15): IROHARNESS_STACKCHAN_DETECTOR picks the
+// pipeline's VAD/STT front-end. "azure-stream" = true streaming STT on the
+// Azure Speech SDK (sub-modes via IROHARNESS_STACKCHAN_AZURE_STREAM_MODE:
+// "gated" = Silero opens a per-utterance Azure session, billing only for
+// speech; "continuous" = 本家同等の常時流し, billed by mic time). "silero" =
+// Silero VAD + batch STT (the previous behavior). Default: azure-stream
+// when AZURE_SPEECH_KEY is set, else silero. Returns { detector } or
+// { vad } for createVoicePipeline, or null to stay on the legacy path.
+const createStackChanSpeechFrontend = async ({ micSampleRate }) => {
+  const requested = (
+    process.env.IROHARNESS_STACKCHAN_DETECTOR ||
+    (process.env.AZURE_SPEECH_KEY ? "azure-stream" : "silero")
+  ).toLowerCase();
+  if (requested === "azure-stream") {
+    const subscriptionKey = process.env.AZURE_SPEECH_KEY;
+    const region = process.env.AZURE_SPEECH_REGION;
+    if (!subscriptionKey || !region) {
+      console.log(
+        "StackChan streaming voice: detector=azure-stream needs AZURE_SPEECH_KEY and AZURE_SPEECH_REGION; falling back to the silero detector."
+      );
+    } else {
+      const streamMode = process.env.IROHARNESS_STACKCHAN_AZURE_STREAM_MODE || "gated";
+      let gate = null;
+      if (streamMode === "gated") {
+        gate = await loadStackChanSileroVad({ micSampleRate });
+        if (!gate) {
+          console.log(
+            "StackChan streaming voice: detector=azure-stream mode=gated requires IROHARNESS_SILERO_MODEL (path to silero_vad.onnx) for the gate; staying on the legacy voice path."
+          );
+          return null;
+        }
+      }
+      console.log(
+        `StackChan streaming voice: detector=azure-stream (mode=${streamMode}, billing=${
+          streamMode === "gated" ? "speech segments only" : "full mic time"
+        })`
+      );
+      return {
+        detector: createAzureStreamDetector({
+          subscriptionKey,
+          region,
+          language: process.env.AZURE_SPEECH_LANGUAGE || "ja-JP",
+          sampleRate: micSampleRate,
+          mode: streamMode,
+          gate
+        })
+      };
+    }
+  }
+  const vad = await loadStackChanSileroVad({ micSampleRate });
+  if (!vad) {
+    console.log(
+      "IROHARNESS_STACKCHAN_STREAMING=1 requires IROHARNESS_SILERO_MODEL (path to silero_vad.onnx); staying on the legacy voice path."
+    );
+    return null;
+  }
+  console.log("StackChan streaming voice: detector=silero (Silero VAD + batch STT)");
+  return { vad };
+};
 
 const createStackChanVoicePipeline = async ({ harness, brain, quickBrain = null, voiceBrainIsCodex = false, stt, tts, stackchanId, getSession }) => {
   if (process.env.IROHARNESS_STACKCHAN_STREAMING !== "1") {
@@ -471,32 +562,11 @@ const createStackChanVoicePipeline = async ({ harness, brain, quickBrain = null,
     );
     return null;
   }
-  const modelPath = process.env.IROHARNESS_SILERO_MODEL;
-  if (!modelPath) {
-    console.log(
-      "IROHARNESS_STACKCHAN_STREAMING=1 requires IROHARNESS_SILERO_MODEL (path to silero_vad.onnx); staying on the legacy voice path."
-    );
+  const micSampleRate = Number(process.env.IROHARNESS_STACKCHAN_AUDIO_SAMPLE_RATE || "16000");
+  const frontend = await createStackChanSpeechFrontend({ micSampleRate });
+  if (!frontend) {
     return null;
   }
-  const micSampleRate = Number(process.env.IROHARNESS_STACKCHAN_AUDIO_SAMPLE_RATE || "16000");
-  let sileroSession;
-  try {
-    sileroSession = await loadSileroSession({ modelPath, sampleRate: micSampleRate });
-  } catch (error) {
-    throw new Error(
-      `Failed to load Silero VAD (check IROHARNESS_SILERO_MODEL path: ${modelPath}): ${error.message}`,
-      { cause: error }
-    );
-  }
-  const vad = createSileroVad({
-    session: sileroSession,
-    sampleRate: micSampleRate,
-    threshold: Number(process.env.IROHARNESS_STACKCHAN_VAD_THRESHOLD || "0.5"),
-    silenceMs: Number(process.env.IROHARNESS_STACKCHAN_VAD_SILENCE_MS || "650"),
-    minSpeechMs: Number(process.env.IROHARNESS_STACKCHAN_VAD_MIN_SPEECH_MS || "250"),
-    maxSpeechMs: Number(process.env.IROHARNESS_STACKCHAN_VAD_MAX_SPEECH_MS || "30000"),
-    frameSamples: STACKCHAN_VAD_FRAME_SAMPLES
-  });
   const pacer = createAudioPacer({
     sampleRate: Number(process.env.IROHARNESS_STACKCHAN_TTS_SAMPLE_RATE || "24000"),
     sleepFn: (ms) => new Promise((resolveSleep) => setTimeout(resolveSleep, ms))
@@ -537,7 +607,7 @@ const createStackChanVoicePipeline = async ({ harness, brain, quickBrain = null,
   );
   const deviceId = stackchanId;
   return createVoicePipeline({
-    vad,
+    ...frontend,
     stt,
     harness,
     tts,

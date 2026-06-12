@@ -386,10 +386,8 @@ single turn loop that starts speaking before the brain has finished replying.
 ### Architecture
 
 ```text
-VAD (Silero or mock)
-  -> speech.start / speech.end segments
-  -> STT (mock or HTTP)
-  -> stt.final text
+speech detector (azure-stream, or Silero VAD + batch STT)
+  -> speech.start / transcript.partial / speech.end { text }
   -> harness.receiveStream()  (streaming brain via respondStream)
   -> sentence splitter (splitSentences / threshold flush)
   -> per-sentence TTS.stream()
@@ -405,12 +403,43 @@ A quick-responder (`createQuickResponder`) warms up a short ack phrase and fires
 it as the first `speech.audio` event before the brain returns its first token.
 This mirrors AIAvatarStackChan's `ack`/`answer` pattern at the pipeline level.
 
+### Speech Detectors
+
+The pipeline's input front-end is a *speech detector*
+(`src/voice-pipeline/speech-detector.js`): one object that owns both VAD and
+transcription and emits `speech.start` / `transcript.partial` /
+`speech.end { text }` from `push(int16Frame)`. `createVoicePipeline` accepts a
+`detector` directly; when the legacy `vad` + `stt` pair is passed instead it is
+wrapped with `wrapVadSttDetector` internally (identical behavior to before:
+batch STT runs on each closed speech segment).
+
+`createAzureStreamDetector` is true streaming STT on the Azure Speech SDK
+(`microsoft-cognitiveservices-speech-sdk`, an optionalDependency that is
+lazily imported on first use — same pattern as `onnxruntime-node`). Interim
+`recognizing` results stream out as `transcript.partial`, and the final
+`recognized` text rides on `speech.end`, so the pipeline skips the batch STT
+round-trip entirely.
+
+| Detector | What runs | Billing characteristics |
+|---|---|---|
+| `azure-stream` mode `gated` (default) | Silero VAD gates a **per-utterance** Azure session: only speech segments plus a short pre-roll are streamed | Azure STT is billed for **発話分のみ** (speech time only) |
+| `azure-stream` mode `continuous` | Every frame streams to one long-lived Azure session (AIAvatarKit `AzureStreamSpeechDetector` parity) | Azure STT is billed by **マイク時間** (the whole mic-open time) — the device's mic on/off is the wallet switch |
+| `silero` | Silero VAD + batch STT (`wrapVadSttDetector`) — the previous behavior | One batch STT call per utterance |
+
+In gated mode the gate-end / final-text ordering is handled both ways
+(Azure's segmentation timeout, default 500 ms, usually finalizes before the
+gate's 650 ms silence window closes); if the final text never arrives, a ~2 s
+fallback closes the utterance with the accumulated partial text. Exactly one
+`speech.end` is emitted per utterance.
+
 ### Environment Variables
 
 | Variable | Default | Effect |
 |---|---|---|
 | `IROHARNESS_STACKCHAN_STREAMING` | `0` | Set to `1` to attach a `VoicePipeline` to the StackChan session handler instead of using the legacy PTT path. |
-| `IROHARNESS_SILERO_MODEL` | (none) | Path to a Silero VAD ONNX model file. When set, `createSileroVad` loads the model via `onnxruntime-node`. Unset = the example stays on the legacy (non-streaming) voice path. |
+| `IROHARNESS_SILERO_MODEL` | (none) | Path to a Silero VAD ONNX model file. When set, `createSileroVad` loads the model via `onnxruntime-node`. Required by the `silero` detector and by the `gated` azure-stream sub-mode (the gate). |
+| `IROHARNESS_STACKCHAN_DETECTOR` | `azure-stream` when `AZURE_SPEECH_KEY` is set, else `silero` | Picks the speech detector. `azure-stream` needs `AZURE_SPEECH_KEY` + `AZURE_SPEECH_REGION` (falls back to `silero` with a log line when they are missing). `silero` keeps the Silero VAD + batch STT front-end. |
+| `IROHARNESS_STACKCHAN_AZURE_STREAM_MODE` | `gated` | azure-stream sub-mode: `gated` (Silero opens a per-utterance Azure session — billed for speech only) or `continuous` (always streaming — billed by mic time). |
 | `IROHARNESS_STACKCHAN_TTS_SAMPLE_RATE` | `24000` | Sample rate used by the pacer to compute per-sentence sleep durations. Must match the TTS provider's output rate. |
 | `IROHARNESS_VOICE_MAX_SENTENCES` | `30` | Maximum sentences per turn. Pipeline aborts the brain and speaks remaining audio when the cap is hit. |
 | `IROHARNESS_STACKCHAN_IMMEDIATE_ACK_TEXT` | `うん。` | Short phrase pre-warmed by the quick-responder and spoken before the first brain token arrives. Falls back to `うん。` when unset. |
@@ -426,11 +455,13 @@ fired (one for the ack phrase, one when the full answer arrived). Streaming mode
 sends a single `response.start` with `role: "ack"` or `role: "answer"` at the
 start of the first sentence.
 
-**`stt.event` partials — absent in streaming mode:**
-In streaming mode the VAD/STT loop runs inside the pipeline; partial STT events
-are consumed internally. The firmware does not receive `stt.event` messages with
-`type: "stt.partial"` during streaming turns. Only non-streaming PTT/invoke
-paths still forward partials to the wire.
+**`stt.event` partials — now flowing in streaming mode:**
+Detector `transcript.partial` events surface from the pipeline as
+`stt.partial` and the session handler forwards them in the legacy wire shape —
+`stt.event` wrapping `{ type: "stt.partial", text, final: false }` (mapped to
+`"voiced"` on the aiavatarstackchan protocol). With the `azure-stream`
+detector this happens continuously while the user speaks; the `silero` batch
+detector transcribes once per utterance, so it produces no interim partials.
 
 ### Metrics
 
