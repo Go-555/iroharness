@@ -4427,11 +4427,31 @@ export const createStackChanRealtimeSessionHandler = ({
       // existing wire messages. Guarantees: every message shape sent here is
       // identical to its legacy counterpart, and each turn's wire sequence
       // starts with response.start before its first speech.audio (as legacy
-      // speak() does). Known divergence from legacy, by design: stt.event
-      // partials (AIAvatarStackChan "voiced"/"accepted") are not sent in
-      // streaming mode — the pipeline runs STT internally. The streaming
-      // message set is a strict subset plus the additive metrics field.
+      // speak() does). stt.partial pipeline events (from the detector's
+      // transcript.partial) are forwarded as the legacy stt.event wire shape
+      // (AIAvatarStackChan "voiced") — the former "no partials in streaming
+      // mode" divergence is closed. The streaming message set matches legacy
+      // plus the additive metrics field.
       const handlePipelineEvent = async (event = {}) => {
+        if (event.type === "stt.partial") {
+          // Same wire shape the legacy path sends from the stt adapter's
+          // onEvent: stt.event wrapping a non-final stt.partial (maps to
+          // "voiced" on the aiavatarstackchan protocol).
+          const sttEvent = {
+            type: "stt.partial",
+            text: event.text ?? "",
+            final: false,
+          };
+          emit({
+            ...sttEvent,
+            type: "stackchan.stt.partial",
+          });
+          send({
+            type: "stt.event",
+            event: sttEvent,
+          });
+          return null;
+        }
         if (event.type === "speech.audio") {
           const role = event.quick ? "ack" : "answer";
           const audio = normalizeStackChanSpeechAudio({

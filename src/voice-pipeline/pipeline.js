@@ -1,18 +1,28 @@
 // Streaming voice pipeline orchestrator.
 //
-// createVoicePipeline({ vad, stt, harness, tts, pacer = null, quickResponder = null,
-//                       metrics = null, voice = "iroha", buildInput, maxSentences = 30,
-//                       sampleRate = 16000,
+// createVoicePipeline({ vad, stt, detector = null, harness, tts, pacer = null,
+//                       quickResponder = null, metrics = null, voice = "iroha",
+//                       buildInput, maxSentences = 30, sampleRate = 16000,
 //                       stageTimeoutMs = { stt: 10000, brain: 30000, tts: 10000 },
 //                       fallbackPhrase = "少々調子が悪いや。", onEvent = () => {} })
 //   → frozen { pushAudio(int16Frame), interrupt(reason), snapshot() }
 //
-// Composes: silero-vad → stt adapter → harness.receiveStream (brain stream) →
-// sentence-splitter → tts adapter, with optional pacer / quick-responder / metrics.
+// Composes: speech detector (VAD + STT as one unit) → harness.receiveStream
+// (brain stream) → sentence-splitter → tts adapter, with optional pacer /
+// quick-responder / metrics.
+//
+// Input front-end: pass `detector` (speech-detector.js contract, e.g.
+// createAzureStreamDetector) OR the legacy `vad` + `stt` pair, which is
+// wrapped with wrapVadSttDetector internally (same behavior as before:
+// batch STT on speech.end, bounded by stageTimeoutMs.stt). When `detector`
+// is given, vad/stt are ignored. Detector transcript.partial events surface
+// as onEvent({ type: "stt.partial", text }) — the session handler forwards
+// them to the wire.
 //
 // Flow per utterance ("the turn", runs in the background so the mic loop keeps
 // feeding pushAudio — that is what makes auto barge-in possible):
-//   1. vad speech.end → STT (timeout stageTimeoutMs.stt). Empty text → stt.empty, stop.
+//   1. detector speech.end carries the final transcription (streaming STT,
+//      or the wrapped batch STT). Empty text → stt.empty, stop.
 //   2. Quick ack, never paced: quickResponder.fireFor(text, { signal }) when
 //      present (dynamic — awaited, bounded by its own ~1.5s deadline), else
 //      quickResponder?.fire() (static, zero-latency). Emitted with quick: true.
@@ -34,10 +44,11 @@
 // consecutive brain deltas, not the wall-clock of the whole turn — tts and
 // pacing time never count against the brain, so a long healthy answer is safe.
 //
-// Callers must await pushAudio serially (one mic loop) — vad.push assumes a
-// single frame in flight.
+// Callers must await pushAudio serially (one mic loop) — detector.push
+// assumes a single frame in flight. With the wrapped batch STT the mic loop
+// blocks for the STT duration on speech.end (frames buffer at the caller).
 //
-// barge-in (interrupt() or vad speech.start while a turn runs) fires BOTH the
+// barge-in (interrupt() or detector speech.start while a turn runs) fires BOTH the
 // per-turn AbortSignal and the latched abandon() — abandon alone only resets
 // harness state; without the signal the brain keeps burning tokens.
 //
@@ -67,6 +78,7 @@
 import { Buffer } from "node:buffer";
 
 import { createSentenceSplitter } from "./sentence-splitter.js";
+import { wrapVadSttDetector } from "./speech-detector.js";
 
 const DEFAULT_STAGE_TIMEOUT_MS = { stt: 10000, brain: 30000, tts: 10000 };
 
@@ -89,17 +101,13 @@ const withTimeout = (promise, ms, label) =>
     );
   });
 
-const int16ToBase64 = (int16) =>
-  Buffer.from(int16.buffer, int16.byteOffset, int16.byteLength).toString("base64");
-
 const base64SampleCount = (dataBase64) =>
   Math.floor(Buffer.from(dataBase64, "base64").length / 2);
 
-const toArray = (value) => (Array.isArray(value) ? value : value ? [value] : []);
-
 export const createVoicePipeline = ({
-  vad,
-  stt,
+  vad = null,
+  stt = null,
+  detector = null,
   harness,
   tts,
   pacer = null,
@@ -113,11 +121,17 @@ export const createVoicePipeline = ({
   fallbackPhrase = "少々調子が悪いや。",
   onEvent = () => {}
 } = {}) => {
-  if (!vad || typeof vad.push !== "function") {
-    throw new Error("createVoicePipeline requires vad with push(int16Frame)");
-  }
-  if (!stt || typeof stt.start !== "function") {
-    throw new Error("createVoicePipeline requires stt with start({ onEvent })");
+  if (detector) {
+    if (typeof detector.push !== "function") {
+      throw new Error("createVoicePipeline requires detector with push(int16Frame)");
+    }
+  } else {
+    if (!vad || typeof vad.push !== "function") {
+      throw new Error("createVoicePipeline requires vad with push(int16Frame)");
+    }
+    if (!stt || typeof stt.start !== "function") {
+      throw new Error("createVoicePipeline requires stt with start({ onEvent })");
+    }
   }
   if (!harness || typeof harness.receiveStream !== "function") {
     throw new Error("createVoicePipeline requires harness with receiveStream(input, { signal })");
@@ -131,34 +145,20 @@ export const createVoicePipeline = ({
 
   const timeouts = { ...DEFAULT_STAGE_TIMEOUT_MS, ...stageTimeoutMs };
 
+  // One input front-end either way: the legacy vad+stt pair becomes a
+  // detector. metrics threading keeps the speech.end / stt.final marks at
+  // their true times even though the batch STT now runs inside push()
+  // (the pipeline's own later marks are first-wins no-ops).
+  const speechDetector =
+    detector ??
+    wrapVadSttDetector({ vad, stt, sampleRate, timeoutMs: timeouts.stt, metrics });
+
   let state = "idle"; // "idle" | "listening" | "speaking"
   let turnCount = 0;
   let active = null; // { controller, abandon, interrupted }
 
   const emitError = (stage, error) => {
     onEvent({ type: "error", stage, message: message(error) });
-  };
-
-  // STT one-shot: mirrors the realtime session handler / slack example —
-  // collect events from both onEvent and the returned arrays, then take the
-  // last "stt.final" carrying text.
-  const transcribe = async (audio) => {
-    const events = [];
-    const session = stt.start({ onEvent: (event) => events.push(event) });
-    const pushed = await session.push({
-      audio: {
-        encoding: "pcm_s16le",
-        sampleRate,
-        dataBase64: int16ToBase64(audio)
-      },
-      final: false
-    });
-    const finals = await session.end();
-    const all = [...events, ...toArray(pushed), ...toArray(finals)];
-    const finalEvent = all
-      .reverse()
-      .find((event) => event?.type === "stt.final" && event.text);
-    return finalEvent?.text ?? "";
   };
 
   // Synthesize one sentence and emit speech.audio. `force` is the fallback
@@ -283,18 +283,12 @@ export const createVoicePipeline = ({
     }
   };
 
-  const runTurn = async (turn, audio) => {
-    // 1. STT
-    let transcript;
-    try {
-      transcript = await withTimeout(transcribe(audio), timeouts.stt, "stt");
-    } catch (error) {
-      if (!turn.interrupted) emitError("stt", error);
-      return;
-    }
-    if (turn.interrupted) return;
-    metrics?.mark("stt.final");
-    if (!transcript || !transcript.trim()) {
+  const runTurn = async (turn, endEvent) => {
+    // 1. STT — already done by the detector: speech.end carries the final
+    //    text (streaming STT result, or the wrapped batch transcription).
+    const transcript = typeof endEvent.text === "string" ? endEvent.text : "";
+    metrics?.mark("stt.final"); // first-wins: the wrapped detector marked earlier
+    if (!transcript.trim()) {
       onEvent({ type: "stt.empty" });
       return;
     }
@@ -395,7 +389,7 @@ export const createVoicePipeline = ({
     metrics?.reset();
   };
 
-  const startTurn = (audio) => {
+  const startTurn = (endEvent) => {
     const turn = {
       controller: new AbortController(),
       abandon: null,
@@ -404,7 +398,7 @@ export const createVoicePipeline = ({
     active = turn;
     state = "speaking";
     turnCount += 1;
-    runTurn(turn, audio)
+    runTurn(turn, endEvent)
       .catch((error) => emitError("pipeline", error))
       .finally(() => {
         if (active === turn) {
@@ -426,12 +420,12 @@ export const createVoicePipeline = ({
     onEvent({ type: "speech.interrupted", reason });
     pacer?.reset();
     state = "idle";
-    // vad.reset() deliberately NOT called — the mic keeps running.
+    // detector.reset() deliberately NOT called — the mic keeps running.
   };
 
   const pushAudio = async (int16Frame) => {
     try {
-      const events = await vad.push(int16Frame);
+      const events = await speechDetector.push(int16Frame);
       for (const event of events ?? []) {
         if (event.type === "speech.start") {
           if (active) interrupt("barge-in"); // auto barge-in: same path as interrupt()
@@ -442,14 +436,18 @@ export const createVoicePipeline = ({
           metrics?.reset();
           metrics?.mark("speech.start");
           state = "listening";
+        } else if (event.type === "transcript.partial") {
+          onEvent({ type: "stt.partial", text: event.text ?? "" });
         } else if (event.type === "speech.end") {
           metrics?.mark("speech.end");
           if (active) interrupt("new-utterance"); // serialize: new utterance wins
-          startTurn(event.audio);
+          startTurn(event);
         }
       }
     } catch (error) {
-      emitError("vad", error);
+      // wrapVadSttDetector tags batch-STT failures with stage "stt";
+      // everything else is the input front-end ("vad").
+      emitError(error?.stage ?? "vad", error);
     }
   };
 

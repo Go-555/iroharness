@@ -837,3 +837,133 @@ test("fireFor returning null emits no ack and quickText stays null", async () =>
   assert.equal(speech[0].quick, undefined);
   assert.deepEqual(spy.calls[0].options, { quickText: null });
 });
+
+// ---------------------------------------------------------------------------
+// Speech detector option — Task 15
+// ---------------------------------------------------------------------------
+
+const createScriptedDetector = () => {
+  const queue = [];
+  return {
+    detector: Object.freeze({
+      push: async () => queue.shift() ?? [],
+      reset: () => {},
+      close: async () => {}
+    }),
+    script: (events) => queue.push(events)
+  };
+};
+
+const detectorSetup = ({ deltas = ["了解。"] } = {}) => {
+  const scripted = createScriptedDetector();
+  const mockTts = createMockTts();
+  const mockHarness = createMockHarness({
+    makeStream: () => streamOfDeltas(deltas)()
+  });
+  const sink = createEventSink();
+  const pipeline = createVoicePipeline({
+    detector: scripted.detector, // no vad / stt at all
+    harness: mockHarness.harness,
+    tts: mockTts.tts,
+    buildInput,
+    onEvent: sink.onEvent
+  });
+  return { scripted, mockTts, mockHarness, sink, pipeline };
+};
+
+test("detector option: speech.end text skips batch stt and partials surface as stt.partial", async () => {
+  const { scripted, mockHarness, sink, pipeline } = detectorSetup();
+
+  scripted.script([{ type: "speech.start" }]);
+  await pipeline.pushAudio(FRAME);
+  scripted.script([{ type: "transcript.partial", text: "こん" }]);
+  await pipeline.pushAudio(FRAME);
+  scripted.script([{ type: "speech.end", text: "こんにちは" }]);
+  await pipeline.pushAudio(FRAME);
+  const final = await sink.waitFor((event) => event.type === "turn.final");
+
+  assert.deepEqual(
+    sink.emitted("stt.partial").map((event) => event.text),
+    ["こん"]
+  );
+  assert.equal(mockHarness.calls[0].input.text, "こんにちは");
+  assert.equal(final.text, "了解。");
+});
+
+test("detector speech.end without text becomes stt.empty", async () => {
+  const { scripted, mockHarness, mockTts, sink, pipeline } = detectorSetup();
+
+  scripted.script([{ type: "speech.end" }]);
+  await pipeline.pushAudio(FRAME);
+  await sink.waitFor((event) => event.type === "stt.empty");
+  await settle();
+
+  assert.equal(mockHarness.calls.length, 0);
+  assert.equal(mockTts.calls.length, 0);
+  assert.equal(pipeline.snapshot().state, "idle");
+});
+
+test("detector speech.start during a running turn auto barge-ins", async () => {
+  const gate = createGate();
+  const scripted = createScriptedDetector();
+  const mockTts = createMockTts({ gates: new Map([["文一。", gate]]) });
+  const mockHarness = createMockHarness({
+    makeStream: () => streamOfDeltas(["文一。"])()
+  });
+  const sink = createEventSink();
+  const pipeline = createVoicePipeline({
+    detector: scripted.detector,
+    harness: mockHarness.harness,
+    tts: mockTts.tts,
+    buildInput,
+    onEvent: sink.onEvent
+  });
+
+  scripted.script([{ type: "speech.end", text: "もしもし" }]);
+  await pipeline.pushAudio(FRAME);
+  await until(() => mockTts.calls.length === 1);
+
+  scripted.script([{ type: "speech.start" }]);
+  await pipeline.pushAudio(FRAME);
+  gate.release();
+  await settle();
+
+  assert.equal(mockTts.calls[0].signal.aborted, true);
+  assert.equal(
+    sink.emitted("speech.interrupted").some((event) => event.reason === "barge-in"),
+    true
+  );
+});
+
+test("detector errors carry their stage into the error event", async () => {
+  const { tts } = createMockTts();
+  const { harness } = createMockHarness({ makeStream: () => streamOfDeltas([])() });
+  const sink = createEventSink();
+  const pipeline = createVoicePipeline({
+    detector: {
+      push: async () => {
+        const error = new Error("azure down");
+        error.stage = "stt";
+        throw error;
+      }
+    },
+    harness,
+    tts,
+    buildInput,
+    onEvent: sink.onEvent
+  });
+  await pipeline.pushAudio(FRAME);
+  const errors = sink.events.filter((event) => event.type === "error");
+  assert.equal(errors.length, 1);
+  assert.equal(errors[0].stage, "stt");
+  assert.match(errors[0].message, /azure down/);
+});
+
+test("a detector without push is rejected", () => {
+  const { tts } = createMockTts();
+  const { harness } = createMockHarness({ makeStream: () => streamOfDeltas([])() });
+  assert.throws(
+    () => createVoicePipeline({ detector: {}, harness, tts, buildInput }),
+    /detector/
+  );
+});

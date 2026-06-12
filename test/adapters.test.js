@@ -1569,6 +1569,26 @@ test("StackChan realtime session handler streaming device interrupt sends exactl
   assert.equal(sent.filter((message) => message.type === "speech.interrupted").length, 1);
 });
 
+test("StackChan realtime session handler streaming stt.partial forwards the legacy stt.event wire shape", async () => {
+  const pipeline = createFakeVoicePipeline();
+  const { sent, events, session } = createStreamingSessionFixture({ voicePipeline: pipeline });
+  await session.handlePipelineEvent({ type: "stt.partial", text: "こん" });
+  await session.handlePipelineEvent({ type: "stt.partial", text: "こんにち" });
+
+  const wire = sent.filter((message) => message.type === "stt.event");
+  assert.deepEqual(
+    wire.map((message) => message.event),
+    [
+      { type: "stt.partial", text: "こん", final: false },
+      { type: "stt.partial", text: "こんにち", final: false }
+    ]
+  );
+  assert.equal(
+    events.some((event) => event.type === "stackchan.stt.partial" && event.text === "こん"),
+    true
+  );
+});
+
 test("StackChan realtime session handler legacy mode exposes no handlePipelineEvent", () => {
   const { session } = createStreamingSessionFixture({ voicePipeline: null });
   assert.equal("handlePipelineEvent" in session, false);
