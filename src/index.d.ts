@@ -279,6 +279,16 @@ export function createFileCharacterProfile(input?: {
   readonly metadata?: JsonObject;
 }): CharacterProfile;
 
+export function loadCharacterWorkspace(input: {
+  readonly dir: string;
+  readonly id?: string | null;
+  readonly name?: string | null;
+  readonly dailyDir?: string;
+  readonly dailyCount?: number;
+  readonly now?: () => Date;
+  readonly metadata?: JsonObject;
+}): CharacterProfile;
+
 export function createInMemoryProjectOs(): ProjectOs;
 export function createFileProjectOs(input: {
   readonly path: string;

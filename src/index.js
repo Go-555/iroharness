@@ -791,6 +791,46 @@ export const createFileCharacterProfile = ({
   });
 };
 
+const localDateStamp = (date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+
+// OpenClaw-style character home: persona files (SOUL/IDENTITY/MEMORY/VOICE)
+// plus a two-tier memory — durable MEMORY.md and daily notes under
+// `memory/YYYY-MM-DD.md`, with today's and yesterday's notes loaded
+// automatically. Files are read once at construction; restart to pick up
+// edits. `now` is injectable for deterministic tests.
+export const loadCharacterWorkspace = ({
+  dir = null,
+  id = null,
+  name = null,
+  dailyDir = "memory",
+  dailyCount = 2,
+  now = () => new Date(),
+  metadata = {},
+} = {}) => {
+  if (!dir) {
+    throw new Error("loadCharacterWorkspace requires dir");
+  }
+  const profile = createFileCharacterProfile({ dir, id, name, metadata });
+  const base = now();
+  const sections = [];
+  for (let offset = dailyCount - 1; offset >= 0; offset -= 1) {
+    const day = new Date(base.getTime() - offset * 86_400_000);
+    const stamp = localDateStamp(day);
+    const note = readOptionalMarkdown(join(dir, dailyDir, `${stamp}.md`));
+    if (note) {
+      sections.push(`## Daily notes ${stamp}\n${note}`);
+    }
+  }
+  const memory =
+    [profile.memory, ...sections].filter(Boolean).join("\n\n") || null;
+  return freezeCopy({ ...profile, memory });
+};
+
 export const createInMemoryProjectOs = () => {
   return createProjectOsStore();
 };

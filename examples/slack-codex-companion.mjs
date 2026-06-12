@@ -7,7 +7,8 @@ import {
   createFileProjectOs,
   createFileUserRegistry,
   createHeuristicRouter,
-  createIroHarness
+  createIroHarness,
+  loadCharacterWorkspace
 } from "../src/index.js";
 import {
   createCodexAppServerBrain,
@@ -117,15 +118,28 @@ const createSlackCodexCompanion = () => {
     });
   }
 
+  // Character home (OpenClaw-style workspace): when IROHARNESS_CHARACTER_DIR
+  // is set, persona comes from SOUL/IDENTITY/MEMORY/VOICE files plus daily
+  // notes (memory/YYYY-MM-DD.md, today + yesterday). The env-string character
+  // remains the fallback so existing deployments are untouched.
+  const characterDir = process.env.IROHARNESS_CHARACTER_DIR || null;
+  const character = characterDir
+    ? loadCharacterWorkspace({
+        dir: characterDir,
+        id: process.env.IROHARNESS_CHARACTER_ID || "iroha",
+        name: process.env.IROHARNESS_CHARACTER_NAME || "Iroha"
+      })
+    : {
+        id: process.env.IROHARNESS_CHARACTER_ID || "iroha",
+        name: process.env.IROHARNESS_CHARACTER_NAME || "Iroha",
+        soul:
+          process.env.IROHARNESS_CHARACTER_SOUL ||
+          "A stable character macro harness that talks in Slack and delegates coding work to Codex.",
+        voiceStyle: process.env.IROHARNESS_CHARACTER_VOICE || "short, practical, warm"
+      };
+
   const harness = createIroHarness({
-    character: {
-      id: process.env.IROHARNESS_CHARACTER_ID || "iroha",
-      name: process.env.IROHARNESS_CHARACTER_NAME || "Iroha",
-      soul:
-        process.env.IROHARNESS_CHARACTER_SOUL ||
-        "A stable character macro harness that talks in Slack and delegates coding work to Codex.",
-      voiceStyle: process.env.IROHARNESS_CHARACTER_VOICE || "short, practical, warm"
-    },
+    character,
     projectOs,
     userRegistry,
     router: createHeuristicRouter(),
