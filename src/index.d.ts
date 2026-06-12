@@ -11,6 +11,7 @@ export interface CharacterProfile {
   readonly identity?: string | null;
   readonly memory?: string | null;
   readonly voiceStyle?: string | null;
+  readonly instructions?: string | null;
   readonly metadata?: JsonObject;
 }
 
@@ -285,6 +286,7 @@ export function loadCharacterWorkspace(input: {
   readonly name?: string | null;
   readonly dailyDir?: string;
   readonly dailyCount?: number;
+  readonly instructionsFile?: string;
   readonly now?: () => Date;
   readonly metadata?: JsonObject;
 }): CharacterProfile;

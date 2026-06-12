@@ -101,7 +101,9 @@ const createSlackCodexCompanion = () => {
   const codexWorkspace = process.env.CODEX_WORKSPACE || process.cwd();
 
   const projectOs = createFileProjectOs({
-    path: join(process.cwd(), ".iroharness", "slack-codex-pjos.json")
+    path:
+      process.env.IROHARNESS_PJOS_PATH ||
+      join(process.cwd(), ".iroharness", "slack-codex-pjos.json")
   });
   const userRegistry = createFileUserRegistry({
     path: join(process.cwd(), ".iroharness", "users.json")
