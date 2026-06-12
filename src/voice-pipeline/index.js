@@ -6,5 +6,6 @@ export { createAudioPacer } from "./pacer.js";
 export { createVoiceTurnMetrics } from "./metrics.js";
 export { createQuickResponder, createDynamicQuickResponder, resolveQuickBrain } from "./quick-responder.js";
 export { createSileroVad, loadSileroSession } from "./silero-vad.js";
+export { wrapVadSttDetector, createAzureStreamDetector } from "./speech-detector.js";
 export { toBrainStream, parseSseStream } from "./brain-stream.js";
 export { resamplePcm16 } from "./resampler.js";
