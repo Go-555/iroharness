@@ -109,3 +109,32 @@ test("loadCharacterWorkspace computes yesterday across month boundaries in local
 test("loadCharacterWorkspace requires dir", () => {
   assert.throws(() => loadCharacterWorkspace({}), /dir/);
 });
+
+test("loadCharacterWorkspace loads BRAIN.md as overridable brain instructions", () => {
+  const dir = makeWorkspace({
+    "SOUL.md": "soul",
+    "BRAIN.md": "custom brain instructions"
+  });
+  try {
+    const character = loadCharacterWorkspace({
+      dir,
+      now: fixedNow("2026-06-12T10:00:00+09:00")
+    });
+    assert.equal(character.instructions, "custom brain instructions");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("loadCharacterWorkspace leaves instructions null without BRAIN.md", () => {
+  const dir = makeWorkspace({ "SOUL.md": "soul" });
+  try {
+    const character = loadCharacterWorkspace({
+      dir,
+      now: fixedNow("2026-06-12T10:00:00+09:00")
+    });
+    assert.equal(character.instructions, null);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

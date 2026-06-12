@@ -3652,3 +3652,38 @@ test("Slack Socket Mode bridge rejects non-wss connection URLs", async () => {
   await assert.rejects(() => bridge.start(), /wss/);
   assert.equal(wiring.connections.length, 0);
 });
+
+test("Codex brain prefers character.instructions over the built-in preamble", async () => {
+  const transport = createFakeCodexTransport();
+  const brain = createCodexAppServerBrain({
+    id: "codex-text",
+    slot: "text",
+    cwd: "/tmp/project",
+    model: "gpt-brain-test",
+    transport,
+    timeoutMs: 1000
+  });
+
+  await brain.respond({
+    character: {
+      id: "iroha",
+      name: "Iroha",
+      soul: "Stable macro identity.",
+      instructions: "あなたは橙花いろはとして答える。裏方の話はしない。"
+    },
+    actor: {},
+    audience: {},
+    input: { text: "こんにちは" },
+    route: { kind: "text" },
+    state: {},
+    projectOs: { tickets: [] }
+  });
+
+  const prompt = transport.requests[2].params.input[0].text;
+  assert.match(prompt, /あなたは橙花いろはとして答える。/);
+  assert.doesNotMatch(prompt, /You are the current IroHarness brain/);
+  assert.match(prompt, /Brain slot: text/);
+  assert.match(prompt, /こんにちは/);
+  const occurrences = prompt.split("あなたは橙花いろはとして答える。").length - 1;
+  assert.equal(occurrences, 1, "instructions are not duplicated inside the character JSON");
+});

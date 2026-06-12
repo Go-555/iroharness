@@ -997,22 +997,31 @@ export const createScopedWorkRunnerMicroHarness = ({
   });
 };
 
-const formatCodexBrainContext = ({ slot, model, context }) =>
-  [
-    "You are the current IroHarness brain for this character.",
-    "Answer as the character. Do not claim to be Codex unless the user asks about the backend.",
-    "Keep character identity, audience permissions, and Project OS context stable.",
-    "Do not modify files or run development work from this brain path; delegate work belongs to micro harnesses.",
-    "Always answer in natural Japanese unless the user explicitly asks for another language.",
-    "For voice or StackChan input, produce one or two short spoken Japanese sentences.",
-    "Avoid Markdown, bullet lists, code blocks, URLs, emoji, and English filler in voice replies.",
-    "Do not include backend labels such as TEXT, VOICE, Codex, model names, or route names unless the user asks.",
+const DEFAULT_CODEX_BRAIN_PREAMBLE = [
+  "You are the current IroHarness brain for this character.",
+  "Answer as the character. Do not claim to be Codex unless the user asks about the backend.",
+  "Keep character identity, audience permissions, and Project OS context stable.",
+  "Do not modify files or run development work from this brain path; delegate work belongs to micro harnesses.",
+  "Always answer in natural Japanese unless the user explicitly asks for another language.",
+  "For voice or StackChan input, produce one or two short spoken Japanese sentences.",
+  "Avoid Markdown, bullet lists, code blocks, URLs, emoji, and English filler in voice replies.",
+  "Do not include backend labels such as TEXT, VOICE, Codex, model names, or route names unless the user asks.",
+].join("\n");
+
+// The leading instruction block is operator-overridable: when the character
+// carries `instructions` (e.g. BRAIN.md loaded by loadCharacterWorkspace),
+// that text replaces the built-in preamble and is removed from the Character
+// JSON dump so it appears exactly once in the prompt.
+const formatCodexBrainContext = ({ slot, model, context }) => {
+  const { instructions, ...characterRest } = context.character || {};
+  return [
+    instructions || DEFAULT_CODEX_BRAIN_PREAMBLE,
     "",
     `Brain slot: ${slot}`,
     `Model: ${model || "default"}`,
     "",
     "Character:",
-    JSON.stringify(context.character || {}, null, 2),
+    JSON.stringify(characterRest, null, 2),
     "",
     "Actor:",
     JSON.stringify(context.actor || {}, null, 2),
@@ -1029,6 +1038,7 @@ const formatCodexBrainContext = ({ slot, model, context }) =>
     "User message:",
     context.input?.text || "",
   ].join("\n");
+};
 
 export const createCodexAppServerBrain = ({
   id = "codex-brain",

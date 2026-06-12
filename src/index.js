@@ -809,6 +809,7 @@ export const loadCharacterWorkspace = ({
   name = null,
   dailyDir = "memory",
   dailyCount = 2,
+  instructionsFile = "BRAIN.md",
   now = () => new Date(),
   metadata = {},
 } = {}) => {
@@ -816,6 +817,7 @@ export const loadCharacterWorkspace = ({
     throw new Error("loadCharacterWorkspace requires dir");
   }
   const profile = createFileCharacterProfile({ dir, id, name, metadata });
+  const instructions = readOptionalMarkdown(join(dir, instructionsFile));
   const base = now();
   const sections = [];
   for (let offset = dailyCount - 1; offset >= 0; offset -= 1) {
@@ -828,7 +830,7 @@ export const loadCharacterWorkspace = ({
   }
   const memory =
     [profile.memory, ...sections].filter(Boolean).join("\n\n") || null;
-  return freezeCopy({ ...profile, memory });
+  return freezeCopy({ ...profile, memory, instructions });
 };
 
 export const createInMemoryProjectOs = () => {
