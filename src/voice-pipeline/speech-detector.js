@@ -29,9 +29,9 @@
 //   Single source of truth: the internal queue. Every event is delivered
 //   EITHER via onEvent (if set) OR via the push() return value (if null) —
 //   never both, never zero.
-//   createAzureStreamDetector accepts `onEvent` (createVoicePipeline wires
-//   itself in); wrapVadSttDetector is synchronous-on-speech.end with no late
-//   events, so it has no onEvent option.
+//   createAzureStreamDetector accepts `onEvent` (the host wires it to the
+//   pipeline's handleDetectorEvent); wrapVadSttDetector is
+//   synchronous-on-speech.end with no late events, so it has no onEvent option.
 //
 // push() must be awaited serially (one mic loop) — same rule as silero-vad.
 //
