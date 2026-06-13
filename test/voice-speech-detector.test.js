@@ -432,7 +432,9 @@ test("gated mode: timeout fallback emits speech.end with the accumulated partial
   await sleep(40); // recognizer never finalizes — the fallback timer fires
   scripted.script([]);
   const events = await detector.push(FRAME);
-  assert.deepEqual(events, [{ type: "speech.end", text: "とちゅうまで" }]);
+  assert.deepEqual(events, [
+    { type: "speech.end", text: "とちゅうまで", fallback: true },
+  ]);
 
   // a late recognized after the timeout must not produce a second speech.end
   recognizers[0].fireRecognized("とちゅうまでだった。");
@@ -457,7 +459,55 @@ test("gated mode: timeout fallback with no partial emits speech.end without text
   await sleep(40);
   scripted.script([]);
   const events = await detector.push(FRAME);
-  assert.deepEqual(events, [{ type: "speech.end" }]);
+  assert.deepEqual(events, [{ type: "speech.end", fallback: true }]);
+  await detector.close();
+});
+
+test("gated mode: re-trigger during awaitingFinal force-finishes the dying utterance on a fresh session", async () => {
+  const scripted = createScriptedGate();
+  const { detector, streams, recognizers } = azureDetector({
+    mode: "gated",
+    gate: scripted.gate,
+    finalizeTimeoutMs: 5000, // must never fire — the re-trigger finishes u1
+  });
+
+  // utterance 1: start → partial → gate end (recognized never arrives)
+  scripted.script([{ type: "speech.start" }]);
+  await detector.push(FRAME);
+  recognizers[0].fireRecognizing("いち");
+  scripted.script([{ type: "speech.end" }]);
+  await detector.push(FRAME);
+  assert.equal(streams[0].closed, true);
+  const u1Writes = streams[0].writes.length;
+
+  // utterance 2 starts DURING u1's awaitingFinal window: u1 force-finishes
+  // with its accumulated partial BEFORE u2's speech.start, and u2 gets a
+  // FRESH session (the dying one's pushStream is closed — writing there
+  // would silently drop u2's audio).
+  scripted.script([{ type: "speech.start" }]);
+  const events = await detector.push(FRAME);
+  assert.deepEqual(events, [
+    { type: "speech.end", text: "いち" },
+    { type: "speech.start" },
+  ]);
+  assert.equal(recognizers.length, 2);
+  assert.equal(streams.length, 2);
+  assert.equal(recognizers[0].stopped, true);
+  assert.equal(streams[1].writes.length, 1); // u2's trigger frame, new stream
+  assert.equal(streams[0].writes.length, u1Writes); // dead stream untouched
+
+  // u1's recognizer finalizing late must not leak a second speech.end
+  recognizers[0].fireRecognized("いちばんめ。");
+  scripted.script([]);
+  assert.deepEqual(await detector.push(FRAME), []);
+  assert.equal(streams[1].writes.length, 2); // u2 keeps streaming
+
+  // u2 completes normally with exactly one speech.end of its own
+  recognizers[1].fireRecognized("にばんめ。");
+  scripted.script([{ type: "speech.end" }]);
+  assert.deepEqual(await detector.push(FRAME), [
+    { type: "speech.end", text: "にばんめ。" },
+  ]);
   await detector.close();
 });
 

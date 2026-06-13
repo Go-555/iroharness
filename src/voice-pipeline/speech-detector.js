@@ -6,10 +6,12 @@
 //   detector.push(int16Frame) → Promise<events[]>
 //     { type: "speech.start" }                    — an utterance began
 //     { type: "transcript.partial", text }        — interim transcription
-//     { type: "speech.end", text?, audio? }       — utterance closed; `text`
-//       is the final transcription when the detector produced one (streaming
-//       STT, or the wrapped batch STT); `audio` is the captured Int16Array
-//       when the detector buffers audio (silero wrap only)
+//     { type: "speech.end", text?, audio?, fallback? } — utterance closed;
+//       `text` is the final transcription when the detector produced one
+//       (streaming STT, or the wrapped batch STT); `audio` is the captured
+//       Int16Array when the detector buffers audio (silero wrap only);
+//       `fallback: true` marks a degraded final (gated finalize timeout
+//       fired before the recognizer delivered its text)
 //   detector.reset()                              — drop utterance state
 //   async detector.close()                        — release connections
 //
@@ -307,11 +309,14 @@ export const createAzureStreamDetector = ({
 
   // Close the current (gated) utterance with the best text we have. Exactly
   // one speech.end per utterance: callers guard on awaitingFinal/gateOpen.
-  const finishGatedUtterance = () => {
+  // `fallback: true` marks a degraded final (the finalize timeout fired
+  // before recognized arrived) so hosts can count them in logs.
+  const finishGatedUtterance = ({ fallback = false } = {}) => {
     clearFinalizeTimer();
     const text = finalParts.join("") + (partialSinceFinal ? lastPartial : "");
     const event = { type: "speech.end" };
     if (text) event.text = text;
+    if (fallback) event.fallback = true;
     emit(event);
     awaitingFinal = false;
     resetUtterance();
@@ -451,6 +456,12 @@ export const createAzureStreamDetector = ({
     }
 
     if (sawStart && !gateOpen) {
+      // Re-trigger during the awaitingFinal window: force-finish the dying
+      // utterance (its speech.end with accumulated text emits ahead of this
+      // utterance's speech.start) so ensureSession opens a FRESH session —
+      // the old one's pushStream is already closed and would silently drop
+      // this utterance's audio.
+      if (awaitingFinal) finishGatedUtterance();
       await ensureSession(); // throws (stage "stt") when the SDK is missing
       gateOpen = true;
       utteranceStarted = true;
@@ -484,7 +495,7 @@ export const createAzureStreamDetector = ({
         awaitingFinal = true;
         finalizeTimer = setTimeout(() => {
           finalizeTimer = null;
-          if (awaitingFinal) finishGatedUtterance();
+          if (awaitingFinal) finishGatedUtterance({ fallback: true });
         }, finalizeTimeoutMs);
         finalizeTimer.unref?.();
       }

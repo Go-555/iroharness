@@ -4424,14 +4424,17 @@ export const createStackChanRealtimeSessionHandler = ({
       };
 
       // Streaming mode: ONE translation point from pipeline events to the
-      // existing wire messages. Guarantees: every message shape sent here is
-      // identical to its legacy counterpart, and each turn's wire sequence
-      // starts with response.start before its first speech.audio (as legacy
-      // speak() does). stt.partial pipeline events (from the detector's
-      // transcript.partial) are forwarded as the legacy stt.event wire shape
-      // (AIAvatarStackChan "voiced") — the former "no partials in streaming
-      // mode" divergence is closed. The streaming message set matches legacy
-      // plus the additive metrics field.
+      // existing wire messages. Per-message SHAPES are identical to their
+      // legacy counterparts, and each turn's wire sequence starts with
+      // response.start before its first speech.audio. stt.partial pipeline
+      // events (from the detector's transcript.partial) are forwarded as
+      // the legacy stt.event wire shape (AIAvatarStackChan "voiced") — the
+      // former "no partials in streaming mode" divergence is closed. Known
+      // remaining sequence divergence (documented in docs/realtime.md):
+      // response.start is sent ONCE per turn (role "ack" or "answer"),
+      // where legacy speak() sent one per call — i.e. two when a quick ack
+      // fired. response.final additionally carries the additive metrics
+      // field.
       const handlePipelineEvent = async (event = {}) => {
         if (event.type === "stt.partial") {
           // Same wire shape the legacy path sends from the stt adapter's
