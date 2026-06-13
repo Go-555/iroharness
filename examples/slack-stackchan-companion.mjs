@@ -500,7 +500,7 @@ const loadStackChanSileroVad = async ({ micSampleRate }) => {
 // Silero VAD + batch STT (the previous behavior). Default: azure-stream
 // when AZURE_SPEECH_KEY is set, else silero. Returns { detector } or
 // { vad } for createVoicePipeline, or null to stay on the legacy path.
-const createStackChanSpeechFrontend = async ({ micSampleRate }) => {
+const createStackChanSpeechFrontend = async ({ micSampleRate, onDetectorEvent = null }) => {
   const requested = (
     process.env.IROHARNESS_STACKCHAN_DETECTOR ||
     (process.env.AZURE_SPEECH_KEY ? "azure-stream" : "silero")
@@ -536,7 +536,12 @@ const createStackChanSpeechFrontend = async ({ micSampleRate }) => {
           language: process.env.AZURE_SPEECH_LANGUAGE || "ja-JP",
           sampleRate: micSampleRate,
           mode: streamMode,
-          gate
+          gate,
+          // Push-style delivery: the mic mutes once the server starts speaking
+          // (and on PTT release), so a late speech.end / final recognized has
+          // no following push() to drain it. onEvent surfaces it immediately.
+          // Forwarded to pipeline.handleDetectorEvent once the pipeline exists.
+          onEvent: onDetectorEvent ? (event) => onDetectorEvent(event) : null
         })
       };
     }
@@ -563,7 +568,14 @@ const createStackChanVoicePipeline = async ({ harness, brain, quickBrain = null,
     return null;
   }
   const micSampleRate = Number(process.env.IROHARNESS_STACKCHAN_AUDIO_SAMPLE_RATE || "16000");
-  const frontend = await createStackChanSpeechFrontend({ micSampleRate });
+  // The detector's onEvent (azure-stream push mode) must reach the pipeline,
+  // but the pipeline does not exist yet. Forward through a holder, pointed at
+  // pipeline.handleDetectorEvent once the pipeline is built.
+  let detectorEventSink = null;
+  const frontend = await createStackChanSpeechFrontend({
+    micSampleRate,
+    onDetectorEvent: (event) => detectorEventSink?.(event)
+  });
   if (!frontend) {
     return null;
   }
@@ -606,7 +618,7 @@ const createStackChanVoicePipeline = async ({ harness, brain, quickBrain = null,
     `StackChan streaming voice: quick responder warmed (${cachedPhrases} phrase(s) cached, mode=${quickMode})`
   );
   const deviceId = stackchanId;
-  return createVoicePipeline({
+  const pipeline = createVoicePipeline({
     ...frontend,
     stt,
     harness,
@@ -644,6 +656,9 @@ const createStackChanVoicePipeline = async ({ harness, brain, quickBrain = null,
       });
     }
   });
+  // Now that the pipeline exists, route the azure detector's onEvent into it.
+  detectorEventSink = pipeline.handleDetectorEvent;
+  return pipeline;
 };
 
 const createSlackStackChanCompanion = async () => {

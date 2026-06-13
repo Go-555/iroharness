@@ -5,7 +5,17 @@
 //                       buildInput, maxSentences = 30, sampleRate = 16000,
 //                       stageTimeoutMs = { stt: 10000, brain: 30000, tts: 10000 },
 //                       fallbackPhrase = "少々調子が悪いや。", onEvent = () => {} })
-//   → frozen { pushAudio(int16Frame), interrupt(reason), snapshot() }
+//   → frozen { pushAudio(int16Frame), interrupt(reason), snapshot(),
+//              handleDetectorEvent(event) }
+//
+// handleDetectorEvent(event) is the single sink for one detector event. The
+// push() return array is fed through it (pull mode / wrapVadSttDetector), and
+// it doubles as the detector's onEvent target (azure-stream push mode): wire
+// createAzureStreamDetector({ onEvent: pipeline.handleDetectorEvent }) so a
+// late speech.end / final recognized result surfaces even when the mic has
+// stopped sending frames (server speaking, or PTT release) and no further
+// push() would drain the queue. The detector's exactly-once contract ensures
+// each event flows through ONE channel, so the pipeline never double-handles.
 //
 // Composes: speech detector (VAD + STT as one unit) → harness.receiveStream
 // (brain stream) → sentence-splitter → tts adapter, with optional pacer /
@@ -423,26 +433,40 @@ export const createVoicePipeline = ({
     // detector.reset() deliberately NOT called — the mic keeps running.
   };
 
+  // Single sink for one detector event — fed by BOTH delivery channels:
+  //   - the push() return array (pull mode / wrapVadSttDetector), and
+  //   - the detector's onEvent callback (azure-stream push mode: late events
+  //     surface here without a mic frame; see handleDetectorEvent wiring).
+  // The detector's exactly-once contract guarantees an event arrives through
+  // ONE channel, so this never double-handles a turn.
+  const handleDetectorEvent = (event) => {
+    if (!event) return;
+    if (event.type === "speech.start") {
+      if (active) interrupt("barge-in"); // auto barge-in: same path as interrupt()
+      // New-utterance boundary: wipe stale first-wins marks left by
+      // interrupted / early-exit turns (stt.empty, rejection, errors)
+      // BEFORE marking. Not inside interrupt() — that would wipe the new
+      // utterance's own speech.start on barge-in.
+      metrics?.reset();
+      metrics?.mark("speech.start");
+      state = "listening";
+    } else if (event.type === "transcript.partial") {
+      onEvent({ type: "stt.partial", text: event.text ?? "" });
+    } else if (event.type === "speech.end") {
+      metrics?.mark("speech.end");
+      if (active) interrupt("new-utterance"); // serialize: new utterance wins
+      startTurn(event);
+    }
+  };
+
   const pushAudio = async (int16Frame) => {
     try {
+      // In onEvent (push) mode push() returns [] — events already went through
+      // handleDetectorEvent via the callback. In pull mode the return array
+      // carries them. Either way each event is handled exactly once.
       const events = await speechDetector.push(int16Frame);
       for (const event of events ?? []) {
-        if (event.type === "speech.start") {
-          if (active) interrupt("barge-in"); // auto barge-in: same path as interrupt()
-          // New-utterance boundary: wipe stale first-wins marks left by
-          // interrupted / early-exit turns (stt.empty, rejection, errors)
-          // BEFORE marking. Not inside interrupt() — that would wipe the new
-          // utterance's own speech.start on barge-in.
-          metrics?.reset();
-          metrics?.mark("speech.start");
-          state = "listening";
-        } else if (event.type === "transcript.partial") {
-          onEvent({ type: "stt.partial", text: event.text ?? "" });
-        } else if (event.type === "speech.end") {
-          metrics?.mark("speech.end");
-          if (active) interrupt("new-utterance"); // serialize: new utterance wins
-          startTurn(event);
-        }
+        handleDetectorEvent(event);
       }
     } catch (error) {
       // wrapVadSttDetector tags batch-STT failures with stage "stt";
@@ -453,5 +477,5 @@ export const createVoicePipeline = ({
 
   const snapshot = () => ({ state, turnCount });
 
-  return Object.freeze({ pushAudio, interrupt, snapshot });
+  return Object.freeze({ pushAudio, interrupt, snapshot, handleDetectorEvent });
 };

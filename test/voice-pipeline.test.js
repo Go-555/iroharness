@@ -967,3 +967,43 @@ test("a detector without push is rejected", () => {
     /detector/
   );
 });
+
+// Real-hardware regression: the mic stops sending frames once the server
+// starts processing/speaking (or after PTT release), so a late speech.end has
+// no following push() to drain it. With the detector wired to deliver via the
+// pipeline's handleDetectorEvent (onEvent), the turn still completes.
+test("detector onEvent: late speech.end after the last pushAudio still completes the turn", async () => {
+  const mockTts = createMockTts();
+  const mockHarness = createMockHarness({
+    makeStream: () => streamOfDeltas(["了解。"])()
+  });
+  const sink = createEventSink();
+  // A detector that delivers ONLY via onEvent — push() always returns [],
+  // mirroring createAzureStreamDetector({ onEvent }) in push mode.
+  let deliver = null;
+  const detector = Object.freeze({
+    push: async () => [],
+    reset: () => {},
+    close: async () => {}
+  });
+  const pipeline = createVoicePipeline({
+    detector,
+    harness: mockHarness.harness,
+    tts: mockTts.tts,
+    buildInput,
+    onEvent: sink.onEvent
+  });
+  deliver = pipeline.handleDetectorEvent; // emulate the example's wiring
+
+  // a push that surfaces nothing on its own (mic frame before any result)
+  await pipeline.pushAudio(FRAME);
+  assert.equal(mockHarness.calls.length, 0);
+
+  // speech.end arrives LATER via onEvent — no further pushAudio happens
+  deliver({ type: "speech.end", text: "もしもし" });
+  const final = await sink.waitFor((event) => event.type === "turn.final");
+
+  assert.equal(mockHarness.calls[0].input.text, "もしもし");
+  assert.equal(final.text, "了解。");
+  assert.equal(mockHarness.finalized[0], "了解。");
+});
