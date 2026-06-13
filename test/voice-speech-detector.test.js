@@ -512,6 +512,111 @@ test("gated mode: re-trigger during awaitingFinal force-finishes the dying utter
 });
 
 // ---------------------------------------------------------------------------
+// onEvent push-delivery (idle-flush) — late events surface without a push
+// ---------------------------------------------------------------------------
+
+test("createAzureStreamDetector rejects a non-function onEvent", () => {
+  const { sdk } = createFakeSdk();
+  assert.throws(
+    () =>
+      createAzureStreamDetector({
+        subscriptionKey: "k",
+        region: "r",
+        mode: "continuous",
+        sdk,
+        onEvent: 123,
+      }),
+    /onEvent/,
+  );
+});
+
+test("onEvent: continuous late recognized reaches onEvent with NO subsequent push", async () => {
+  const received = [];
+  const { detector, recognizers } = azureDetector({
+    onEvent: (event) => received.push(event),
+  });
+
+  // push() returns [] in onEvent mode — events go out via the callback
+  assert.deepEqual(await detector.push(FRAME), []);
+
+  // these callbacks fire AFTER the last push — the mic has gone silent
+  recognizers[0].fireRecognizing("こん");
+  recognizers[0].fireRecognized("こんにちは。");
+
+  assert.deepEqual(received, [
+    { type: "speech.start" },
+    { type: "transcript.partial", text: "こん" },
+    { type: "speech.end", text: "こんにちは。" },
+  ]);
+  await detector.close();
+});
+
+test("onEvent: exactly-once — push() returns [] and the queue never double-delivers", async () => {
+  const received = [];
+  const { detector, recognizers } = azureDetector({
+    onEvent: (event) => received.push(event),
+  });
+
+  await detector.push(FRAME);
+  recognizers[0].fireRecognizing("や");
+  // a subsequent push must NOT re-deliver the already-flushed partial
+  assert.deepEqual(await detector.push(FRAME), []);
+  recognizers[0].fireRecognized("やあ。");
+  assert.deepEqual(await detector.push(FRAME), []);
+
+  assert.deepEqual(received, [
+    { type: "speech.start" },
+    { type: "transcript.partial", text: "や" },
+    { type: "speech.end", text: "やあ。" },
+  ]);
+  await detector.close();
+});
+
+test("onEvent: gated late recognized reaches onEvent after the gate already closed", async () => {
+  const received = [];
+  const scripted = createScriptedGate();
+  const { detector, recognizers } = azureDetector({
+    mode: "gated",
+    gate: scripted.gate,
+    onEvent: (event) => received.push(event),
+  });
+
+  scripted.script([{ type: "speech.start" }]);
+  await detector.push(FRAME);
+  recognizers[0].fireRecognizing("やあ");
+  scripted.script([{ type: "speech.end" }]);
+  // gate closed before recognized — no speech.end yet, awaitingFinal window open
+  await detector.push(FRAME);
+  assert.deepEqual(received, [
+    { type: "speech.start" },
+    { type: "transcript.partial", text: "やあ" },
+  ]);
+
+  // recognized fires with NO following push (mic muted) — must still surface
+  recognizers[0].fireRecognized("やあ、いろは。");
+  assert.deepEqual(received, [
+    { type: "speech.start" },
+    { type: "transcript.partial", text: "やあ" },
+    { type: "speech.end", text: "やあ、いろは。" },
+  ]);
+  await detector.close();
+});
+
+test("onEvent null (default): events still surface only via the push() return", async () => {
+  const { detector, recognizers } = azureDetector();
+  await detector.push(FRAME);
+  recognizers[0].fireRecognizing("こん");
+  recognizers[0].fireRecognized("こんにちは。");
+  // pull mode unchanged — everything drains on the next push
+  assert.deepEqual(await detector.push(FRAME), [
+    { type: "speech.start" },
+    { type: "transcript.partial", text: "こん" },
+    { type: "speech.end", text: "こんにちは。" },
+  ]);
+  await detector.close();
+});
+
+// ---------------------------------------------------------------------------
 // reset / close
 // ---------------------------------------------------------------------------
 

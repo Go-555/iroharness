@@ -15,12 +15,23 @@
 //   detector.reset()                              — drop utterance state
 //   async detector.close()                        — release connections
 //
-// Event delivery contract: SDK callbacks fire on their own schedule, never
-// aligned with push() calls — so every implementation queues events
-// internally and push() DRAINS the queue and returns it. There is no
-// onEvent callback; the single mechanism is the push() return value. Events
-// caused by asynchronous recognizer callbacks therefore surface on the NEXT
-// push() (in steady-state mic streaming that is one frame ≈ 32 ms later).
+// Event delivery contract — TWO interchangeable styles, exactly-once either way:
+//   pull (default, onEvent = null): SDK callbacks queue events internally and
+//     push() DRAINS the queue and returns it. Events caused by asynchronous
+//     recognizer callbacks surface on the NEXT push() (in steady-state mic
+//     streaming that is one frame ≈ 32 ms later).
+//   push (onEvent set): the detector calls onEvent(event) the MOMENT each
+//     event is produced (push() always returns [] in this mode). This is the
+//     fix for the real-hardware case where the mic stops sending frames once
+//     the server starts speaking (or PTT release): a late speech.end / final
+//     recognized result has no following push() to drain it, so without
+//     onEvent it would be stranded in the queue forever.
+//   Single source of truth: the internal queue. Every event is delivered
+//   EITHER via onEvent (if set) OR via the push() return value (if null) —
+//   never both, never zero.
+//   createAzureStreamDetector accepts `onEvent` (createVoicePipeline wires
+//   itself in); wrapVadSttDetector is synchronous-on-speech.end with no late
+//   events, so it has no onEvent option.
 //
 // push() must be awaited serially (one mic loop) — same rule as silero-vad.
 //
@@ -43,7 +54,7 @@
 //                             segmentationSilenceMs = 500, sampleRate = 16000,
 //                             mode = "gated", gate = null, prerollFrames = 10,
 //                             finalizeTimeoutMs = 2000, sdk = null,
-//                             importSdk = null })
+//                             importSdk = null, onEvent = null })
 //   True streaming STT on the Azure Speech SDK (PushAudioInputStream +
 //   continuous recognition), mirroring AIAvatarKit's AzureStreamSpeechDetector.
 //   `microsoft-cognitiveservices-speech-sdk` is an optionalDependency,
@@ -183,7 +194,11 @@ export const createAzureStreamDetector = ({
   finalizeTimeoutMs = 2000,
   sdk = null,
   importSdk = null,
+  onEvent = null,
 } = {}) => {
+  if (onEvent != null && typeof onEvent !== "function") {
+    throw new Error("createAzureStreamDetector: onEvent must be a function");
+  }
   if (!subscriptionKey) {
     throw new Error("createAzureStreamDetector requires subscriptionKey");
   }
@@ -223,10 +238,22 @@ export const createAzureStreamDetector = ({
     return sdkPromise;
   };
 
-  // Event queue: SDK callbacks (and the gate logic) append; push() drains.
+  // Event queue is the single source of truth. SDK callbacks (and the gate
+  // logic) enqueue via emit(); delivery is exactly-once through one channel:
+  //   - onEvent set  → flush() drains and calls onEvent for each, returns [].
+  //   - onEvent null → flush() is a no-op; push() drains via drain() instead.
+  // emit() flushes immediately so push-style callers see late events the
+  // moment an SDK callback fires, with no following push() to drain them.
   const queue = [];
-  const emit = (event) => queue.push(event);
   const drain = () => queue.splice(0, queue.length);
+  const flush = () => {
+    if (!onEvent) return; // pull mode: events wait in the queue for push()
+    for (const event of queue.splice(0, queue.length)) onEvent(event);
+  };
+  const emit = (event) => {
+    queue.push(event);
+    flush();
+  };
 
   let session = null; // { speech, pushStream, recognizer, dead }
   let connecting = null;
