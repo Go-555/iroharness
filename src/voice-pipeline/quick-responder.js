@@ -55,6 +55,15 @@ export const DEFAULT_QUICK_SYSTEM_PROMPT =
 export const DEFAULT_QUICK_PROMPT_PREFIX =
   "$以下はユーザーの発話内容である。ユーザー発話を受け止めて、状況に相応しい第一声として、10文字以内のごく短いフレーズを出力せよ。応答の末尾は「。」や「、」句読点や感嘆符とする。フレーズのみを出力すること。";
 
+export const DEFAULT_QUICK_REQUEST_PREFIX =
+  "$以下の入力に対して、既にあなたが出力済みの「{quick_response_text}」や類似の表現は再出力せず、その続きのみを出力せよ。もし「{quick_response_text}」が本来応答すべき内容にそぐわない場合は、続きの中でうまく適切な方向に補正すること:";
+
+export const DEFAULT_QUICK_THINK_TAG_CONTENT =
+  "指示に応じて状況にふさわしい第一声のみを出力する";
+
+export const DEFAULT_QUICK_CONTINUATION_MESSAGE =
+  "「{quick_response_text}」の続きを出力してください";
+
 // Picks the brain for the dynamic quick responder. A dedicated quick brain
 // (IROHARNESS_QUICK_BRAIN_PROVIDER) always wins. Falling back to a codex
 // voice brain is refused (downgraded: true): codex TTFT loses the 1.5s race
@@ -265,6 +274,85 @@ const extractChatCompletionText = (payload) =>
   payload?.choices?.[0]?.delta?.content ??
   "";
 
+const formatQuickTemplate = (template, quickResponseText) =>
+  String(template || "").replaceAll("{quick_response_text}", quickResponseText);
+
+const stripAssistantControlContent = (content) => {
+  let out = String(content || "");
+  const answer = out.match(/<answer>([\s\S]*?)<\/answer>/i);
+  if (answer) {
+    out = answer[1];
+  } else {
+    out = out.replace(/<think>[\s\S]*?<\/think>/gi, "");
+  }
+  return out
+    .replace(/\[[a-zA-Z_]+:[^\]]+\]/g, "")
+    .replace(/<\w+\s[^>]*>/g, "")
+    .trim();
+};
+
+const cleanHistoryUserContent = ({ content, promptPrefix, continuationMessage }) => {
+  if (typeof content !== "string") return content;
+  if (promptPrefix && content.startsWith(promptPrefix)) {
+    return content;
+  }
+  if (!content.startsWith("$")) {
+    return content;
+  }
+  const quoted = content.match(/[「"]([^」"]+)[」"]/);
+  if (quoted) {
+    return formatQuickTemplate(continuationMessage, quoted[1]);
+  }
+  const index = content.indexOf("\n\n");
+  return index >= 0 ? content.slice(index + 2) : content;
+};
+
+const cleanHistoryMessage = ({ message, promptPrefix, continuationMessage }) => {
+  if (!message || message.role === "tool" || !("content" in message)) {
+    return null;
+  }
+  if (message.role === "user") {
+    return Object.freeze({
+      ...message,
+      content: cleanHistoryUserContent({
+        content: message.content,
+        promptPrefix,
+        continuationMessage
+      })
+    });
+  }
+  if (message.role === "assistant" && typeof message.content === "string") {
+    return Object.freeze({
+      ...message,
+      content: stripAssistantControlContent(message.content)
+    });
+  }
+  return Object.freeze({ ...message });
+};
+
+export const createMemoryQuickResponderContextManager = () => {
+  const byContext = new Map();
+
+  const getKey = (contextId) => String(contextId || "default");
+
+  const addHistories = async (contextId, histories) => {
+    const key = getKey(contextId);
+    const current = byContext.get(key) ?? [];
+    byContext.set(key, [...current, ...histories.map((history) => Object.freeze({ ...history }))]);
+  };
+
+  const getHistories = async ({ contextId = "default", limit = 100 } = {}) => {
+    const histories = byContext.get(getKey(contextId)) ?? [];
+    return histories.slice(-limit).map((history) => Object.freeze({ ...history }));
+  };
+
+  const clear = () => {
+    byContext.clear();
+  };
+
+  return Object.freeze({ addHistories, getHistories, clear });
+};
+
 const captureTtsAudio = async ({ tts, text, voice, signal }) => {
   let captured = null;
   await tts.stream({
@@ -294,7 +382,13 @@ export const createQuickResponderPro = ({
   model = "gpt-4.1-nano",
   systemPrompt = DEFAULT_QUICK_SYSTEM_PROMPT,
   promptPrefix = DEFAULT_QUICK_PROMPT_PREFIX,
+  requestPrefix = DEFAULT_QUICK_REQUEST_PREFIX,
+  continuationMessage = DEFAULT_QUICK_CONTINUATION_MESSAGE,
+  thinkTagContent = DEFAULT_QUICK_THINK_TAG_CONTENT,
   timeoutMs = 1500,
+  historyLimit = 100,
+  contextId = "default",
+  contextManager = createMemoryQuickResponderContextManager(),
   maxChars = 20,
   temperature = null,
   reasoningEffort = null,
@@ -316,6 +410,69 @@ export const createQuickResponderPro = ({
   const voiceCache = new Map();
   let pending = null;
 
+  const getCleanHistories = async (targetContextId) => {
+    if (!contextManager || typeof contextManager.getHistories !== "function") {
+      return [];
+    }
+    const histories = await contextManager.getHistories({
+      contextId: targetContextId,
+      limit: historyLimit
+    });
+    const firstUser = histories.findIndex((history) => history?.role === "user");
+    return histories
+      .slice(firstUser < 0 ? 0 : firstUser)
+      .map((message) =>
+        cleanHistoryMessage({
+          message,
+          promptPrefix,
+          continuationMessage
+        })
+      )
+      .filter(Boolean);
+  };
+
+  const saveQuickHistory = async ({ transcript, quickText, targetContextId }) => {
+    if (!contextManager || typeof contextManager.addHistories !== "function") {
+      return;
+    }
+    await contextManager.addHistories(
+      targetContextId,
+      [
+        { role: "user", content: `${promptPrefix}\n\n${transcript}` },
+        {
+          role: "assistant",
+          content: `<think>${thinkTagContent}</think><answer>${quickText}</answer>`
+        }
+      ],
+      "quick_responder"
+    );
+  };
+
+  const saveMainResponse = async ({
+    transcript,
+    quickText = null,
+    responseText = "",
+    contextId: targetContextId = contextId
+  } = {}) => {
+    if (
+      !contextManager ||
+      typeof contextManager.addHistories !== "function" ||
+      !quickText ||
+      !String(responseText || "").trim()
+    ) {
+      return;
+    }
+    const prefix = formatQuickTemplate(requestPrefix, quickText);
+    await contextManager.addHistories(
+      targetContextId,
+      [
+        { role: "user", content: `${prefix}\n\n${transcript}` },
+        { role: "assistant", content: `<answer>${responseText}</answer>` }
+      ],
+      "chatgpt"
+    );
+  };
+
   const synthesize = async ({ text, signal }) => {
     if (voiceCache.has(text)) {
       return voiceCache.get(text);
@@ -331,11 +488,13 @@ export const createQuickResponderPro = ({
     return entry;
   };
 
-  const generate = async (transcript, signal) => {
+  const generate = async (transcript, signal, targetContextId = contextId) => {
+    const histories = await getCleanHistories(targetContextId);
     const body = {
       model,
       messages: [
         { role: "system", content: systemPrompt },
+        ...histories,
         { role: "user", content: `${promptPrefix}\n\n${transcript}` }
       ],
       stream: false
@@ -379,14 +538,22 @@ export const createQuickResponderPro = ({
       const current = pending;
       pending = null;
       if (current) {
-        return await current.task;
+        const result = await current.task;
+        await saveQuickHistory({
+          transcript,
+          quickText: result.text,
+          targetContextId: current.contextId ?? contextId
+        });
+        return result;
       }
-      return await withTimeout(
-        generate(transcript, controller.signal),
+      const result = await withTimeout(
+        generate(transcript, controller.signal, contextId),
         timeoutMs,
         "quick responder pro",
         controller
       );
+      await saveQuickHistory({ transcript, quickText: result.text, targetContextId: contextId });
+      return result;
     } catch {
       return fallback?.fire?.() ?? null;
     } finally {
@@ -394,21 +561,21 @@ export const createQuickResponderPro = ({
     }
   };
 
-  const createGenerationTask = (transcript, { signal } = {}) => {
+  const createGenerationTask = (transcript, { signal, contextId: targetContextId = contextId } = {}) => {
     if (!String(transcript || "").trim()) return null;
     pending?.controller?.abort?.();
     const controller = new AbortController();
     const onAbort = () => controller.abort();
     signal?.addEventListener?.("abort", onAbort, { once: true });
     const task = withTimeout(
-      generate(transcript, controller.signal),
+      generate(transcript, controller.signal, targetContextId),
       timeoutMs,
       "quick responder pro",
       controller
     ).finally(() => {
       signal?.removeEventListener?.("abort", onAbort);
     });
-    pending = { controller, signal, onAbort, task };
+    pending = { controller, signal, onAbort, task, contextId: targetContextId };
     task.catch(() => null);
     return task;
   };
@@ -425,6 +592,7 @@ export const createQuickResponderPro = ({
     fireFor,
     createGenerationTask,
     cancelGenerationTask,
+    saveMainResponse,
     clearVoiceCache
   });
 };

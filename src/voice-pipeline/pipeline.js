@@ -389,6 +389,16 @@ export const createVoicePipeline = ({
     }
     if (turn.interrupted) return;
 
+    try {
+      await quickResponder?.saveMainResponse?.({
+        transcript,
+        quickText: quick?.text ?? null,
+        responseText: ctx.fullText
+      });
+    } catch (error) {
+      emitError("quick-context", error);
+    }
+
     metrics?.mark("response.final");
     onEvent({
       type: "turn.final",

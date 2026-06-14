@@ -838,6 +838,32 @@ test("fireFor returning null emits no ack and quickText stays null", async () =>
   assert.deepEqual(spy.calls[0].options, { quickText: null });
 });
 
+test("quick responder receives main response history after turn finalize", async () => {
+  const saved = [];
+  const quickResponder = {
+    fireFor: async () => ({ text: "なるほど。", audio: b64("quick"), encoding: "wav" }),
+    saveMainResponse: async (entry) => {
+      saved.push(entry);
+    }
+  };
+  const { scripted, sink, pipeline } = setup({
+    deltas: ["明日は忙しいよ。"],
+    sttText: "明日はどう？",
+    pipelineOptions: { quickResponder }
+  });
+
+  await pushUtterance(pipeline, scripted);
+  await sink.waitFor((event) => event.type === "turn.final");
+
+  assert.deepEqual(saved, [
+    {
+      transcript: "明日はどう？",
+      quickText: "なるほど。",
+      responseText: "明日は忙しいよ。"
+    }
+  ]);
+});
+
 // ---------------------------------------------------------------------------
 // Speech detector option — Task 15
 // ---------------------------------------------------------------------------

@@ -2,6 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createQuickResponder,
   createDynamicQuickResponder,
+  createMemoryQuickResponderContextManager,
+  DEFAULT_QUICK_PROMPT_PREFIX,
+  DEFAULT_QUICK_REQUEST_PREFIX,
   createQuickResponderPro,
   resolveQuickBrain } from "../src/voice-pipeline/quick-responder.js";
 
@@ -419,6 +422,87 @@ test("pro: timeout falls back to static quick responder", async () => {
 
   assert.equal(result.text, "うん。");
   assert.equal(result.pro, undefined);
+});
+
+test("pro: cleaned context history is included in the direct chat completion", async () => {
+  const contextManager = createMemoryQuickResponderContextManager();
+  await contextManager.addHistories("ctx-1", [
+    { role: "assistant", content: "orphaned assistant message" },
+    { role: "user", content: `${DEFAULT_QUICK_PROMPT_PREFIX}\n\nこんにちは` },
+    { role: "assistant", content: "<think>internal</think><answer>やあ。</answer>" },
+    {
+      role: "user",
+      content: `${DEFAULT_QUICK_REQUEST_PREFIX.replaceAll("{quick_response_text}", "やあ。")}\n\nこんにちは`
+    },
+    {
+      role: "assistant",
+      content: "<think>internal</think><answer>元気だよ。[face:joy]<face name=\"joy\" /></answer>"
+    }
+  ]);
+  const fetchImpl = makeFetch({ text: "なるほど。" });
+  const qr = createQuickResponderPro({
+    tts: makeMockTts(),
+    apiKey: "test-key",
+    fetchImpl,
+    contextManager,
+    contextId: "ctx-1"
+  });
+
+  await qr.fireFor("今日の予定どう？");
+
+  const messages = fetchImpl.calls[0].body.messages;
+  assert.equal(messages[1].role, "user");
+  assert.ok(messages[1].content.startsWith(DEFAULT_QUICK_PROMPT_PREFIX));
+  assert.deepEqual(messages.slice(2, 5), [
+    { role: "assistant", content: "やあ。" },
+    { role: "user", content: "「やあ。」の続きを出力してください" },
+    { role: "assistant", content: "元気だよ。" }
+  ]);
+  assert.equal(messages.at(-1).content, `${DEFAULT_QUICK_PROMPT_PREFIX}\n\n今日の予定どう？`);
+  assert.equal(
+    messages.some((message) => String(message.content).includes("orphaned assistant message")),
+    false
+  );
+});
+
+test("pro: saves quick and main response history for the next quick turn", async () => {
+  const contextManager = createMemoryQuickResponderContextManager();
+  const fetchImpl = makeFetch({ text: "それは大変。" });
+  const qr = createQuickResponderPro({
+    tts: makeMockTts(),
+    apiKey: "test-key",
+    fetchImpl,
+    contextManager,
+    contextId: "ctx-2"
+  });
+
+  await qr.fireFor("今日は疲れた");
+  await qr.saveMainResponse({
+    transcript: "今日は疲れた",
+    quickText: "それは大変。",
+    responseText: "今日は早めに休もう。"
+  });
+  await qr.fireFor("明日は忙しい？");
+
+  const messages = fetchImpl.calls[1].body.messages;
+  assert.ok(
+    messages.some(
+      (message) =>
+        message.role === "user" &&
+        message.content === `${DEFAULT_QUICK_PROMPT_PREFIX}\n\n今日は疲れた`
+    )
+  );
+  assert.ok(messages.some((message) => message.role === "assistant" && message.content === "それは大変。"));
+  assert.ok(
+    messages.some(
+      (message) =>
+        message.role === "user" &&
+        message.content === "「それは大変。」の続きを出力してください"
+    )
+  );
+  assert.ok(
+    messages.some((message) => message.role === "assistant" && message.content === "今日は早めに休もう。")
+  );
 });
 
 test("pro: constructor validates required dependencies", () => {
