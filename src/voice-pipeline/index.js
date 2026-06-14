@@ -7,6 +7,8 @@ export { createVoiceTurnMetrics } from "./metrics.js";
 export {
   createQuickResponder,
   createDynamicQuickResponder,
+  createFileQuickResponderContextManager,
+  createMemoryQuickResponderContextManager,
   createQuickResponderPro,
   resolveQuickBrain
 } from "./quick-responder.js";

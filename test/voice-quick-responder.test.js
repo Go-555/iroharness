@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
+import { mkdtempSync, readFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 import { createQuickResponder,
   createDynamicQuickResponder,
+  createFileQuickResponderContextManager,
   createMemoryQuickResponderContextManager,
   DEFAULT_QUICK_PROMPT_PREFIX,
   DEFAULT_QUICK_REQUEST_PREFIX,
@@ -503,6 +507,25 @@ test("pro: saves quick and main response history for the next quick turn", async
   assert.ok(
     messages.some((message) => message.role === "assistant" && message.content === "今日は早めに休もう。")
   );
+});
+
+test("file context manager persists histories across instances", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "iroharness-quick-context-"));
+  const path = join(dir, "quick-context.json");
+  const contextA = createFileQuickResponderContextManager({ path });
+  await contextA.addHistories("ctx-file", [
+    { role: "user", content: `${DEFAULT_QUICK_PROMPT_PREFIX}\n\nおはよう` },
+    { role: "assistant", content: "<think>x</think><answer>おはよ。</answer>" }
+  ]);
+
+  const contextB = createFileQuickResponderContextManager({ path });
+  const histories = await contextB.getHistories({ contextId: "ctx-file", limit: 10 });
+
+  assert.deepEqual(histories, [
+    { role: "user", content: `${DEFAULT_QUICK_PROMPT_PREFIX}\n\nおはよう` },
+    { role: "assistant", content: "<think>x</think><answer>おはよ。</answer>" }
+  ]);
+  assert.equal(JSON.parse(readFileSync(path, "utf8")).version, 1);
 });
 
 test("pro: constructor validates required dependencies", () => {

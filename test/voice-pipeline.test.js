@@ -759,6 +759,37 @@ test("interrupt during fireFor bails the turn — brain is never called", async 
   assert.equal(sink.emitted("speech.interrupted").length, 1);
 });
 
+test("speech.start during fireFor cancels pending quick generation", async () => {
+  const gate = createGate();
+  let fired = false;
+  let cancelCount = 0;
+  const quickResponder = {
+    fireFor: async () => {
+      fired = true;
+      await gate.promise;
+      return { text: "お。", audio: b64("dyn"), encoding: "wav", dynamic: true };
+    },
+    cancelGenerationTask: () => {
+      cancelCount += 1;
+    }
+  };
+  const { scripted, mockHarness, sink, pipeline } = setup({
+    pipelineOptions: { quickResponder }
+  });
+
+  await pushUtterance(pipeline, scripted);
+  await until(() => fired);
+  scripted.script([{ type: "speech.start" }]);
+  await pipeline.pushAudio(FRAME);
+  gate.release();
+  await settle();
+
+  assert.ok(cancelCount >= 1, "speech.start cancels stale quick work");
+  assert.equal(mockHarness.calls.length, 0, "brain never opened after quick-stage barge-in");
+  assert.equal(sink.emitted("speech.interrupted").length, 1);
+  assert.equal(sink.emitted("speech.audio").length, 0);
+});
+
 test("static fire() ack text also flows to buildInput as quickText", async () => {
   const quickResponder = {
     fire: () => ({ text: "うん。", audio: b64("quick"), encoding: "wav" })

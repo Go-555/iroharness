@@ -28,6 +28,7 @@ import {
   createAudioPacer,
   createAzureStreamDetector,
   createDynamicQuickResponder,
+  createFileQuickResponderContextManager,
   createQuickResponderPro,
   resolveQuickBrain,
   createQuickResponder,
@@ -421,7 +422,15 @@ const createStackChanTts = () => {
     useCancellableSynthesis: process.env.AIVIS_SPEECH_CANCELLABLE === "1",
     // Engine-side resample so the device payload and the pacer's clock agree
     // on one rate (44.1kHz passthrough was a cause of choppy playback).
-    outputSamplingRate: Number(process.env.IROHARNESS_STACKCHAN_TTS_SAMPLE_RATE || "24000")
+    outputSamplingRate: Number(process.env.IROHARNESS_STACKCHAN_TTS_SAMPLE_RATE || "24000"),
+    volumeScale:
+      process.env.IROHARNESS_STACKCHAN_AIVIS_VOLUME_SCALE === undefined
+        ? null
+        : Number(process.env.IROHARNESS_STACKCHAN_AIVIS_VOLUME_SCALE),
+    audioGain:
+      process.env.IROHARNESS_STACKCHAN_AUDIO_GAIN === undefined
+        ? null
+        : Number(process.env.IROHARNESS_STACKCHAN_AUDIO_GAIN)
   });
 };
 
@@ -598,7 +607,7 @@ const createStackChanVoicePipeline = async ({ harness, brain, quickBrain = null,
   let quickMode = process.env.IROHARNESS_STACKCHAN_QUICK_MODE || "static";
   const staticQuickResponder = createQuickResponder({
     tts,
-    phrases: [process.env.IROHARNESS_STACKCHAN_IMMEDIATE_ACK_TEXT || "うん。"]
+    phrases: [process.env.IROHARNESS_STACKCHAN_IMMEDIATE_ACK_TEXT || "えっとね〜"]
   });
   let dynamicBrain = null;
   let quickResponder = null;
@@ -615,6 +624,15 @@ const createStackChanVoicePipeline = async ({ harness, brain, quickBrain = null,
         model: process.env.IROHARNESS_QUICK_OPENAI_MODEL || "gpt-4.1-nano",
         timeoutMs: Number(process.env.IROHARNESS_STACKCHAN_QUICK_TIMEOUT_MS || "1500"),
         maxChars: Number(process.env.IROHARNESS_STACKCHAN_QUICK_MAX_CHARS || "20"),
+        contextManager: process.env.IROHARNESS_STACKCHAN_QUICK_CONTEXT_PATH
+          ? createFileQuickResponderContextManager({
+              path: process.env.IROHARNESS_STACKCHAN_QUICK_CONTEXT_PATH,
+              maxHistoriesPerContext: Number(
+                process.env.IROHARNESS_STACKCHAN_QUICK_CONTEXT_MAX_HISTORIES || "200"
+              )
+            })
+          : undefined,
+        contextId: process.env.IROHARNESS_STACKCHAN_QUICK_CONTEXT_ID || "stackchan-realtime",
         voice: process.env.IROHARNESS_STACKCHAN_VOICE || "iroha"
       });
     } catch (error) {

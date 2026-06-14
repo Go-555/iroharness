@@ -3057,6 +3057,49 @@ test("createAivisSpeechTts overrides outputSamplingRate when configured", async 
   assert.match(calls[1].body, /"outputSamplingRate":24000/);
 });
 
+test("createAivisSpeechTts applies volumeScale and PCM gain", async () => {
+  const calls = [];
+  const wav = Buffer.from(
+    createPcm16WavBase64({ samples: [0, 10000, -10000, 32767, -32768] }),
+    "base64"
+  );
+  const fetchImpl = async (url, opts) => {
+    calls.push({ url: String(url), body: opts?.body });
+    if (String(url).includes("audio_query")) {
+      return {
+        ok: true,
+        status: 200,
+        async text() {
+          return JSON.stringify({ outputSamplingRate: 24000, volumeScale: 1 });
+        }
+      };
+    }
+    return {
+      ok: true,
+      status: 200,
+      async arrayBuffer() {
+        return wav.buffer.slice(wav.byteOffset, wav.byteOffset + wav.byteLength);
+      }
+    };
+  };
+  const tts = createAivisSpeechTts({
+    speaker: 1,
+    fetchImpl,
+    volumeScale: 0.8,
+    audioGain: 0.5
+  });
+
+  const events = await tts.stream({ text: "テスト" });
+  const emitted = Buffer.from(events[0].audio, "base64");
+
+  assert.match(calls[1].body, /"volumeScale":0.8/);
+  assert.equal(emitted.readInt16LE(44), 0);
+  assert.equal(emitted.readInt16LE(46), 5000);
+  assert.equal(emitted.readInt16LE(48), -5000);
+  assert.equal(emitted.readInt16LE(50), 16384);
+  assert.equal(emitted.readInt16LE(52), -16384);
+});
+
 test("createAivisSpeechTts keeps engine outputSamplingRate when option is absent", async () => {
   const calls = [];
   const fetchImpl = async (url, opts) => {

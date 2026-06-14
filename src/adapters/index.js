@@ -225,6 +225,48 @@ const parsePcm16Wav = (audio) => {
   });
 };
 
+const clampInt16 = (value) => Math.max(-32768, Math.min(32767, Math.round(value)));
+
+const applyPcm16WavGain = (audio, gain) => {
+  const factor = Number(gain);
+  if (!Number.isFinite(factor) || factor <= 0 || factor === 1) {
+    return audio;
+  }
+  const buffer = Buffer.isBuffer(audio) ? Buffer.from(audio) : Buffer.from(audio || []);
+  if (!isRiffWave(buffer)) {
+    return buffer;
+  }
+
+  let fmt = null;
+  let data = null;
+  let offset = 12;
+  while (offset + 8 <= buffer.length) {
+    const chunkId = buffer.toString("ascii", offset, offset + 4);
+    const chunkSize = buffer.readUInt32LE(offset + 4);
+    const chunkStart = offset + 8;
+    const chunkEnd = chunkStart + chunkSize;
+    if (chunkEnd > buffer.length) break;
+    if (chunkId === "fmt ") {
+      fmt = {
+        audioFormat: buffer.readUInt16LE(chunkStart),
+        bitsPerSample: buffer.readUInt16LE(chunkStart + 14),
+      };
+    }
+    if (chunkId === "data") {
+      data = { start: chunkStart, end: chunkEnd };
+    }
+    offset = chunkEnd + (chunkSize % 2);
+  }
+
+  if (!fmt || !data || fmt.audioFormat !== 1 || fmt.bitsPerSample !== 16) {
+    return buffer;
+  }
+  for (let i = data.start; i + 1 < data.end; i += 2) {
+    buffer.writeInt16LE(clampInt16(buffer.readInt16LE(i) * factor), i);
+  }
+  return buffer;
+};
+
 const normalizeStackChanSpeechAudio = (event) => {
   const encoding = String(event?.encoding || "wav").toLowerCase();
   if (encoding === "wav") {
@@ -3316,6 +3358,8 @@ export const createAivisSpeechTts = ({
   fetchImpl = globalThis.fetch,
   useCancellableSynthesis = false,
   outputSamplingRate = null,
+  volumeScale = null,
+  audioGain = null,
 } = {}) => {
   if (speaker === undefined || speaker === null || speaker === "") {
     throw new Error("createAivisSpeechTts requires speaker");
@@ -3378,6 +3422,9 @@ export const createAivisSpeechTts = ({
       if (outputSamplingRate) {
         audioQuery.outputSamplingRate = outputSamplingRate;
       }
+      if (volumeScale !== null && Number.isFinite(Number(volumeScale))) {
+        audioQuery.volumeScale = Number(volumeScale);
+      }
       if (signal?.aborted) {
         emit({
           type: "tts.interrupted",
@@ -3409,7 +3456,8 @@ export const createAivisSpeechTts = ({
           `AivisSpeech synthesis ${id} failed: ${synthesisResponse.status} ${responseText}`,
         );
       }
-      const audio = arrayBufferToBase64(await synthesisResponse.arrayBuffer());
+      const audioBuffer = Buffer.from(await synthesisResponse.arrayBuffer());
+      const audio = applyPcm16WavGain(audioBuffer, audioGain).toString("base64");
       emit({
         type: "tts.audio",
         text: String(text || ""),

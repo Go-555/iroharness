@@ -434,6 +434,7 @@ export const createVoicePipeline = ({
     active = null;
     turn.interrupted = true;
     turn.controller.abort(); // stop brain + tts — abandon alone keeps burning tokens
+    quickResponder?.cancelGenerationTask?.();
     if (typeof turn.abandon === "function") {
       turn.abandon(); // latched: double calls are no-ops
     }
@@ -452,6 +453,7 @@ export const createVoicePipeline = ({
   const handleDetectorEvent = (event) => {
     if (!event) return;
     if (event.type === "speech.start") {
+      quickResponder?.cancelGenerationTask?.();
       if (active) interrupt("barge-in"); // auto barge-in: same path as interrupt()
       // New-utterance boundary: wipe stale first-wins marks left by
       // interrupted / early-exit turns (stt.empty, rejection, errors)

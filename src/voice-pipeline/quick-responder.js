@@ -39,6 +39,9 @@
 //   Passthrough to fallback.warmup() when present (so callers treat static and
 //   dynamic responders uniformly); resolves 0 without a fallback.
 
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { dirname } from "node:path";
+
 import { toBrainStream } from "./brain-stream.js";
 
 // 本家 quick_responder/pro.py の日本語プロンプト準拠。
@@ -348,6 +351,83 @@ export const createMemoryQuickResponderContextManager = () => {
 
   const clear = () => {
     byContext.clear();
+  };
+
+  return Object.freeze({ addHistories, getHistories, clear });
+};
+
+export const createFileQuickResponderContextManager = ({
+  path,
+  maxHistoriesPerContext = 200
+} = {}) => {
+  if (!path) {
+    throw new Error("createFileQuickResponderContextManager requires path");
+  }
+
+  let loaded = false;
+  let writeChain = Promise.resolve();
+  const byContext = new Map();
+  const getKey = (contextId) => String(contextId || "default");
+
+  const load = async () => {
+    if (loaded) return;
+    loaded = true;
+    try {
+      const payload = JSON.parse(await readFile(path, "utf8"));
+      const contexts = payload && typeof payload === "object" ? payload.contexts : null;
+      if (!contexts || typeof contexts !== "object") return;
+      for (const [key, histories] of Object.entries(contexts)) {
+        if (Array.isArray(histories)) {
+          byContext.set(
+            key,
+            histories
+              .filter((history) => history && typeof history === "object")
+              .map((history) => Object.freeze({ ...history }))
+          );
+        }
+      }
+    } catch (error) {
+      if (error?.code !== "ENOENT") throw error;
+    }
+  };
+
+  const persist = async () => {
+    const contexts = Object.fromEntries(
+      [...byContext.entries()].map(([key, histories]) => [key, histories])
+    );
+    await mkdir(dirname(path), { recursive: true });
+    await writeFile(
+      path,
+      `${JSON.stringify({ version: 1, contexts }, null, 2)}\n`,
+      "utf8"
+    );
+  };
+
+  const addHistories = async (contextId, histories) => {
+    await load();
+    const key = getKey(contextId);
+    const current = byContext.get(key) ?? [];
+    byContext.set(
+      key,
+      [...current, ...histories.map((history) => Object.freeze({ ...history }))].slice(
+        -maxHistoriesPerContext
+      )
+    );
+    writeChain = writeChain.then(persist, persist);
+    await writeChain;
+  };
+
+  const getHistories = async ({ contextId = "default", limit = 100 } = {}) => {
+    await load();
+    const histories = byContext.get(getKey(contextId)) ?? [];
+    return histories.slice(-limit).map((history) => Object.freeze({ ...history }));
+  };
+
+  const clear = async () => {
+    await load();
+    byContext.clear();
+    writeChain = writeChain.then(persist, persist);
+    await writeChain;
   };
 
   return Object.freeze({ addHistories, getHistories, clear });
