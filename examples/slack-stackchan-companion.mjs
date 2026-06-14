@@ -28,6 +28,7 @@ import {
   createAudioPacer,
   createAzureStreamDetector,
   createDynamicQuickResponder,
+  createQuickResponderPro,
   resolveQuickBrain,
   createQuickResponder,
   createSileroVad,
@@ -589,16 +590,39 @@ const createStackChanVoicePipeline = async ({ harness, brain, quickBrain = null,
     sampleRate: Number(process.env.IROHARNESS_STACKCHAN_TTS_SAMPLE_RATE || "24000"),
     sleepFn: (ms) => new Promise((resolveSleep) => setTimeout(resolveSleep, ms))
   });
-  // Quick ack mode: "static" (default, pre-synthesized phrase — current
-  // behavior) or "dynamic" (separate lightweight brain call generates a
-  // context-appropriate ack; the static responder stays as its fallback).
+  // Quick ack mode:
+  // - "static" (default): pre-synthesized phrase.
+  // - "dynamic": reuses an IroHarness brain abstraction.
+  // - "pro": AIAvatarKit QuickResponderPro-style direct OpenAI-compatible
+  //   chat completion call (stream=false) + TTS cache + static fallback.
   let quickMode = process.env.IROHARNESS_STACKCHAN_QUICK_MODE || "static";
   const staticQuickResponder = createQuickResponder({
     tts,
     phrases: [process.env.IROHARNESS_STACKCHAN_IMMEDIATE_ACK_TEXT || "うん。"]
   });
   let dynamicBrain = null;
-  if (quickMode === "dynamic") {
+  let quickResponder = null;
+  if (quickMode === "pro") {
+    try {
+      quickResponder = createQuickResponderPro({
+        tts,
+        fallback: staticQuickResponder,
+        apiKey: process.env.IROHARNESS_QUICK_OPENAI_API_KEY || process.env.OPENAI_API_KEY,
+        baseUrl:
+          process.env.IROHARNESS_QUICK_OPENAI_BASE_URL ||
+          process.env.OPENAI_BASE_URL ||
+          "https://api.openai.com/v1",
+        model: process.env.IROHARNESS_QUICK_OPENAI_MODEL || "gpt-4.1-nano",
+        timeoutMs: Number(process.env.IROHARNESS_STACKCHAN_QUICK_TIMEOUT_MS || "1500"),
+        maxChars: Number(process.env.IROHARNESS_STACKCHAN_QUICK_MAX_CHARS || "20"),
+        voice: process.env.IROHARNESS_STACKCHAN_VOICE || "iroha"
+      });
+    } catch (error) {
+      console.warn(`StackChan streaming voice: quick pro unavailable (${error.message}); using static.`);
+      quickMode = "static (pro unavailable)";
+      quickResponder = staticQuickResponder;
+    }
+  } else if (quickMode === "dynamic") {
     const resolved = resolveQuickBrain({ quickBrain, voiceBrain: brain, voiceBrainIsCodex });
     if (resolved.downgraded) {
       console.warn(
@@ -611,13 +635,13 @@ const createStackChanVoicePipeline = async ({ harness, brain, quickBrain = null,
       dynamicBrain = resolved.brain;
     }
   }
-  const quickResponder = dynamicBrain
+  quickResponder ??= dynamicBrain
     ? createDynamicQuickResponder({
-        brain: dynamicBrain,
-        tts,
-        fallback: staticQuickResponder,
-        voice: process.env.IROHARNESS_STACKCHAN_VOICE || "iroha"
-      })
+      brain: dynamicBrain,
+      tts,
+      fallback: staticQuickResponder,
+      voice: process.env.IROHARNESS_STACKCHAN_VOICE || "iroha"
+    })
     : staticQuickResponder;
   const cachedPhrases = await quickResponder.warmup();
   console.log(

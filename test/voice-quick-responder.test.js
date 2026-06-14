@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createQuickResponder,
-  createDynamicQuickResponder, resolveQuickBrain } from "../src/voice-pipeline/quick-responder.js";
+  createDynamicQuickResponder,
+  createQuickResponderPro,
+  resolveQuickBrain } from "../src/voice-pipeline/quick-responder.js";
 
 // ---------------------------------------------------------------------------
 // Mock TTS factory
@@ -330,4 +332,100 @@ test("resolveQuickBrain refuses a codex voice brain fallback (downgraded)", () =
   const resolved = resolveQuickBrain({ voiceBrain: { id: "voice-codex" }, voiceBrainIsCodex: true });
   assert.equal(resolved.brain, null);
   assert.equal(resolved.downgraded, true);
+});
+
+// ===========================================================================
+// createQuickResponderPro
+// ===========================================================================
+
+const makeFetch = ({ text = "なるほど。", delayMs = 0, status = 200 } = {}) => {
+  const calls = [];
+  const fetchImpl = async (url, init) => {
+    calls.push({ url, init, body: JSON.parse(init.body) });
+    if (delayMs > 0) {
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+    return {
+      ok: status >= 200 && status < 300,
+      status,
+      async text() {
+        return "bad";
+      },
+      async json() {
+        return {
+          choices: [
+            {
+              message: {
+                content: text
+              }
+            }
+          ]
+        };
+      }
+    };
+  };
+  fetchImpl.calls = calls;
+  return fetchImpl;
+};
+
+test("pro: direct chat completion generates contextual ack and synthesizes it", async () => {
+  const tts = makeMockTts();
+  const fetchImpl = makeFetch({ text: "それは大変。" });
+  const qr = createQuickResponderPro({
+    tts,
+    apiKey: "test-key",
+    baseUrl: "https://example.test/v1",
+    model: "gpt-4.1-nano",
+    fetchImpl
+  });
+
+  const result = await qr.fireFor("今日ちょっと疲れた");
+
+  assert.equal(result.text, "それは大変。");
+  assert.equal(result.audio, Buffer.from("audio-for-それは大変。").toString("base64"));
+  assert.equal(result.encoding, "wav");
+  assert.equal(result.pro, true);
+  assert.equal(fetchImpl.calls.length, 1);
+  assert.equal(fetchImpl.calls[0].url, "https://example.test/v1/chat/completions");
+  assert.equal(fetchImpl.calls[0].body.model, "gpt-4.1-nano");
+  assert.equal(fetchImpl.calls[0].body.stream, false);
+  assert.ok(fetchImpl.calls[0].body.messages[0].content.includes("10文字以内"));
+  assert.ok(fetchImpl.calls[0].body.messages[1].content.endsWith("\n\n今日ちょっと疲れた"));
+});
+
+test("pro: voice cache avoids repeating TTS for the same generated phrase", async () => {
+  const tts = makeMockTts();
+  const fetchImpl = makeFetch({ text: "いいね。" });
+  const qr = createQuickResponderPro({ tts, apiKey: "test-key", fetchImpl });
+
+  await qr.fireFor("一回目");
+  await qr.fireFor("二回目");
+
+  assert.equal(fetchImpl.calls.length, 2);
+  assert.equal(tts.streamCallCount, 1);
+});
+
+test("pro: timeout falls back to static quick responder", async () => {
+  const fallback = await makeWarmedFallback("うん。");
+  const qr = createQuickResponderPro({
+    tts: makeMockTts(),
+    apiKey: "test-key",
+    fetchImpl: makeFetch({ delayMs: 50 }),
+    fallback,
+    timeoutMs: 10
+  });
+
+  const result = await qr.fireFor("もしもし");
+
+  assert.equal(result.text, "うん。");
+  assert.equal(result.pro, undefined);
+});
+
+test("pro: constructor validates required dependencies", () => {
+  assert.throws(() => createQuickResponderPro({ tts: makeMockTts() }), /apiKey/i);
+  assert.throws(() => createQuickResponderPro({ apiKey: "x" }), /tts/i);
+  assert.throws(
+    () => createQuickResponderPro({ tts: makeMockTts(), apiKey: "x", fetchImpl: null }),
+    /fetchImpl/i
+  );
 });

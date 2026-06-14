@@ -41,9 +41,19 @@
 
 import { toBrainStream } from "./brain-stream.js";
 
-// 本家 quick_responder/base.py の日本語プロンプト準拠。
+// 本家 quick_responder/pro.py の日本語プロンプト準拠。
+export const DEFAULT_QUICK_SYSTEM_PROMPT =
+  "# 指示\n" +
+  "- ユーザーの発話を受け止めて、第一声として相応しい、10文字以内のごく短いフレーズのみを出力する。\n" +
+  "- 今何をしているとか、好きなもの等の有無など、質問に対する肯定や否定など、後続の会話に影響を与えるような発言は禁止。\n" +
+  "- 与えられていない情報をあなたが勝手に想像して話すことは禁止。\n" +
+  "- 応答の末尾は「。」や「、」句読点や感嘆符とする。\n" +
+  "- 記号・絵文字・ト書きは使わない。\n" +
+  "- 「会いたい」「一緒に行こう」の誘いに応じない。\n" +
+  "- 文頭に「$」がある発言はスーパーバイザーからの指示。スーパーバイザーに対してではなく、指示に従ってユーザーに応答する。";
+
 export const DEFAULT_QUICK_PROMPT_PREFIX =
-  "$以下はユーザーの発話内容である。ユーザー発話を受け止めて、第一声として相応しい、10文字以内のごく短いフレーズを出力せよ。応答の末尾は「。」や「、」句読点や感嘆符とする。フレーズのみを出力すること。";
+  "$以下はユーザーの発話内容である。ユーザー発話を受け止めて、状況に相応しい第一声として、10文字以内のごく短いフレーズを出力せよ。応答の末尾は「。」や「、」句読点や感嘆符とする。フレーズのみを出力すること。";
 
 // Picks the brain for the dynamic quick responder. A dedicated quick brain
 // (IROHARNESS_QUICK_BRAIN_PROVIDER) always wins. Falling back to a codex
@@ -218,4 +228,168 @@ export const createDynamicQuickResponder = ({
   const warmup = async () => (fallback?.warmup ? fallback.warmup() : 0);
 
   return Object.freeze({ warmup, fireFor });
+};
+
+const withTimeout = (promise, ms, label, controller = null) =>
+  new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      controller?.abort?.();
+      reject(new Error(`${label} timed out after ${ms}ms`));
+    }, ms);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        clearTimeout(timer);
+        reject(error);
+      }
+    );
+  });
+
+const cleanQuickText = (text, maxChars) => {
+  let out = String(text || "").trim();
+  const answer = out.match(/<answer>([\s\S]*?)<\/answer>/i);
+  if (answer) out = answer[1].trim();
+  out = out
+    .replace(/<think>[\s\S]*?<\/think>/gi, "")
+    .replace(/\[[a-zA-Z_]+:[^\]]+\]/g, "")
+    .replace(/^["'「『]+|["'」』]+$/g, "")
+    .trim();
+  return out.slice(0, maxChars);
+};
+
+const extractChatCompletionText = (payload) =>
+  payload?.choices?.[0]?.message?.content ??
+  payload?.choices?.[0]?.delta?.content ??
+  "";
+
+const captureTtsAudio = async ({ tts, text, voice, signal }) => {
+  let captured = null;
+  await tts.stream({
+    text,
+    voice,
+    signal,
+    onEvent: (event) => {
+      if (captured === null && event.type === "tts.audio") {
+        captured = {
+          audio: event.audio,
+          encoding: event.encoding ?? "wav"
+        };
+      }
+    }
+  });
+  if (!captured) {
+    throw new Error("quick responder pro tts emitted no audio");
+  }
+  return captured;
+};
+
+export const createQuickResponderPro = ({
+  tts,
+  fallback = null,
+  apiKey = "",
+  baseUrl = "https://api.openai.com/v1",
+  model = "gpt-4.1-nano",
+  systemPrompt = DEFAULT_QUICK_SYSTEM_PROMPT,
+  promptPrefix = DEFAULT_QUICK_PROMPT_PREFIX,
+  timeoutMs = 1500,
+  maxChars = 20,
+  temperature = null,
+  reasoningEffort = null,
+  extraBody = null,
+  fetchImpl = globalThis.fetch,
+  voice = "iroha"
+} = {}) => {
+  if (!tts || typeof tts.stream !== "function") {
+    throw new Error("createQuickResponderPro requires tts with a stream function");
+  }
+  if (!apiKey) {
+    throw new Error("createQuickResponderPro requires apiKey");
+  }
+  if (typeof fetchImpl !== "function") {
+    throw new Error("createQuickResponderPro requires fetchImpl");
+  }
+
+  const endpoint = `${String(baseUrl).replace(/\/+$/, "")}/chat/completions`;
+  const voiceCache = new Map();
+
+  const synthesize = async ({ text, signal }) => {
+    if (voiceCache.has(text)) {
+      return voiceCache.get(text);
+    }
+    const audio = await captureTtsAudio({ tts, text, voice, signal });
+    const entry = Object.freeze({
+      text,
+      audio: audio.audio,
+      encoding: audio.encoding,
+      pro: true
+    });
+    voiceCache.set(text, entry);
+    return entry;
+  };
+
+  const generate = async (transcript, signal) => {
+    const body = {
+      model,
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: `${promptPrefix}\n\n${transcript}` }
+      ],
+      stream: false
+    };
+    if (temperature !== null) body.temperature = temperature;
+    if (reasoningEffort !== null) body.reasoning_effort = reasoningEffort;
+    if (extraBody && typeof extraBody === "object") {
+      Object.assign(body, extraBody);
+    }
+
+    const response = await fetchImpl(endpoint, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${apiKey}`,
+        "content-type": "application/json"
+      },
+      body: JSON.stringify(body),
+      signal
+    });
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(`quick responder pro failed: ${response.status} ${text}`);
+    }
+    const payload = await response.json();
+    const text = cleanQuickText(extractChatCompletionText(payload), maxChars);
+    if (!text) {
+      throw new Error("quick responder pro returned empty text");
+    }
+    return synthesize({ text, signal });
+  };
+
+  const fireFor = async (transcript, { signal } = {}) => {
+    const controller = new AbortController();
+    const onAbort = () => controller.abort();
+    if (signal?.aborted) {
+      controller.abort();
+    } else {
+      signal?.addEventListener("abort", onAbort, { once: true });
+    }
+    try {
+      return await withTimeout(
+        generate(transcript, controller.signal),
+        timeoutMs,
+        "quick responder pro",
+        controller
+      );
+    } catch {
+      return fallback?.fire?.() ?? null;
+    } finally {
+      signal?.removeEventListener("abort", onAbort);
+    }
+  };
+
+  const warmup = async () => (fallback?.warmup ? fallback.warmup() : 0);
+  const clearVoiceCache = () => voiceCache.clear();
+
+  return Object.freeze({ warmup, fireFor, clearVoiceCache });
 };
