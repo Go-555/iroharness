@@ -278,6 +278,24 @@ const splitStackChanSpeechAudio = (audio, { maxBytes = 8192 } = {}) => {
   return Object.freeze(chunks);
 };
 
+const sleepMs = (ms) =>
+  new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+
+const stackChanAudioDurationMs = (audio) => {
+  if (audio?.encoding !== "pcm16") {
+    return 0;
+  }
+  const bytes = Buffer.from(audio?.dataBase64 || "", "base64").length;
+  const sampleRate = Math.max(1, Number(audio?.sampleRate || 24000));
+  const channels = Math.max(1, Number(audio?.channels || 1));
+  const bitsPerSample = Math.max(1, Number(audio?.bitsPerSample || 16));
+  const bytesPerSampleFrame = Math.max(1, channels * (bitsPerSample / 8));
+  const sampleFrames = bytes / bytesPerSampleFrame;
+  return (sampleFrames / sampleRate) * 1000;
+};
+
 const sendJson = (response, status, value) => {
   response.writeHead(status, {
     "content-type": "application/json; charset=utf-8",
@@ -3957,11 +3975,13 @@ export const createStackChanRealtimeSessionHandler = ({
           },
         });
 
+      let speechDeliveryChain = Promise.resolve();
+
       // Shared wire delivery for one normalized speech-audio payload:
-      // chunk-split → optional queue enqueue → speech.audio sends. Used by
-      // both the legacy speak() path and streaming-mode pipeline events so
-      // the wire shape stays byte-compatible between the two.
-      const deliverSpeechAudio = ({ audio, text, role = "answer" }) => {
+      // chunk-split → optional queue enqueue → paced speech.audio sends.
+      // Used by both the legacy speak() path and streaming-mode pipeline
+      // events so the wire shape stays byte-compatible between the two.
+      const deliverSpeechAudio = async ({ audio, text, role = "answer" }) => {
         const audioChunks = splitStackChanSpeechAudio(audio, {
           maxBytes: speechChunkBytes,
         });
@@ -3982,7 +4002,7 @@ export const createStackChanRealtimeSessionHandler = ({
               id: `${id}:speech:${sequence}`,
               text,
             };
-        audioChunks.forEach((audioChunk, index) => {
+        for (const [index, audioChunk] of audioChunks.entries()) {
           send({
             type: "speech.audio",
             itemId: item.id,
@@ -3999,8 +4019,19 @@ export const createStackChanRealtimeSessionHandler = ({
             },
             voice,
           });
-        });
+          if (index < audioChunks.length - 1) {
+            await sleepMs(Math.ceil(stackChanAudioDurationMs(audioChunk)));
+          }
+        }
         return audioChunks.length;
+      };
+
+      const queueSpeechAudioDelivery = (payload) => {
+        const delivery = speechDeliveryChain.then(() =>
+          deliverSpeechAudio(payload),
+        );
+        speechDeliveryChain = delivery.catch(() => null);
+        return delivery;
       };
 
       const speak = async ({ text, role = "answer", sendFinal = true }) => {
@@ -4023,6 +4054,7 @@ export const createStackChanRealtimeSessionHandler = ({
         let speechChunkCount = 0;
         speechInFlight = true;
         try {
+          const speechDeliveries = [];
           const speechEvents = await tts.stream({
             text: responseText,
             voice,
@@ -4039,21 +4071,25 @@ export const createStackChanRealtimeSessionHandler = ({
                   textLength: responseText.length,
                 });
               }
-              const sentChunks = deliverSpeechAudio({
+              const delivery = queueSpeechAudioDelivery({
                 audio,
                 text: event.text || responseText,
                 role,
+              }).then((sentChunks) => {
+                speechChunkCount += sentChunks;
+                emit({
+                  type: "stackchan.speech.audio_sent",
+                  role,
+                  chunks: sentChunks,
+                  totalChunks: speechChunkCount,
+                  bytes: audio.dataBase64.length,
+                });
+                return sentChunks;
               });
-              speechChunkCount += sentChunks;
-              emit({
-                type: "stackchan.speech.audio_sent",
-                role,
-                chunks: sentChunks,
-                totalChunks: speechChunkCount,
-                bytes: audio.dataBase64.length,
-              });
+              speechDeliveries.push(delivery);
             },
           });
+          await Promise.all(speechDeliveries);
           const completed = queue?.snapshot?.().current;
           if (completed?.id && queue?.complete) {
             queue.complete(completed.id);
@@ -4475,7 +4511,7 @@ export const createStackChanRealtimeSessionHandler = ({
               text: event.text || "",
             });
           }
-          const sentChunks = deliverSpeechAudio({
+          const sentChunks = await queueSpeechAudioDelivery({
             audio,
             text: event.text || "",
             role,

@@ -1183,7 +1183,8 @@ test("StackChan realtime session handler speaks AIAvatarStackChan websocket mess
     allow_merge: false,
     wait_in_queue: true
   });
-  await new Promise((resolve) => setTimeout(resolve, 0));
+  const invokedAt = Date.now();
+  await waitFor(() => sent.at(-1)?.type === "final");
 
   assert.equal(sent[0].type, "ready");
   assert.equal(sent.some((message) => message.type === "connected"), true);
@@ -1197,6 +1198,7 @@ test("StackChan realtime session handler speaks AIAvatarStackChan websocket mess
   assert.equal(sent.filter((message) => message.type === "chunk").length > 2, true);
   assert.equal(sent.at(-1).type, "final");
   assert.equal(sent.at(-1).session_id, "avatar-session");
+  assert.equal(Date.now() - invokedAt >= 80, true);
   assert.equal(turns[0].modality, "text");
   assert.equal(turns[0].metadata.aiAvatarSessionId, "avatar-session");
 
