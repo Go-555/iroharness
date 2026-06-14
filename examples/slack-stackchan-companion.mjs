@@ -695,7 +695,15 @@ const createSlackStackChanCompanion = async () => {
   const botToken = process.env.SLACK_BOT_TOKEN || null;
   const signingSecret = process.env.SLACK_SIGNING_SECRET || null;
   const slackEnabled = Boolean(botToken && signingSecret);
-  const stackchanDeviceToken = requireEnv("STACKCHAN_DEVICE_TOKEN");
+  const allowAnyStackChanToken = process.env.IROHARNESS_STACKCHAN_ALLOW_ANY_TOKEN === "1";
+  const stackchanDeviceToken = allowAnyStackChanToken
+    ? null
+    : requireEnv("STACKCHAN_DEVICE_TOKEN");
+  if (allowAnyStackChanToken) {
+    console.warn(
+      "StackChan realtime token check is disabled (IROHARNESS_STACKCHAN_ALLOW_ANY_TOKEN=1). Use only on a trusted local network."
+    );
+  }
   const port = Number(process.env.PORT || "4182");
   const host = process.env.HOST || "127.0.0.1";
   const codexWorkspace = process.env.CODEX_WORKSPACE || process.cwd();
