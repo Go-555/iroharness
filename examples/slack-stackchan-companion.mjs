@@ -535,6 +535,12 @@ const createStackChanSpeechFrontend = async ({ micSampleRate, onDetectorEvent = 
           region,
           language: process.env.AZURE_SPEECH_LANGUAGE || "ja-JP",
           sampleRate: micSampleRate,
+          segmentationSilenceMs: Number(
+            process.env.IROHARNESS_STACKCHAN_AZURE_SEGMENTATION_SILENCE_MS || "500"
+          ),
+          finalizeTimeoutMs: Number(
+            process.env.IROHARNESS_STACKCHAN_AZURE_FINALIZE_TIMEOUT_MS || "2000"
+          ),
           mode: streamMode,
           gate,
           // Push-style delivery: the mic mutes once the server starts speaking
