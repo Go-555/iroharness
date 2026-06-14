@@ -3907,6 +3907,15 @@ export const createStackChanRealtimeSessionHandler = ({
         }
         if (payload.type === "speech.audio") {
           const audio = payload.audio || {};
+          const avatarControlRequest =
+            payload.faceName || payload.faceDurationSec
+              ? {
+                  avatar_control_request: {
+                    face_name: payload.faceName || "neutral",
+                    face_duration: payload.faceDurationSec || 2,
+                  },
+                }
+              : {};
           return {
             type: "chunk",
             session_id: aiAvatarSessionId,
@@ -3915,10 +3924,7 @@ export const createStackChanRealtimeSessionHandler = ({
               audio_format: toAiAvatarAudioFormat(audio),
               text: payload.text || "",
             },
-            avatar_control_request: {
-              face_name: payload.faceName || "neutral",
-              face_duration: payload.faceDurationSec || 2,
-            },
+            ...avatarControlRequest,
           };
         }
         if (payload.type === "response.final") {
@@ -3981,7 +3987,13 @@ export const createStackChanRealtimeSessionHandler = ({
       // chunk-split → optional queue enqueue → paced speech.audio sends.
       // Used by both the legacy speak() path and streaming-mode pipeline
       // events so the wire shape stays byte-compatible between the two.
-      const deliverSpeechAudio = async ({ audio, text, role = "answer" }) => {
+      const deliverSpeechAudio = async ({
+        audio,
+        text,
+        role = "answer",
+        faceName = "neutral",
+        faceDurationSec = 2,
+      }) => {
         const audioChunks = splitStackChanSpeechAudio(audio, {
           maxBytes: speechChunkBytes,
         });
@@ -4017,6 +4029,8 @@ export const createStackChanRealtimeSessionHandler = ({
               channels: audioChunk.channels,
               bitsPerSample: audioChunk.bitsPerSample,
             },
+            faceName: index === 0 ? faceName : null,
+            faceDurationSec: index === 0 ? faceDurationSec : null,
             voice,
           });
           if (index < audioChunks.length - 1) {

@@ -1191,11 +1191,14 @@ test("StackChan realtime session handler speaks AIAvatarStackChan websocket mess
   assert.equal(sent.some((message) => message.type === "accepted"), true);
   assert.equal(sent.some((message) => message.type === "start"), true);
   assert.equal(sent.some((message) => message.type === "chunk"), true);
-  const chunk = sent.find((message) => message.type === "chunk");
+  const chunks = sent.filter((message) => message.type === "chunk");
+  const chunk = chunks[0];
   assert.equal(chunk.metadata.audio_format.codec, "pcm16");
   assert.equal(chunk.metadata.audio_format.sample_rate, 24000);
   assert.equal(Buffer.from(chunk.audio_data, "base64").length <= 512, true);
-  assert.equal(sent.filter((message) => message.type === "chunk").length > 2, true);
+  assert.equal(chunks.length > 2, true);
+  assert.equal(chunks[0].avatar_control_request.face_name, "neutral");
+  assert.equal(chunks.slice(1).every((message) => !message.avatar_control_request), true);
   assert.equal(sent.at(-1).type, "final");
   assert.equal(sent.at(-1).session_id, "avatar-session");
   assert.equal(Date.now() - invokedAt >= 80, true);
