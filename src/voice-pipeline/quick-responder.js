@@ -314,6 +314,7 @@ export const createQuickResponderPro = ({
 
   const endpoint = `${String(baseUrl).replace(/\/+$/, "")}/chat/completions`;
   const voiceCache = new Map();
+  let pending = null;
 
   const synthesize = async ({ text, signal }) => {
     if (voiceCache.has(text)) {
@@ -375,6 +376,11 @@ export const createQuickResponderPro = ({
       signal?.addEventListener("abort", onAbort, { once: true });
     }
     try {
+      const current = pending;
+      pending = null;
+      if (current) {
+        return await current.task;
+      }
       return await withTimeout(
         generate(transcript, controller.signal),
         timeoutMs,
@@ -388,8 +394,37 @@ export const createQuickResponderPro = ({
     }
   };
 
+  const createGenerationTask = (transcript, { signal } = {}) => {
+    if (!String(transcript || "").trim()) return null;
+    pending?.controller?.abort?.();
+    const controller = new AbortController();
+    const onAbort = () => controller.abort();
+    signal?.addEventListener?.("abort", onAbort, { once: true });
+    const task = withTimeout(
+      generate(transcript, controller.signal),
+      timeoutMs,
+      "quick responder pro",
+      controller
+    ).finally(() => {
+      signal?.removeEventListener?.("abort", onAbort);
+    });
+    pending = { controller, signal, onAbort, task };
+    task.catch(() => null);
+    return task;
+  };
+
   const warmup = async () => (fallback?.warmup ? fallback.warmup() : 0);
+  const cancelGenerationTask = () => {
+    pending?.controller?.abort?.();
+    pending = null;
+  };
   const clearVoiceCache = () => voiceCache.clear();
 
-  return Object.freeze({ warmup, fireFor, clearVoiceCache });
+  return Object.freeze({
+    warmup,
+    fireFor,
+    createGenerationTask,
+    cancelGenerationTask,
+    clearVoiceCache
+  });
 };

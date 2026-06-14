@@ -4544,6 +4544,7 @@ export const createStackChanRealtimeSessionHandler = ({
           return null;
         }
         if (event.type === "turn.final") {
+          await speechDeliveryChain;
           pipelineTurnStarted = false;
           emit({
             type: "stackchan.latency.pipeline_turn",

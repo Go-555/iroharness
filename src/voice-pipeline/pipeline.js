@@ -451,6 +451,7 @@ export const createVoicePipeline = ({
       metrics?.mark("speech.start");
       state = "listening";
     } else if (event.type === "transcript.partial") {
+      quickResponder?.createGenerationTask?.(event.text ?? "");
       onEvent({ type: "stt.partial", text: event.text ?? "" });
     } else if (event.type === "speech.end") {
       metrics?.mark("speech.end");
