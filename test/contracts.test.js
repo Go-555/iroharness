@@ -613,6 +613,8 @@ test("provider brain gateway maps macro context to OpenAI, Claude, and local pro
     env: {
       IROHARNESS_TEXT_BRAIN_PROVIDER: "openai",
       IROHARNESS_TEXT_BRAIN_MODEL: "openai-text",
+      IROHARNESS_TEXT_BRAIN_REASONING_EFFORT: "none",
+      IROHARNESS_TEXT_BRAIN_TEXT_VERBOSITY: "low",
       OPENAI_API_KEY: "test-openai-key"
     }
   });
@@ -634,6 +636,8 @@ test("provider brain gateway maps macro context to OpenAI, Claude, and local pro
   assert.equal(openai.text, "openai response");
   assert.match(openaiCalls[0].url, /\/responses$/);
   assert.equal(openaiCalls[0].body.model, "openai-text");
+  assert.deepEqual(openaiCalls[0].body.reasoning, { effort: "none" });
+  assert.deepEqual(openaiCalls[0].body.text, { verbosity: "low" });
   assert.match(openaiCalls[0].body.instructions, /Iroha/);
 
   const anthropicConfig = createProviderConfig({

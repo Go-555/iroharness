@@ -86,11 +86,15 @@ export const createProviderConfig = ({ slot, env = process.env }) => {
     provider === "anthropic" ? "claude-sonnet-4-5" : "gpt-oss:20b"
   );
   const maxTokens = Number(envValue(env, slot, "BRAIN_MAX_TOKENS", slot === "voice" ? 160 : 700));
+  const reasoningEffort = envValue(env, slot, "BRAIN_REASONING_EFFORT", null);
+  const textVerbosity = envValue(env, slot, "BRAIN_TEXT_VERBOSITY", null);
 
   return Object.freeze({
     provider,
     model,
     maxTokens,
+    reasoningEffort,
+    textVerbosity,
     openai: Object.freeze({
       apiKey: env.OPENAI_API_KEY || "",
       baseUrl: trimSlash(env.OPENAI_BASE_URL || "https://api.openai.com/v1")
@@ -159,7 +163,9 @@ export const callProvider = async ({ slot, payload, config, fetchImpl = fetch })
         model: config.model,
         instructions: prompt.system,
         input: prompt.user,
-        max_output_tokens: config.maxTokens
+        max_output_tokens: config.maxTokens,
+        ...(config.reasoningEffort ? { reasoning: { effort: config.reasoningEffort } } : {}),
+        ...(config.textVerbosity ? { text: { verbosity: config.textVerbosity } } : {})
       })
     });
     const providerPayload = await parseJsonResponse(response);
