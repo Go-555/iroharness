@@ -193,6 +193,7 @@ export const createVoicePipeline = ({
   tts,
   pacer = null,
   quickResponder = null,
+  preSttStaticQuickAck = false,
   voiceTextTags = null,
   metrics = null,
   voice = "iroha",
@@ -236,6 +237,7 @@ export const createVoicePipeline = ({
   const fireStaticQuickAck = () => {
     if (
       !quickResponder ||
+      !preSttStaticQuickAck ||
       typeof quickResponder.fireFor === "function" ||
       pendingQuick
     ) {
