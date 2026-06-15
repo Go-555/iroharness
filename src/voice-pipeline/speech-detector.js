@@ -508,6 +508,7 @@ export const createAzureStreamDetector = ({
 
     if (sawEnd && gateOpen) {
       gateOpen = false;
+      emit({ type: "speech.local_end" });
       // Stop streaming; closing the input prompts the recognizer to flush
       // its final result for the remaining audio.
       try {
