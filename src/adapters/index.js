@@ -3368,6 +3368,142 @@ export const createAzureSpeechStt = ({
   });
 };
 
+export const createOpenAiSpeechStt = ({
+  id = "openai-speech-stt",
+  apiKey = process.env.OPENAI_API_KEY || "",
+  baseUrl = process.env.OPENAI_BASE_URL || "https://api.openai.com/v1",
+  model = "gpt-4o-mini-transcribe",
+  language = "ja",
+  prompt = null,
+  responseFormat = "json",
+  sampleRate = 16000,
+  debugAudioDir = null,
+  headers = {},
+  fetchImpl = globalThis.fetch,
+} = {}) => {
+  if (!apiKey) {
+    throw new Error("createOpenAiSpeechStt requires OPENAI_API_KEY");
+  }
+  if (typeof fetchImpl !== "function") {
+    throw new Error("createOpenAiSpeechStt requires fetchImpl");
+  }
+  const endpoint = `${String(baseUrl).replace(/\/+$/, "")}/audio/transcriptions`;
+
+  return Object.freeze({
+    id,
+    kind: "stt",
+    capabilities: Object.freeze([
+      "openai-speech",
+      "short-audio-stt",
+      "final-transcript",
+    ]),
+    start({ onEvent = () => {} } = {}) {
+      let sequence = 0;
+      let closed = false;
+      const buffers = [];
+      const emit = (event) => {
+        const nextEvent = createAdapterEvent({
+          adapterId: id,
+          sequence,
+          event,
+        });
+        sequence += 1;
+        onEvent(nextEvent);
+        return nextEvent;
+      };
+      return Object.freeze({
+        push(chunk = {}) {
+          if (closed) {
+            throw new Error(`${id} STT session is closed`);
+          }
+          const buffer = bufferFromAudioChunk(chunk);
+          if (buffer.length > 0) {
+            buffers.push(buffer);
+          }
+          return emit({
+            type: "stt.audio_buffered",
+            byteLength: buffer.length,
+            final: false,
+          });
+        },
+        async end() {
+          if (closed) {
+            return Object.freeze([]);
+          }
+          closed = true;
+          const audioBytes = Buffer.concat(buffers);
+          const audio = isRiffWave(audioBytes)
+            ? audioBytes
+            : createPcm16WavBuffer({
+                pcm: audioBytes,
+                sampleRate,
+                channels: 1,
+              });
+          if (debugAudioDir) {
+            mkdirSync(debugAudioDir, { recursive: true });
+            const debugAudioPath = join(
+              debugAudioDir,
+              `${new Date().toISOString().replaceAll(":", "-")}-${id}-${sequence}.wav`,
+            );
+            writeFileSync(debugAudioPath, audio);
+            emit({
+              type: "stt.debug_audio_saved",
+              path: debugAudioPath,
+              byteLength: audio.length,
+            });
+          }
+          const formData = new FormData();
+          formData.append("file", new Blob([audio], { type: "audio/wav" }), "audio.wav");
+          formData.append("model", model);
+          if (language) {
+            formData.append("language", language);
+          }
+          if (prompt) {
+            formData.append("prompt", prompt);
+          }
+          if (responseFormat) {
+            formData.append("response_format", responseFormat);
+          }
+          const response = await fetchImpl(endpoint, {
+            method: "POST",
+            headers: {
+              authorization: `Bearer ${apiKey}`,
+              ...headers,
+            },
+            body: formData,
+          });
+          const body = await parseJsonResponse({
+            response,
+            label: `OpenAI Speech STT ${id}`,
+          });
+          const text = body.text || body.transcript || "";
+          return Object.freeze([
+            emit({
+              type: "stt.final",
+              text,
+              delta: text,
+              final: true,
+              raw: body,
+            }),
+          ]);
+        },
+        cancel(reason = "cancelled") {
+          if (closed) {
+            return null;
+          }
+          closed = true;
+          return emit({
+            type: "stt.cancelled",
+            text: "",
+            reason,
+            final: false,
+          });
+        },
+      });
+    },
+  });
+};
+
 export const createAivisSpeechTts = ({
   id = "aivisspeech-tts",
   baseUrl = "http://127.0.0.1:10101",

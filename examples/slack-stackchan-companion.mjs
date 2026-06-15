@@ -19,6 +19,7 @@ import {
   createCodexAppServerBrain,
   createCodexAppServerMicroHarness,
   createM5StackBodyBridge,
+  createOpenAiSpeechStt,
   createOpenAiResponsesBrain,
   createStackChanRealtimeSessionHandler,
   createSlackEventsRuntime,
@@ -288,7 +289,12 @@ const createBrainForSlot = ({ slot, codexWorkspace }) => {
 };
 
 const createStackChanStt = () => {
-  const provider = process.env.IROHARNESS_STACKCHAN_STT_PROVIDER || "http";
+  const requestedDetector = String(process.env.IROHARNESS_STACKCHAN_DETECTOR || "").toLowerCase();
+  const provider =
+    process.env.IROHARNESS_STACKCHAN_STT_PROVIDER ||
+    (requestedDetector === "silero-openai" || requestedDetector === "aiavatar-silero-openai"
+      ? "openai"
+      : "http");
   if (provider === "aiavatar" || provider === "aiavatar-silero-openai") {
     const endpoint =
       process.env.IROHARNESS_STACKCHAN_AIAVATAR_STT_ENDPOINT ||
@@ -346,6 +352,18 @@ const createStackChanStt = () => {
       authorizationToken: process.env.AZURE_SPEECH_AUTHORIZATION_TOKEN || null,
       language: process.env.AZURE_SPEECH_LANGUAGE || "ja-JP",
       mode: process.env.AZURE_SPEECH_STT_MODE || "classic",
+      sampleRate: Number(process.env.IROHARNESS_STACKCHAN_AUDIO_SAMPLE_RATE || "16000"),
+      debugAudioDir: process.env.IROHARNESS_STACKCHAN_STT_DEBUG_AUDIO_DIR || null
+    });
+  }
+  if (provider === "openai" || provider === "openai-transcribe") {
+    return createOpenAiSpeechStt({
+      id: "stackchan-openai-stt",
+      apiKey: process.env.OPENAI_STT_API_KEY || process.env.OPENAI_API_KEY,
+      baseUrl: process.env.OPENAI_STT_BASE_URL || process.env.OPENAI_BASE_URL || "https://api.openai.com/v1",
+      model: process.env.OPENAI_STT_MODEL || "gpt-4o-mini-transcribe",
+      language: process.env.OPENAI_STT_LANGUAGE || "ja",
+      prompt: process.env.OPENAI_STT_PROMPT || null,
       sampleRate: Number(process.env.IROHARNESS_STACKCHAN_AUDIO_SAMPLE_RATE || "16000"),
       debugAudioDir: process.env.IROHARNESS_STACKCHAN_STT_DEBUG_AUDIO_DIR || null
     });
@@ -537,7 +555,11 @@ const createStackChanSpeechFrontend = async ({ micSampleRate, onDetectorEvent = 
     process.env.IROHARNESS_STACKCHAN_DETECTOR ||
     (process.env.AZURE_SPEECH_KEY ? "azure-stream" : "silero")
   ).toLowerCase();
-  if (requested === "azure-stream") {
+  const detectorKind =
+    requested === "silero-openai" || requested === "aiavatar-silero-openai"
+      ? "silero"
+      : requested;
+  if (detectorKind === "azure-stream") {
     const subscriptionKey = process.env.AZURE_SPEECH_KEY;
     const region = process.env.AZURE_SPEECH_REGION;
     if (!subscriptionKey || !region) {
@@ -591,7 +613,11 @@ const createStackChanSpeechFrontend = async ({ micSampleRate, onDetectorEvent = 
     );
     return null;
   }
-  console.log("StackChan streaming voice: detector=silero (Silero VAD + batch STT)");
+  console.log(
+    requested === "silero-openai" || requested === "aiavatar-silero-openai"
+      ? "StackChan streaming voice: detector=silero-openai (Silero VAD + OpenAI STT)"
+      : "StackChan streaming voice: detector=silero (Silero VAD + batch STT)"
+  );
   return { vad };
 };
 

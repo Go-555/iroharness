@@ -253,6 +253,22 @@ IROHARNESS_STACKCHAN_VAD_MIN_SPEECH_MS=250 \
 npm run example:slack-stackchan
 ```
 
+To use the AIAvatarStackChan-style speech front-end, select Silero VAD with
+OpenAI transcription. This keeps VAD local and sends each completed speech
+segment to OpenAI STT:
+
+```bash
+IROHARNESS_STACKCHAN_DETECTOR=silero-openai \
+IROHARNESS_STACKCHAN_STT_PROVIDER=openai \
+OPENAI_STT_MODEL=gpt-4o-mini-transcribe \
+OPENAI_STT_LANGUAGE=ja \
+IROHARNESS_SILERO_MODEL=/path/to/silero_vad.onnx \
+npm run example:slack-stackchan
+```
+
+`IROHARNESS_STACKCHAN_DETECTOR=silero-openai` also defaults the StackChan STT
+provider to OpenAI when `IROHARNESS_STACKCHAN_STT_PROVIDER` is omitted.
+
 For the AIAvatarStackChan-style single-stream response, use inline tag mode.
 This asks the main voice brain to emit `<ack>`, `<think>`, and `<answer>` in
 one stream; IroHarness speaks only `<ack>` and `<answer>` and never speaks

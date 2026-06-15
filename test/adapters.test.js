@@ -25,6 +25,7 @@ import {
   createMotionPngTuberRendererBridge,
   createObsStreamController,
   createObsWebSocketAdapter,
+  createOpenAiSpeechStt,
   createOpenAiResponsesBrain,
   createOpenClawMicroHarness,
   createPlatformAdapterRegistry,
@@ -544,6 +545,58 @@ test("Azure Speech STT adapter can use fast transcription", async () => {
   assert.equal(calls[0].headers["content-type"], undefined);
   assert.equal(calls[0].body instanceof FormData, true);
   assert.equal(finalEvents[0].text, "こんにちは、いろは。");
+});
+
+test("OpenAI Speech STT adapter posts multipart audio and emits final transcript", async () => {
+  const calls = [];
+  const debugAudioDir = mkdtempSync(join(tmpdir(), "iroharness-openai-stt-debug-"));
+  const stt = createOpenAiSpeechStt({
+    id: "openai-stt-test",
+    apiKey: "openai-key-test",
+    baseUrl: "https://api.test/v1",
+    model: "gpt-4o-mini-transcribe",
+    language: "ja",
+    prompt: "StackChan voice",
+    debugAudioDir,
+    fetchImpl: async (endpoint, options) => {
+      const form = options.body;
+      calls.push({
+        endpoint,
+        headers: options.headers,
+        model: form.get("model"),
+        language: form.get("language"),
+        prompt: form.get("prompt"),
+        fileName: form.get("file")?.name,
+        fileType: form.get("file")?.type
+      });
+      return {
+        ok: true,
+        status: 200,
+        async text() {
+          return JSON.stringify({ text: "こんにちは。" });
+        }
+      };
+    }
+  });
+  const events = [];
+  const session = stt.start({ onEvent: (event) => events.push(event) });
+
+  session.push({ audio: { dataBase64: Buffer.from("pcm").toString("base64") } });
+  const finalEvents = await session.end();
+
+  assert.equal(stt.kind, "stt");
+  assert.equal(calls[0].endpoint, "https://api.test/v1/audio/transcriptions");
+  assert.equal(calls[0].headers.authorization, "Bearer openai-key-test");
+  assert.equal(calls[0].model, "gpt-4o-mini-transcribe");
+  assert.equal(calls[0].language, "ja");
+  assert.equal(calls[0].prompt, "StackChan voice");
+  assert.equal(calls[0].fileName, "audio.wav");
+  assert.equal(calls[0].fileType, "audio/wav");
+  const debugEvent = events.find((event) => event.type === "stt.debug_audio_saved");
+  assert.equal(readFileSync(debugEvent.path).toString("ascii", 0, 4), "RIFF");
+  assert.equal(finalEvents[0].type, "stt.final");
+  assert.equal(finalEvents[0].text, "こんにちは。");
+  assert.equal(events.at(-1).adapterId, "openai-stt-test");
 });
 
 test("AivisSpeech TTS adapter calls audio_query then synthesis", async () => {
