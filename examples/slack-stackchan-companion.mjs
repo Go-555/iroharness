@@ -1004,11 +1004,17 @@ const createSlackStackChanCompanion = async () => {
   };
 
   const verifyDeviceToken = (request) => {
+    if (allowAnyStackChanToken) {
+      return true;
+    }
     const headerToken = request.headers["x-iroharness-device-token"];
     const authorization = request.headers.authorization || "";
     const bearerToken = authorization.startsWith("Bearer ") ? authorization.slice("Bearer ".length) : "";
     return [headerToken, bearerToken].some(
-      (candidate) => typeof candidate === "string" && safeEqual(candidate, stackchanDeviceToken)
+      (candidate) =>
+        typeof candidate === "string" &&
+        typeof stackchanDeviceToken === "string" &&
+        safeEqual(candidate, stackchanDeviceToken)
     );
   };
 
