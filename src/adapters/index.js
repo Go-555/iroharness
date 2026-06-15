@@ -1386,6 +1386,8 @@ export const createOpenAiResponsesBrain = ({
   baseUrl = process.env.OPENAI_BASE_URL || "https://api.openai.com/v1",
   model = "gpt-5.5",
   maxOutputTokens = slot === "voice" ? 96 : 700,
+  reasoningEffort = null,
+  textVerbosity = null,
   fetchImpl = globalThis.fetch,
 } = {}) => {
   if (!apiKey) {
@@ -1395,6 +1397,15 @@ export const createOpenAiResponsesBrain = ({
     throw new Error("createOpenAiResponsesBrain requires fetchImpl");
   }
   const endpoint = `${String(baseUrl).replace(/\/+$/, "")}/responses`;
+  const requestBody = ({ prompt, stream = false }) => ({
+    model,
+    instructions: prompt.system,
+    input: prompt.user,
+    max_output_tokens: maxOutputTokens,
+    ...(stream ? { stream: true } : {}),
+    ...(reasoningEffort ? { reasoning: { effort: reasoningEffort } } : {}),
+    ...(textVerbosity ? { text: { verbosity: textVerbosity } } : {}),
+  });
   return Object.freeze({
     id,
     async respond(context) {
@@ -1405,12 +1416,7 @@ export const createOpenAiResponsesBrain = ({
           authorization: `Bearer ${apiKey}`,
           "content-type": "application/json",
         },
-        body: JSON.stringify({
-          model,
-          instructions: prompt.system,
-          input: prompt.user,
-          max_output_tokens: maxOutputTokens,
-        }),
+        body: JSON.stringify(requestBody({ prompt })),
       });
       const payload = await parseJsonResponse({
         response,
@@ -1435,13 +1441,7 @@ export const createOpenAiResponsesBrain = ({
           authorization: `Bearer ${apiKey}`,
           "content-type": "application/json",
         },
-        body: JSON.stringify({
-          model,
-          instructions: prompt.system,
-          input: prompt.user,
-          max_output_tokens: maxOutputTokens,
-          stream: true,
-        }),
+        body: JSON.stringify(requestBody({ prompt, stream: true })),
         signal,
       });
       if (!response.ok) {

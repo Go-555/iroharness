@@ -194,6 +194,8 @@ test("OpenAI respondStream: collects deltas from response.output_text.delta even
     apiKey: STUB,
     baseUrl: "https://api.test/v1",
     model: "gpt-stream-test",
+    reasoningEffort: "none",
+    textVerbosity: "low",
     fetchImpl: async (endpoint, options) => {
       calls.push({ endpoint, body: JSON.parse(options.body) });
       return {
@@ -216,6 +218,8 @@ test("OpenAI respondStream: collects deltas from response.output_text.delta even
   );
   assert.equal(calls[0].endpoint, "https://api.test/v1/responses");
   assert.equal(calls[0].body.stream, true, "request body must have stream:true");
+  assert.deepEqual(calls[0].body.reasoning, { effort: "none" });
+  assert.deepEqual(calls[0].body.text, { verbosity: "low" });
 });
 
 test("OpenAI respondStream: forwards AbortSignal to fetchImpl options", async () => {

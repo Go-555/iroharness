@@ -274,7 +274,9 @@ const createBrainForSlot = ({ slot, codexWorkspace }) => {
       apiKey: process.env.OPENAI_API_KEY,
       baseUrl: process.env.OPENAI_BASE_URL || "https://api.openai.com/v1",
       model,
-      maxOutputTokens: Number(process.env[`${prefix}_MAX_TOKENS`] || (slot === "voice" ? "96" : "700"))
+      maxOutputTokens: Number(process.env[`${prefix}_MAX_TOKENS`] || (slot === "voice" ? "96" : "700")),
+      reasoningEffort: process.env[`${prefix}_REASONING_EFFORT`] || null,
+      textVerbosity: process.env[`${prefix}_VERBOSITY`] || null
     });
   }
   if (provider === "codex") {

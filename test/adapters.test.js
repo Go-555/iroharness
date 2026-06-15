@@ -1889,6 +1889,8 @@ test("OpenAI Responses brain posts voice prompt and normalizes spoken text", asy
     baseUrl: "https://api.test/v1",
     model: "gpt-voice-test",
     maxOutputTokens: 64,
+    reasoningEffort: "none",
+    textVerbosity: "low",
     fetchImpl: async (endpoint, options) => {
       calls.push({ endpoint, body: JSON.parse(options.body), headers: options.headers });
       return {
@@ -1936,6 +1938,8 @@ test("OpenAI Responses brain posts voice prompt and normalizes spoken text", asy
   assert.equal(calls[0].headers.authorization, "Bearer test-key");
   assert.equal(calls[0].body.model, "gpt-voice-test");
   assert.equal(calls[0].body.max_output_tokens, 64);
+  assert.deepEqual(calls[0].body.reasoning, { effort: "none" });
+  assert.deepEqual(calls[0].body.text, { verbosity: "low" });
   assert.match(calls[0].body.instructions, /音声会話用/);
   assert.match(calls[0].body.instructions, /XMLタグ/);
   assert.match(calls[0].body.input, /こんにちは/);
