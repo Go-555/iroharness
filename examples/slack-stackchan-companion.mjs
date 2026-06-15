@@ -1154,9 +1154,15 @@ const createSlackStackChanCompanion = async () => {
             channel: event.channel,
             sequence: event.sequence,
             message: event.message || null,
+            stage: event.stage || undefined,
             messageType: event.messageType || undefined,
+            errorCode: event.errorCode || undefined,
+            errorDetails: event.errorDetails || undefined,
             rmsDb: typeof event.rmsDb === "number" ? event.rmsDb : undefined,
             bytes: event.bytes || undefined,
+            framesWritten:
+              typeof event.framesWritten === "number" ? event.framesWritten : undefined,
+            samples: typeof event.samples === "number" ? event.samples : undefined,
             isSpeech: typeof event.isSpeech === "boolean" ? event.isSpeech : undefined,
             thresholdDb: typeof event.thresholdDb === "number" ? event.thresholdDb : undefined,
             hasText:
