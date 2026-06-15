@@ -1333,14 +1333,32 @@ const formatOpenAiBrainPrompt = ({ slot, context }) => {
   const audience = context.audience || {};
   const actor = context.actor || {};
   const input = context.input || {};
+  const metadata = input.metadata || {};
+  const voiceTextTags = Array.isArray(metadata.voiceTextTags)
+    ? metadata.voiceTextTags
+        .map((tag) => String(tag || "").trim())
+        .filter(Boolean)
+    : [];
+  const voiceTagFormat =
+    slot === "voice" && metadata.voiceTextTagFormat === "ack-answer" && voiceTextTags.length > 0;
+  const voiceTagList = voiceTextTags.map((tag) => `<${tag}>`).join(", ");
 
   const system = [
     `あなたは${character.name || character.id || "IroHarness character"}です。`,
     "IroHarnessの同じ人格として、自然な日本語で返答してください。",
-    slot === "voice"
-      ? "音声会話用です。最初に短い相づちを置いてもよいです。返答は1〜2文、30文字前後を目安にしてください。"
+    voiceTagFormat
+      ? [
+          "音声会話用です。必ず <ack>頷き・第一声</ack><think>短い思考</think><answer>応答本体</answer> の順で出力してください。",
+          "<ack> はユーザー発話を受け止める第一声として10文字以内にし、必ず句読点や感嘆符で終えてください。",
+          "<answer> は <ack> の内容や類似表現を繰り返さず、その続きから始めてください。",
+          `音声として読み上げられるのは ${voiceTagList} の中身だけです。<think> は短く内部メモだけを書いてください。`
+        ].join(" ")
+      : slot === "voice"
+        ? "音声会話用です。最初に短い相づちを置いてもよいです。返答は1〜2文、30文字前後を目安にしてください。"
       : "テキスト会話用です。必要な範囲で自然に返答してください。",
-    "音声合成される可能性があるため、Markdown、箇条書き、コード、URL、絵文字、XMLタグ、モデル名、backend名は使わないでください。",
+    voiceTagFormat
+      ? "指定された音声抽出タグ以外のMarkdown、箇条書き、コード、URL、絵文字、XMLタグ、モデル名、backend名は使わないでください。"
+      : "音声合成される可能性があるため、Markdown、箇条書き、コード、URL、絵文字、XMLタグ、モデル名、backend名は使わないでください。",
     "ユーザーの入力は音声認識結果の可能性があります。文脈上おかしい場合は、元の発話を推測してください。",
     character.soul ? `SOUL:\n${character.soul}` : null,
     character.identity ? `IDENTITY:\n${character.identity}` : null,

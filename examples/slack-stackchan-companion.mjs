@@ -731,7 +731,10 @@ const createStackChanVoicePipeline = async ({ harness, brain, quickBrain = null,
       metadata: {
         deviceId,
         channel: process.env.IROHARNESS_STACKCHAN_CHANNEL || "local",
-        realtimeSessionId: "stackchan-realtime"
+        realtimeSessionId: "stackchan-realtime",
+        ...(quickMode === "inline-tags"
+          ? { voiceTextTagFormat: "ack-answer", voiceTextTags: inlineVoiceTextTags }
+          : {})
       }
     }),
     // Translation lives in the session handler — forward pipeline events to

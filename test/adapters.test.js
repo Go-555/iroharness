@@ -1884,7 +1884,52 @@ test("OpenAI Responses brain posts voice prompt and normalizes spoken text", asy
   assert.equal(calls[0].body.model, "gpt-voice-test");
   assert.equal(calls[0].body.max_output_tokens, 64);
   assert.match(calls[0].body.instructions, /音声会話用/);
+  assert.match(calls[0].body.instructions, /XMLタグ/);
   assert.match(calls[0].body.input, /こんにちは/);
+});
+
+test("OpenAI Responses brain allows ack-answer tags when requested by voice metadata", async () => {
+  const calls = [];
+  const brain = createOpenAiResponsesBrain({
+    id: "voice-openai-tags",
+    slot: "voice",
+    apiKey: "test-key",
+    baseUrl: "https://api.test/v1",
+    model: "gpt-voice-test",
+    fetchImpl: async (_endpoint, options) => {
+      calls.push({ body: JSON.parse(options.body) });
+      return {
+        ok: true,
+        async text() {
+          return JSON.stringify({
+            output_text: "<ack>うん。</ack><think>短く答える</think><answer>聞こえてるよ。</answer>"
+          });
+        }
+      };
+    }
+  });
+
+  await brain.respond({
+    character: { id: "iroha", name: "Iroha" },
+    actor: { user: { displayName: "Owner" } },
+    audience: { relationship: "owner" },
+    input: {
+      modality: "voice",
+      text: "こんにちは",
+      metadata: {
+        voiceTextTagFormat: "ack-answer",
+        voiceTextTags: ["ack", "answer"]
+      }
+    },
+    route: { kind: "voice" },
+    state: {},
+    projectOs: { tickets: [] }
+  });
+
+  assert.match(calls[0].body.instructions, /<ack>/);
+  assert.match(calls[0].body.instructions, /<answer>/);
+  assert.match(calls[0].body.instructions, /<think>/);
+  assert.match(calls[0].body.instructions, /指定された音声抽出タグ以外/);
 });
 
 test("JSONL process micro harness sends one task and parses final JSON line", async () => {
