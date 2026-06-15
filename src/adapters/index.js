@@ -4750,6 +4750,10 @@ export const createStackChanRealtimeSessionHandler = ({
           pipelineTurnStarted = false;
           emit({
             type: "stackchan.latency.pipeline_turn",
+            vadCloseMs: event.metrics?.vad_close_ms ?? null,
+            sttMs: event.metrics?.stt_ms ?? null,
+            llmFirstSentenceMs: event.metrics?.llm_first_sentence_ms ?? null,
+            ttsFirstAudioMs: event.metrics?.tts_first_audio_ms ?? null,
             firstAudioTotalMs: event.metrics?.first_audio_total_ms ?? null,
             totalMs: event.metrics?.total_ms ?? null,
             textLength: String(event.text || "").length,
