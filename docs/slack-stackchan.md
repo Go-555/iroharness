@@ -241,15 +241,26 @@ AIVIS_SPEECH_SPEAKER=888753760 \
 npm run example:slack-stackchan
 ```
 
-For AIAvatarStackChan-style perceived latency, enable a short immediate ack and
-small response chunks. The ack is spoken as soon as STT finalizes, while the
-voice brain continues generating the full answer:
+For low perceived latency with a separate quick response, enable a short
+immediate ack and small response chunks. The ack is spoken as soon as STT
+finalizes, while the voice brain continues generating the full answer:
 
 ```bash
 IROHARNESS_STACKCHAN_IMMEDIATE_ACK_TEXT=うん。 \
 IROHARNESS_STACKCHAN_SPEECH_CHUNK_BYTES=512 \
 IROHARNESS_STACKCHAN_VAD_SILENCE_MS=650 \
 IROHARNESS_STACKCHAN_VAD_MIN_SPEECH_MS=250 \
+npm run example:slack-stackchan
+```
+
+For the AIAvatarStackChan-style single-stream response, use inline tag mode.
+This asks the main voice brain to emit `<ack>`, `<think>`, and `<answer>` in
+one stream; IroHarness speaks only `<ack>` and `<answer>` and never speaks
+`<think>`:
+
+```bash
+IROHARNESS_STACKCHAN_QUICK_MODE=inline-tags \
+IROHARNESS_STACKCHAN_SPEECH_CHUNK_BYTES=512 \
 npm run example:slack-stackchan
 ```
 

@@ -473,6 +473,28 @@ const STACKCHAN_VAD_FRAME_SAMPLES = Number(
 const buildQuickContinuationText = (quickText, transcript) =>
   `$以下の入力に対して、既にあなたが出力済みの「${quickText}」や類似の表現は再出力せず、その続きのみを出力せよ。もし「${quickText}」が本来応答すべき内容にそぐわない場合は、続きの中でうまく適切な方向に補正すること:\n\n${transcript}`;
 
+// AIAvatarStackChan-style single-stream mode: one main LLM call emits
+// <ack> first, then <think>, then <answer>. The voice pipeline only speaks
+// <ack> and <answer>; <think> remains internal text.
+const buildInlineAckAnswerText = (transcript) =>
+  [
+    "$以下はユーザーの音声発話内容である。必ず次の形式だけで出力せよ。",
+    "",
+    "<ack>頷き・第一声の発話内容</ack>",
+    "<think>応答に際しての短い思考内容</think>",
+    "<answer>応答本体</answer>",
+    "",
+    "制約:",
+    "- <ack> はユーザー発話を受け止める第一声として、10文字以内のごく短いフレーズにする。",
+    "- <ack> は必ず句読点や感嘆符で終わる。",
+    "- <answer> は <ack> の内容や類似表現を繰り返さず、その続きから始める。",
+    "- 与えられていない情報を勝手に想像しない。",
+    "- 音声合成するため、記号・絵文字・ト書きは使わない。",
+    "- 1〜2文、30文字程度を目安に短く自然に話す。",
+    "",
+    transcript
+  ].join("\n");
+
 // Loads the Silero VAD from IROHARNESS_SILERO_MODEL with the shared VAD env
 // config. Used both as the standalone silero detector front-end and as the
 // gate for the azure-stream gated sub-mode. Returns null when no model path
@@ -604,14 +626,22 @@ const createStackChanVoicePipeline = async ({ harness, brain, quickBrain = null,
   // - "dynamic": reuses an IroHarness brain abstraction.
   // - "pro": AIAvatarKit QuickResponderPro-style direct OpenAI-compatible
   //   chat completion call (stream=false) + TTS cache + static fallback.
+  // - "inline-tags": AIAvatarStackChan-style single main LLM stream that emits
+  //   <ack>/<think>/<answer>; only <ack> and <answer> are spoken.
   let quickMode = process.env.IROHARNESS_STACKCHAN_QUICK_MODE || "static";
+  if (quickMode === "ack-answer" || quickMode === "inline") {
+    quickMode = "inline-tags";
+  }
   const staticQuickResponder = createQuickResponder({
     tts,
     phrases: [process.env.IROHARNESS_STACKCHAN_IMMEDIATE_ACK_TEXT || "えっとね〜"]
   });
   let dynamicBrain = null;
   let quickResponder = null;
-  if (quickMode === "pro") {
+  const inlineVoiceTextTags = quickMode === "inline-tags" ? ["ack", "answer"] : null;
+  if (quickMode === "inline-tags") {
+    console.log("StackChan streaming voice: quick responder disabled (mode=inline-tags)");
+  } else if (quickMode === "pro") {
     try {
       quickResponder = createQuickResponderPro({
         tts,
@@ -653,18 +683,20 @@ const createStackChanVoicePipeline = async ({ harness, brain, quickBrain = null,
       dynamicBrain = resolved.brain;
     }
   }
-  quickResponder ??= dynamicBrain
-    ? createDynamicQuickResponder({
-      brain: dynamicBrain,
-      tts,
-      fallback: staticQuickResponder,
-      voice: process.env.IROHARNESS_STACKCHAN_VOICE || "iroha"
-    })
-    : staticQuickResponder;
-  const cachedPhrases = await quickResponder.warmup();
-  console.log(
-    `StackChan streaming voice: quick responder warmed (${cachedPhrases} phrase(s) cached, mode=${quickMode})`
-  );
+  if (quickMode !== "inline-tags") {
+    quickResponder ??= dynamicBrain
+      ? createDynamicQuickResponder({
+        brain: dynamicBrain,
+        tts,
+        fallback: staticQuickResponder,
+        voice: process.env.IROHARNESS_STACKCHAN_VOICE || "iroha"
+      })
+      : staticQuickResponder;
+    const cachedPhrases = await quickResponder.warmup();
+    console.log(
+      `StackChan streaming voice: quick responder warmed (${cachedPhrases} phrase(s) cached, mode=${quickMode})`
+    );
+  }
   const deviceId = stackchanId;
   const pipeline = createVoicePipeline({
     ...frontend,
@@ -673,6 +705,7 @@ const createStackChanVoicePipeline = async ({ harness, brain, quickBrain = null,
     tts,
     pacer,
     quickResponder,
+    voiceTextTags: inlineVoiceTextTags,
     metrics: createVoiceTurnMetrics(),
     voice: process.env.IROHARNESS_STACKCHAN_VOICE || "iroha",
     sampleRate: micSampleRate,
@@ -684,7 +717,12 @@ const createStackChanVoicePipeline = async ({ harness, brain, quickBrain = null,
     buildInput: (transcript, { quickText = null } = {}) => ({
       source: "m5stack",
       modality: "voice",
-      text: quickText ? buildQuickContinuationText(quickText, transcript) : transcript,
+      text:
+        quickMode === "inline-tags"
+          ? buildInlineAckAnswerText(transcript)
+          : quickText
+            ? buildQuickContinuationText(quickText, transcript)
+            : transcript,
       actor: {
         platform: "m5stack",
         platformUserId: process.env.IROHARNESS_STACKCHAN_USER_PLATFORM_ID || deviceId,

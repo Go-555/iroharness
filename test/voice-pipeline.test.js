@@ -279,6 +279,52 @@ test("speaks the first sentence before the brain releases its second delta", asy
   );
 });
 
+test("voiceTextTags speaks ack and answer from one main stream without speaking think", async () => {
+  const { scripted, mockTts, mockHarness, sink, pipeline } = setup({
+    deltas: [
+      "<ack>う",
+      "ん。</ack><think>内部メモ。",
+      "</think><answer>続きです。</answer>"
+    ],
+    pipelineOptions: { voiceTextTags: ["ack", "answer"] }
+  });
+
+  await pushUtterance(pipeline, scripted);
+  const final = await sink.waitFor((event) => event.type === "turn.final");
+
+  assert.deepEqual(
+    mockTts.calls.map((call) => call.text),
+    ["うん。", "続きです。"]
+  );
+  assert.deepEqual(
+    sink.emitted("speech.audio").map((event) => event.text),
+    ["うん。", "続きです。"]
+  );
+  assert.deepEqual(mockHarness.finalized, ["うん。続きです。"]);
+  assert.equal(final.text, "うん。続きです。");
+  assert.equal(
+    sink.emitted("speech.audio").some((event) => event.text.includes("内部メモ")),
+    false
+  );
+});
+
+test("voiceTextTags falls back to plain speech when the stream has no target tags", async () => {
+  const { scripted, mockTts, mockHarness, sink, pipeline } = setup({
+    deltas: ["タグなしで普通に返す。"],
+    pipelineOptions: { voiceTextTags: ["ack", "answer"] }
+  });
+
+  await pushUtterance(pipeline, scripted);
+  const final = await sink.waitFor((event) => event.type === "turn.final");
+
+  assert.deepEqual(
+    mockTts.calls.map((call) => call.text),
+    ["タグなしで普通に返す。"]
+  );
+  assert.deepEqual(mockHarness.finalized, ["タグなしで普通に返す。"]);
+  assert.equal(final.text, "タグなしで普通に返す。");
+});
+
 test("manual barge-in aborts tts, abandons the turn, and stops speech", async () => {
   const gate = createGate();
   const { scripted, mockTts, mockHarness, sink, pipeline } = setup({

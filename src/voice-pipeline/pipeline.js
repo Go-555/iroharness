@@ -1,7 +1,8 @@
 // Streaming voice pipeline orchestrator.
 //
 // createVoicePipeline({ vad, stt, detector = null, harness, tts, pacer = null,
-//                       quickResponder = null, metrics = null, voice = "iroha",
+//                       quickResponder = null, voiceTextTags = null,
+//                       metrics = null, voice = "iroha",
 //                       buildInput, maxSentences = 30, sampleRate = 16000,
 //                       stageTimeoutMs = { stt: 10000, brain: 30000, tts: 10000 },
 //                       fallbackPhrase = "少々調子が悪いや。", onEvent = () => {} })
@@ -40,7 +41,8 @@
 //      quickText is the ack text (or null) so the session handler can add a
 //      continuation instruction. Gate-rejected ({ stream: null, result }) →
 //      turn.rejected, stop.
-//   4. Stream deltas → sentence splitter → per closed sentence: tts.stream
+//   4. Stream deltas → optional voice-text tag extraction → sentence splitter
+//      → per closed sentence: tts.stream
 //      (timeout stageTimeoutMs.tts) → optional pacer.pace → onEvent speech.audio.
 //      Whitespace-only sentences are skipped (Markdown "\n" noise). maxSentences
 //      caps runaway turns (abort + one error stage:"guard").
@@ -94,6 +96,75 @@ const DEFAULT_STAGE_TIMEOUT_MS = { stt: 10000, brain: 30000, tts: 10000 };
 
 const message = (error) => String(error?.message ?? error);
 
+const normalizeVoiceTextTags = (tags) => {
+  if (!tags) return null;
+  const list = Array.isArray(tags) ? tags : [tags];
+  const normalized = list
+    .map((tag) => String(tag || "").trim().toLowerCase())
+    .filter(Boolean);
+  return normalized.length ? Object.freeze([...new Set(normalized)]) : null;
+};
+
+const stripControlTags = (text) =>
+  String(text || "")
+    .replace(/\[[A-Za-z_][\w-]*:[^\]]*\]/g, "")
+    .replace(/<\/?[A-Za-z_][\w-]*(?:\s[^>]*)?>/g, "")
+    .trim();
+
+const createVoiceTextTagExtractor = (tags) => {
+  const targetTags = new Set(tags);
+  let activeTag = null;
+  let tagBuffer = null;
+  let sawTargetTag = false;
+
+  const applyTag = (rawTag) => {
+    const match = rawTag.match(/^<\/?\s*([A-Za-z_][\w-]*)\b[^>]*>$/);
+    if (!match) {
+      return;
+    }
+    const tag = match[1].toLowerCase();
+    const closing = /^<\//.test(rawTag);
+    if (!targetTags.has(tag)) {
+      return;
+    }
+    sawTargetTag = true;
+    if (closing) {
+      if (activeTag === tag) {
+        activeTag = null;
+      }
+      return;
+    }
+    activeTag = tag;
+  };
+
+  return Object.freeze({
+    push(delta) {
+      let out = "";
+      for (const char of String(delta || "")) {
+        if (tagBuffer !== null) {
+          tagBuffer += char;
+          if (char === ">") {
+            applyTag(tagBuffer);
+            tagBuffer = null;
+          }
+          continue;
+        }
+        if (char === "<") {
+          tagBuffer = "<";
+          continue;
+        }
+        if (activeTag) {
+          out += char;
+        }
+      }
+      return out;
+    },
+    sawTargetTag() {
+      return sawTargetTag;
+    }
+  });
+};
+
 const withTimeout = (promise, ms, label) =>
   new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
@@ -122,6 +193,7 @@ export const createVoicePipeline = ({
   tts,
   pacer = null,
   quickResponder = null,
+  voiceTextTags = null,
   metrics = null,
   voice = "iroha",
   buildInput,
@@ -154,6 +226,7 @@ export const createVoicePipeline = ({
   }
 
   const timeouts = { ...DEFAULT_STAGE_TIMEOUT_MS, ...stageTimeoutMs };
+  const normalizedVoiceTextTags = normalizeVoiceTextTags(voiceTextTags);
 
   // One input front-end either way: the legacy vad+stt pair becomes a
   // detector. metrics threading keeps the speech.end / stt.final marks at
@@ -252,6 +325,9 @@ export const createVoicePipeline = ({
 
   const consumeStream = async (turn, ctx, stream) => {
     const splitter = createSentenceSplitter();
+    const voiceTextExtractor = normalizedVoiceTextTags
+      ? createVoiceTextTagExtractor(normalizedVoiceTextTags)
+      : null;
     const iterator = stream[Symbol.asyncIterator]();
     let finished = false;
     try {
@@ -270,7 +346,9 @@ export const createVoicePipeline = ({
         if (turn.interrupted || turn.controller.signal.aborted) break;
         const delta = typeof chunk?.delta === "string" ? chunk.delta : "";
         ctx.fullText += delta;
-        const sentences = splitter.push(delta);
+        const voiceDelta = voiceTextExtractor ? voiceTextExtractor.push(delta) : delta;
+        ctx.voiceText += voiceDelta;
+        const sentences = splitter.push(voiceDelta);
         if (sentences.some((sentence) => sentence.trim())) {
           metrics?.mark("llm.first_sentence"); // first-wins; whitespace-only never marks
         }
@@ -289,6 +367,11 @@ export const createVoicePipeline = ({
       }
     }
     if (!turn.interrupted && !turn.controller.signal.aborted && !ctx.guardTripped) {
+      if (voiceTextExtractor && !ctx.voiceText.trim() && !voiceTextExtractor.sawTargetTag()) {
+        const fallbackVoiceText = stripControlTags(ctx.fullText);
+        ctx.voiceText += fallbackVoiceText;
+        await speakSentences(turn, ctx, splitter.push(fallbackVoiceText));
+      }
       await speakSentences(turn, ctx, splitter.flush());
     }
   };
@@ -357,6 +440,7 @@ export const createVoicePipeline = ({
     // inactivity timeout (per-delta, inside consumeStream).
     const ctx = {
       fullText: "",
+      voiceText: "",
       sentenceCount: 0,
       produced: false, // a non-whitespace sentence came out of the splitter
       spoken: false,
@@ -382,8 +466,9 @@ export const createVoicePipeline = ({
       onEvent({ type: "error", stage: "brain", message: brainFailure });
     }
 
+    const finalText = normalizedVoiceTextTags ? ctx.voiceText : ctx.fullText;
     try {
-      await opened.finalize(ctx.fullText);
+      await opened.finalize(finalText);
     } catch (error) {
       emitError("finalize", error);
     }
@@ -393,7 +478,7 @@ export const createVoicePipeline = ({
       await quickResponder?.saveMainResponse?.({
         transcript,
         quickText: quick?.text ?? null,
-        responseText: ctx.fullText
+        responseText: finalText
       });
     } catch (error) {
       emitError("quick-context", error);
@@ -402,7 +487,7 @@ export const createVoicePipeline = ({
     metrics?.mark("response.final");
     onEvent({
       type: "turn.final",
-      text: ctx.fullText,
+      text: finalText,
       metrics: metrics?.snapshot() ?? null
     });
     pacer?.reset();
