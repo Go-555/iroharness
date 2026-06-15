@@ -301,6 +301,36 @@ test("continuous mode: canceled drops the session and the next push reconnects",
   await detector.close();
 });
 
+test("continuous mode: quota cancellation backs off reconnects", async () => {
+  const { detector, recognizers, streams } = azureDetector({
+    reconnectBackoffMs: 20,
+  });
+  await detector.push(FRAME);
+  assert.equal(recognizers.length, 1);
+  assert.equal(streams[0].writes.length, 1);
+
+  recognizers[0].fireCanceled("Quota exceeded. websocket error code: 1007");
+  const events = await detector.push(FRAME);
+  assert.deepEqual(events, [
+    {
+      type: "error",
+      stage: "stt",
+      message:
+        "Azure Speech canceled: Quota exceeded. websocket error code: 1007",
+    },
+  ]);
+  assert.equal(recognizers.length, 1);
+
+  assert.deepEqual(await detector.push(FRAME), []);
+  assert.equal(recognizers.length, 1);
+
+  await sleep(25);
+  await detector.push(FRAME);
+  assert.equal(recognizers.length, 2);
+  assert.equal(streams[1].writes.length, 1);
+  await detector.close();
+});
+
 // ---------------------------------------------------------------------------
 // Gated mode
 // ---------------------------------------------------------------------------

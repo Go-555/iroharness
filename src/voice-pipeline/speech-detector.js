@@ -194,6 +194,7 @@ export const createAzureStreamDetector = ({
   gate = null,
   prerollFrames = 10,
   finalizeTimeoutMs = 2000,
+  reconnectBackoffMs = 60_000,
   debug = false,
   sdk = null,
   importSdk = null,
@@ -260,10 +261,24 @@ export const createAzureStreamDetector = ({
   const emitDebug = (event) => {
     if (debug) emit({ ...event, type: "debug" });
   };
+  const blockReconnect = (message) => {
+    reconnectBlockedUntil = Date.now() + reconnectBackoffMs;
+    reconnectBlockedMessage = message;
+    reconnectBlockEmitted = true;
+    emit({ type: "error", stage: "stt", message });
+    emitDebug({
+      stage: "azure.reconnect_blocked",
+      backoffMs: reconnectBackoffMs,
+      message,
+    });
+  };
 
   let session = null; // { speech, pushStream, recognizer, dead }
   let connecting = null;
   let writtenFrames = 0;
+  let reconnectBlockedUntil = 0;
+  let reconnectBlockedMessage = "";
+  let reconnectBlockEmitted = false;
 
   // Utterance state
   let utteranceStarted = false; // detector speech.start emitted
@@ -421,12 +436,18 @@ export const createAzureStreamDetector = ({
   // utterance with what we have, drop the session, reconnect on next push.
   const onDropped = (current, eventArgs = null, source = "dropped") => {
     if (current.dead || current !== session) return;
+    const errorDetails = eventArgs?.errorDetails
+      ? String(eventArgs.errorDetails)
+      : "";
     emitDebug({
       stage: `azure.${source}`,
       reason: String(eventArgs?.reason ?? ""),
       errorCode: String(eventArgs?.errorCode ?? ""),
-      errorDetails: eventArgs?.errorDetails ? String(eventArgs.errorDetails) : "",
+      errorDetails,
     });
+    if (/quota exceeded/i.test(errorDetails)) {
+      blockReconnect(`Azure Speech canceled: ${errorDetails}`);
+    }
     if (mode === "gated") {
       if (awaitingFinal) {
         finishGatedUtterance(); // tears the session down too
@@ -489,6 +510,24 @@ export const createAzureStreamDetector = ({
 
   const ensureSession = async () => {
     if (session) return session;
+    if (reconnectBlockedUntil > Date.now()) {
+      if (!reconnectBlockEmitted) {
+        reconnectBlockEmitted = true;
+        emit({
+          type: "error",
+          stage: "stt",
+          message: reconnectBlockedMessage,
+        });
+      }
+      emitDebug({
+        stage: "azure.reconnect_skipped",
+        remainingMs: reconnectBlockedUntil - Date.now(),
+      });
+      return null;
+    }
+    reconnectBlockedUntil = 0;
+    reconnectBlockedMessage = "";
+    reconnectBlockEmitted = false;
     connecting ??= openSession().then(
       (created) => {
         connecting = null;
@@ -505,7 +544,8 @@ export const createAzureStreamDetector = ({
   };
 
   const pushContinuous = async (int16Frame) => {
-    await ensureSession(); // reconnect-on-next-push after canceled/sessionStopped
+    const current = await ensureSession(); // reconnect-on-next-push after canceled/sessionStopped
+    if (!current) return drain();
     writeFrame(int16Frame);
     return drain();
   };
@@ -527,7 +567,8 @@ export const createAzureStreamDetector = ({
       // the old one's pushStream is already closed and would silently drop
       // this utterance's audio.
       if (awaitingFinal) finishGatedUtterance();
-      await ensureSession(); // throws (stage "stt") when the SDK is missing
+      const current = await ensureSession(); // throws (stage "stt") when the SDK is missing
+      if (!current) return drain();
       gateOpen = true;
       utteranceStarted = true;
       emit({ type: "speech.start" });

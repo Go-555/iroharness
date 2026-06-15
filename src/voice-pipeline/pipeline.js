@@ -594,6 +594,8 @@ export const createVoicePipeline = ({
       fireStaticQuickAck();
     } else if (event.type === "debug") {
       onEvent(event);
+    } else if (event.type === "error") {
+      emitError(event.stage ?? "stt", event.message ?? "speech detector error");
     } else if (event.type === "speech.end") {
       metrics?.mark("speech.end");
       if (active) interrupt("new-utterance"); // serialize: new utterance wins
