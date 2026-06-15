@@ -232,9 +232,41 @@ export const createVoicePipeline = ({
   // detector. metrics threading keeps the speech.end / stt.final marks at
   // their true times even though the batch STT now runs inside push()
   // (the pipeline's own later marks are first-wins no-ops).
+  let pendingQuick = null;
+  const fireStaticQuickAck = () => {
+    if (
+      !quickResponder ||
+      typeof quickResponder.fireFor === "function" ||
+      pendingQuick
+    ) {
+      return null;
+    }
+    const quick = quickResponder.fire?.() ?? null;
+    if (!quick) {
+      return null;
+    }
+    pendingQuick = quick;
+    metrics?.mark("quick.audio");
+    onEvent({
+      type: "speech.audio",
+      text: quick.text,
+      audio: { encoding: quick.encoding, dataBase64: quick.audio },
+      quick: true,
+      metrics: metrics?.snapshot() ?? null
+    });
+    return quick;
+  };
+
   const speechDetector =
     detector ??
-    wrapVadSttDetector({ vad, stt, sampleRate, timeoutMs: timeouts.stt, metrics });
+    wrapVadSttDetector({
+      vad,
+      stt,
+      sampleRate,
+      timeoutMs: timeouts.stt,
+      metrics,
+      onBeforeTranscribe: fireStaticQuickAck
+    });
 
   let state = "idle"; // "idle" | "listening" | "speaking"
   let turnCount = 0;
@@ -391,8 +423,10 @@ export const createVoicePipeline = ({
     //    ≤1.5s deadline) and are AWAITED before the brain stream opens —
     //    mirrors AIAvatarKit's ordering. Static responders (fire) stay
     //    zero-latency.
-    let quick = null;
-    if (quickResponder) {
+    let quick = pendingQuick;
+    const quickAlreadySpoken = Boolean(quick);
+    pendingQuick = null;
+    if (!quick && quickResponder) {
       if (typeof quickResponder.fireFor === "function") {
         quick = await quickResponder.fireFor(transcript, {
           signal: turn.controller.signal
@@ -402,7 +436,7 @@ export const createVoicePipeline = ({
         quick = quickResponder.fire() ?? null;
       }
     }
-    if (quick) {
+    if (quick && !quickAlreadySpoken) {
       metrics?.mark("quick.audio");
       onEvent({
         type: "speech.audio",
@@ -540,6 +574,7 @@ export const createVoicePipeline = ({
   const handleDetectorEvent = (event) => {
     if (!event) return;
     if (event.type === "speech.start") {
+      pendingQuick = null;
       quickResponder?.cancelGenerationTask?.();
       if (active) interrupt("barge-in"); // auto barge-in: same path as interrupt()
       // New-utterance boundary: wipe stale first-wins marks left by

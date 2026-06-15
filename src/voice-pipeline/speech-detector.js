@@ -38,7 +38,7 @@
 // Two implementations:
 //
 // wrapVadSttDetector({ vad, stt, sampleRate = 16000, timeoutMs = 10000,
-//                      metrics = null })
+//                      metrics = null, onBeforeTranscribe = null })
 //   Adapts the existing silero-vad + batch-STT pair to the detector
 //   contract: vad speech.end → run the batch STT inside push() → emit
 //   speech.end with the text (this is the transcribe logic that used to
@@ -121,6 +121,7 @@ export const wrapVadSttDetector = ({
   sampleRate = 16000,
   timeoutMs = 10000,
   metrics = null,
+  onBeforeTranscribe = null,
 } = {}) => {
   if (!vad || typeof vad.push !== "function") {
     throw new Error("wrapVadSttDetector requires vad with push(int16Frame)");
@@ -159,6 +160,7 @@ export const wrapVadSttDetector = ({
         events.push({ type: "speech.start" });
       } else if (event.type === "speech.end") {
         metrics?.mark("speech.end"); // BEFORE the batch STT — keeps stt_ms honest
+        onBeforeTranscribe?.({ type: "speech.end", audio: event.audio });
         let text;
         try {
           text = await withTimeout(transcribe(event.audio), timeoutMs, "stt");
