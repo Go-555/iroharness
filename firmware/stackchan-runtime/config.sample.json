@@ -25,6 +25,8 @@
   "start_threshold": 1024,
   "drain_timeout_ms": 500,
   "speaker_volume": 80,
+  "audio_normalize_target_peak": 0.0,
+  "audio_normalize_max_gain": 8.0,
   "volume_levels": [0, 64, 128, 196, 255],
   "audio_task_stack_size": 8192,
   "audio_task_core": 0,
@@ -36,6 +38,10 @@
   "keepalive_interval_ms": 1000,
   "display_rotation": 1,
   "display_brightness": 64,
+  "sleep_enabled": true,
+  "sleep_timeout_ms": 1800000,
+  "sleep_display_brightness": 32,
+  "sleep_wifi_mode": "sleep",
   "status_overlay_enabled": true,
   "vision_preview_duration_ms": 2000,
   "accepted_led_color": [0, 168, 0],
@@ -47,5 +53,6 @@
   "stackchan_auto_angle_sync": true,
   "nade_invoke_prompt": "$ご主人さまに頭を優しく撫でられました。ごく短いフレーズでリアクションしてください。短時間で撫ですぎなときはちょっと怒ったり恥ずかしがったりしてください。怒ったり困ったりした時はfaceとしてangryやsorrowの使用も可能",
   "vision_invoke_prompt": "$応答に必要な視覚情報を提供します。単に見えたものの説明だけではなく、これまでの文脈の中でこの画像が見えたときに相応しい反応をしてください",
+  "fast_startup": true,
   "debug_log": false
 }

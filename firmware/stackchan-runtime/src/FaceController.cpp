@@ -8,7 +8,9 @@ namespace aiavatar {
 
 static constexpr uint32_t kBlinkMinMs = 3000;
 static constexpr uint32_t kBlinkMaxMs = 8000;
-static constexpr uint32_t kBlinkDurationMs = 120;
+static constexpr uint16_t kBlinkClosedFlipMs = 120;
+static constexpr uint16_t kBlinkClosedSmoothMs = 60;
+static constexpr uint16_t kBlinkMidMs = 35;
 static constexpr float kLipsyncHalfThreshold = 0.025f;
 static constexpr float kLipsyncOpenThreshold = 0.075f;
 
@@ -29,28 +31,53 @@ static const char* kMouthPaths[] = {
 
 FaceController::FaceController()
     : display_(nullptr),
-      blinkSprite_(nullptr),
+      blinkSprite_{nullptr, 0, 0, ScreenRenderer::kTransparentColor},
+      blinkHalfSprite_{nullptr, 0, 0, ScreenRenderer::kTransparentColor},
+      blinkQuarterSprite_{nullptr, 0, 0, ScreenRenderer::kTransparentColor},
+      blinkFrameCount_(0),
+      blinkFrameIdx_(0),
       currentExpression_(Expression::Neutral),
       currentMouth_(MouthShape::None),
       blinking_(false),
       expressionEndMs_(0),
       nextBlinkMs_(0),
-      blinkEndMs_(0),
+      blinkFrameEndMs_(0),
+      lazyLoadNextMs_(0),
+      lazyLoadStep_(0),
+      deferredLoadingEnabled_(true),
       started_(false) {
     for (auto& sprite : faceSprites_) sprite = nullptr;
-    for (auto& sprite : mouthSprites_) sprite = nullptr;
+    for (auto& sprite : mouthSprites_) {
+        sprite = {nullptr, 0, 0, ScreenRenderer::kTransparentColor};
+    }
+    for (auto& sprite : blinkFrames_) {
+        sprite = {nullptr, 0, 0, ScreenRenderer::kTransparentColor};
+    }
+    for (auto& duration : blinkFrameDur_) duration = 0;
 }
 
 bool FaceController::begin(ScreenRenderer& display) {
     display_ = &display;
-    loadSprites();
+    loadInitialSprites();
+    scheduleBlink(millis());
+    started_ = faceSprites_[static_cast<uint8_t>(Expression::Neutral)] != nullptr;
+    while (started_ && lazyLoadStep_ < 4 + static_cast<uint8_t>(Expression::Count)) {
+        loadNextDeferredSprite(true);
+    }
+    applyToDisplay();
+    return started_;
+}
+
+bool FaceController::beginMinimal(ScreenRenderer& display) {
+    display_ = &display;
+    loadInitialSprites();
     scheduleBlink(millis());
     started_ = faceSprites_[static_cast<uint8_t>(Expression::Neutral)] != nullptr;
     applyToDisplay();
     return started_;
 }
 
-void FaceController::loadSprites() {
+void FaceController::loadInitialSprites() {
     if (!display_) return;
     int w = display_->width();
     int h = display_->height();
@@ -72,33 +99,102 @@ void FaceController::loadSprites() {
         }
     }
 
-    LGFX_Sprite* neutral = faceSprites_[static_cast<uint8_t>(Expression::Neutral)];
-    for (uint8_t i = 1; i < static_cast<uint8_t>(Expression::Count); ++i) {
-        faceSprites_[i] = display_->loadSprite(kFacePaths[i], w, h);
-        if (!faceSprites_[i]) {
-            faceSprites_[i] = neutral;
-            Serial.printf("[Face] missing %s; using neutral\n", kFacePaths[i]);
+    lazyLoadStep_ = 0;
+    lazyLoadNextMs_ = millis() + 1000;
+}
+
+bool FaceController::loadNextDeferredSprite(bool ignoreSchedule) {
+    if (!display_ || !started_) return true;
+    if (lazyLoadStep_ >= 4 + static_cast<uint8_t>(Expression::Count)) return true;
+    uint32_t now = millis();
+    if (!ignoreSchedule && static_cast<int32_t>(now - lazyLoadNextMs_) < 0) return false;
+
+    int w = display_->width();
+    int h = display_->height();
+    switch (lazyLoadStep_) {
+        case 0:
+            blinkSprite_ =
+                display_->loadLayerSprite("/avatar/neutral_blink.png", w, h,
+                                          ScreenRenderer::kTransparentColor);
+            if (!blinkSprite_.valid()) Serial.println("[Face] blink image missing; blink disabled");
+            buildBlinkSequence();
+            break;
+        case 1:
+            blinkHalfSprite_ =
+                display_->loadLayerSprite("/avatar/neutral_blink_half.png", w, h,
+                                          ScreenRenderer::kTransparentColor);
+            buildBlinkSequence();
+            break;
+        case 2:
+            blinkQuarterSprite_ =
+                display_->loadLayerSprite("/avatar/neutral_blink_quarter.png", w, h,
+                                          ScreenRenderer::kTransparentColor);
+            buildBlinkSequence();
+            break;
+        case 3:
+        case 4: {
+            uint8_t mouthIndex = lazyLoadStep_ - 2;
+            mouthSprites_[mouthIndex] =
+                display_->loadLayerSprite(kMouthPaths[mouthIndex], w, h,
+                                          ScreenRenderer::kTransparentColor);
+            if (!mouthSprites_[mouthIndex].valid()) {
+                Serial.printf("[Face] missing %s; lipsync shape disabled\n",
+                              kMouthPaths[mouthIndex]);
+            }
+            if (static_cast<uint8_t>(currentMouth_) == mouthIndex) applyToDisplay();
+            break;
+        }
+        default: {
+            uint8_t faceIndex = lazyLoadStep_ - 4;
+            if (faceIndex < static_cast<uint8_t>(Expression::Count)) {
+                faceSprites_[faceIndex] = display_->loadSprite(kFacePaths[faceIndex], w, h);
+                if (!faceSprites_[faceIndex]) {
+                    Serial.printf("[Face] missing %s; using neutral\n", kFacePaths[faceIndex]);
+                }
+                if (static_cast<uint8_t>(currentExpression_) == faceIndex) applyToDisplay();
+            }
+            break;
         }
     }
+    ++lazyLoadStep_;
+    lazyLoadNextMs_ = now + 120;
+    return true;
+}
 
-    for (uint8_t i = 0; i < static_cast<uint8_t>(MouthShape::Count); ++i) {
-        if (!kMouthPaths[i]) {
-            mouthSprites_[i] = nullptr;
-            continue;
-        }
-        mouthSprites_[i] =
-            display_->loadSprite(kMouthPaths[i], w, h, ScreenRenderer::kTransparentColor);
-        if (!mouthSprites_[i]) {
-            Serial.printf("[Face] missing %s; lipsync shape disabled\n", kMouthPaths[i]);
-        }
+void FaceController::buildBlinkSequence() {
+    blinkFrameCount_ = 0;
+    blinkFrameIdx_ = 0;
+    for (auto& frame : blinkFrames_) {
+        frame = {nullptr, 0, 0, ScreenRenderer::kTransparentColor};
     }
+    for (auto& duration : blinkFrameDur_) duration = 0;
+    if (!blinkSprite_.valid()) return;
 
-    blinkSprite_ = display_->loadSprite("/avatar/neutral_blink.png", w, h);
-    if (!blinkSprite_) Serial.println("[Face] blink image missing; blink disabled");
+    SpriteLayer mids[2] = {
+        {nullptr, 0, 0, ScreenRenderer::kTransparentColor},
+        {nullptr, 0, 0, ScreenRenderer::kTransparentColor},
+    };
+    uint8_t midCount = 0;
+    if (blinkHalfSprite_.valid()) mids[midCount++] = blinkHalfSprite_;
+    if (blinkQuarterSprite_.valid()) mids[midCount++] = blinkQuarterSprite_;
+
+    uint16_t closedMs = midCount > 0 ? kBlinkClosedSmoothMs : kBlinkClosedFlipMs;
+    for (uint8_t i = 0; i < midCount; ++i) {
+        blinkFrames_[blinkFrameCount_] = mids[i];
+        blinkFrameDur_[blinkFrameCount_++] = kBlinkMidMs;
+    }
+    blinkFrames_[blinkFrameCount_] = blinkSprite_;
+    blinkFrameDur_[blinkFrameCount_++] = closedMs;
+    for (int8_t i = midCount - 1; i >= 0; --i) {
+        blinkFrames_[blinkFrameCount_] = mids[i];
+        blinkFrameDur_[blinkFrameCount_++] = kBlinkMidMs;
+    }
 }
 
 void FaceController::update(bool speakerPlaying, float audioRms) {
     if (!started_ || !display_) return;
+    if (deferredLoadingEnabled_) loadNextDeferredSprite();
+
     uint32_t now = millis();
     bool changed = false;
 
@@ -106,20 +202,28 @@ void FaceController::update(bool speakerPlaying, float audioRms) {
         expressionEndMs_ = 0;
         currentExpression_ = Expression::Neutral;
         blinking_ = false;
-        blinkEndMs_ = 0;
+        blinkFrameEndMs_ = 0;
         scheduleBlink(now);
         changed = true;
     }
 
-    if (currentExpression_ == Expression::Neutral && blinkSprite_) {
-        if (blinkEndMs_ > 0 && static_cast<int32_t>(now - blinkEndMs_) >= 0) {
-            blinkEndMs_ = 0;
-            blinking_ = false;
-            scheduleBlink(now);
-            changed = true;
-        } else if (blinkEndMs_ == 0 && static_cast<int32_t>(now - nextBlinkMs_) >= 0) {
+    if (currentExpression_ == Expression::Neutral && blinkFrameCount_ > 0) {
+        if (blinking_) {
+            if (static_cast<int32_t>(now - blinkFrameEndMs_) >= 0) {
+                ++blinkFrameIdx_;
+                if (blinkFrameIdx_ >= blinkFrameCount_) {
+                    blinking_ = false;
+                    blinkFrameEndMs_ = 0;
+                    scheduleBlink(now);
+                } else {
+                    blinkFrameEndMs_ = now + blinkFrameDur_[blinkFrameIdx_];
+                }
+                changed = true;
+            }
+        } else if (static_cast<int32_t>(now - nextBlinkMs_) >= 0) {
             blinking_ = true;
-            blinkEndMs_ = now + kBlinkDurationMs;
+            blinkFrameIdx_ = 0;
+            blinkFrameEndMs_ = now + blinkFrameDur_[0];
             changed = true;
         }
     }
@@ -149,7 +253,7 @@ void FaceController::setExpression(Expression expression, uint32_t durationMs) {
     expressionEndMs_ = durationMs > 0 ? millis() + durationMs : 0;
     if (expression != Expression::Neutral) {
         blinking_ = false;
-        blinkEndMs_ = 0;
+        blinkFrameEndMs_ = 0;
     }
     if (changed) applyToDisplay();
 }
@@ -182,20 +286,22 @@ void FaceController::scheduleBlink(uint32_t now) {
 
 void FaceController::applyToDisplay() {
     if (!display_) return;
-    LGFX_Sprite* base = nullptr;
-    if (blinking_ && currentExpression_ == Expression::Neutral && blinkSprite_) {
-        base = blinkSprite_;
-    } else {
-        base = faceSprites_[static_cast<uint8_t>(currentExpression_)];
-    }
+    LGFX_Sprite* base = faceSprites_[static_cast<uint8_t>(currentExpression_)];
+    if (!base) base = faceSprites_[static_cast<uint8_t>(Expression::Neutral)];
 
-    LGFX_Sprite* mouth = nullptr;
+    SpriteLayer mouth{nullptr, 0, 0, ScreenRenderer::kTransparentColor};
     if (currentMouth_ != MouthShape::None) {
         mouth = mouthSprites_[static_cast<uint8_t>(currentMouth_)];
     }
 
+    SpriteLayer blink{nullptr, 0, 0, ScreenRenderer::kTransparentColor};
+    if (blinking_ && currentExpression_ == Expression::Neutral && blinkFrameCount_ > 0) {
+        blink = blinkFrames_[blinkFrameIdx_];
+    }
+
     display_->setBase(base);
     display_->setOverlay(mouth);
+    display_->setOverlay2(blink);
 }
 
 }  // namespace aiavatar
