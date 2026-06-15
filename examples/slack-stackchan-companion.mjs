@@ -1177,6 +1177,8 @@ const createSlackStackChanCompanion = async () => {
               typeof event.llmFirstSentenceMs === "number" ? event.llmFirstSentenceMs : undefined,
             ttsFirstAudioMs:
               typeof event.ttsFirstAudioMs === "number" ? event.ttsFirstAudioMs : undefined,
+            quickAudioTotalMs:
+              typeof event.quickAudioTotalMs === "number" ? event.quickAudioTotalMs : undefined,
             firstAudioTotalMs:
               typeof event.firstAudioTotalMs === "number" ? event.firstAudioTotalMs : undefined,
             totalMs: typeof event.totalMs === "number" ? event.totalMs : undefined,

@@ -403,11 +403,13 @@ export const createVoicePipeline = ({
       }
     }
     if (quick) {
+      metrics?.mark("quick.audio");
       onEvent({
         type: "speech.audio",
         text: quick.text,
         audio: { encoding: quick.encoding, dataBase64: quick.audio },
-        quick: true
+        quick: true,
+        metrics: metrics?.snapshot() ?? null
       });
     }
 

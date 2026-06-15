@@ -4742,6 +4742,9 @@ export const createStackChanRealtimeSessionHandler = ({
             chunks: sentChunks,
             totalChunks: sentChunks,
             bytes: audio.dataBase64.length,
+            quickAudioTotalMs: event.quick
+              ? event.metrics?.quick_audio_total_ms ?? null
+              : null,
           });
           return null;
         }

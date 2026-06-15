@@ -11,6 +11,7 @@
 //   stt_ms                = stt.final − speech.end
 //   llm_first_sentence_ms = llm.first_sentence − stt.final
 //   tts_first_audio_ms    = tts.first_audio − llm.first_sentence
+//   quick_audio_total_ms  = quick.audio − speech.end
 //   first_audio_total_ms  = tts.first_audio − speech.end   ← headline metric
 //   total_ms              = response.final − speech.end
 //
@@ -46,6 +47,7 @@ export const createVoiceTurnMetrics = ({
       stt_ms: diff(marks, "speech.end", "stt.final"),
       llm_first_sentence_ms: diff(marks, "stt.final", "llm.first_sentence"),
       tts_first_audio_ms: diff(marks, "llm.first_sentence", "tts.first_audio"),
+      quick_audio_total_ms: diff(marks, "speech.end", "quick.audio"),
       first_audio_total_ms: diff(marks, "speech.end", "tts.first_audio"),
       total_ms: diff(marks, "speech.end", "response.final"),
     });
