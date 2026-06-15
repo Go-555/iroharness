@@ -595,6 +595,7 @@ const createStackChanSpeechFrontend = async ({ micSampleRate, onDetectorEvent = 
           finalizeTimeoutMs: Number(
             process.env.IROHARNESS_STACKCHAN_AZURE_FINALIZE_TIMEOUT_MS || "2000"
           ),
+          debug: process.env.IROHARNESS_STACKCHAN_AZURE_DEBUG === "1",
           mode: streamMode,
           gate,
           // Push-style delivery: the mic mutes once the server starts speaking

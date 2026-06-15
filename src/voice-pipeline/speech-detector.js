@@ -194,6 +194,7 @@ export const createAzureStreamDetector = ({
   gate = null,
   prerollFrames = 10,
   finalizeTimeoutMs = 2000,
+  debug = false,
   sdk = null,
   importSdk = null,
   onEvent = null,
@@ -256,9 +257,13 @@ export const createAzureStreamDetector = ({
     queue.push(event);
     flush();
   };
+  const emitDebug = (event) => {
+    if (debug) emit({ ...event, type: "debug" });
+  };
 
   let session = null; // { speech, pushStream, recognizer, dead }
   let connecting = null;
+  let writtenFrames = 0;
 
   // Utterance state
   let utteranceStarted = false; // detector speech.start emitted
@@ -321,7 +326,10 @@ export const createAzureStreamDetector = ({
 
   const writeFrame = (int16Frame) => {
     const stream = session?.pushStream;
-    if (!stream) return;
+    if (!stream) {
+      emitDebug({ stage: "azure.write_skipped", reason: "no_stream" });
+      return;
+    }
     try {
       // Always hand the SDK its own copy — pre-roll frames and caller
       // buffers must never be aliased into the SDK's internal ring.
@@ -331,8 +339,17 @@ export const createAzureStreamDetector = ({
           int16Frame.byteOffset + int16Frame.byteLength,
         ),
       );
+      writtenFrames += 1;
+      if (writtenFrames === 1 || writtenFrames % 100 === 0) {
+        emitDebug({
+          stage: "azure.write_frame",
+          framesWritten: writtenFrames,
+          samples: int16Frame.length,
+        });
+      }
     } catch {
       // a torn-down stream mid-write — the canceled handler reconnects
+      emitDebug({ stage: "azure.write_failed" });
     }
   };
 
@@ -357,11 +374,13 @@ export const createAzureStreamDetector = ({
     const text = eventArgs?.result?.text ?? "";
     if (mode === "continuous" && !utteranceStarted) {
       utteranceStarted = true;
+      emitDebug({ stage: "azure.recognizing_started" });
       emit({ type: "speech.start" });
     }
     if (!text) return;
     lastPartial = text;
     partialSinceFinal = true;
+    emitDebug({ stage: "azure.recognizing", textLength: text.length });
     emit({ type: "transcript.partial", text });
   };
 
@@ -370,6 +389,12 @@ export const createAzureStreamDetector = ({
     const reason = eventArgs?.result?.reason;
     const isSpeech = reason === current.speech.ResultReason?.RecognizedSpeech;
     const text = isSpeech ? (eventArgs?.result?.text ?? "") : "";
+    emitDebug({
+      stage: "azure.recognized",
+      reason: String(reason ?? ""),
+      isSpeech,
+      textLength: text.length,
+    });
     if (mode === "continuous") {
       if (text) {
         if (!utteranceStarted) emit({ type: "speech.start" }); // recognized without a prior recognizing
@@ -394,8 +419,14 @@ export const createAzureStreamDetector = ({
 
   // canceled / sessionStopped: the recognizer is gone. Finalize any open
   // utterance with what we have, drop the session, reconnect on next push.
-  const onDropped = (current) => {
+  const onDropped = (current, eventArgs = null, source = "dropped") => {
     if (current.dead || current !== session) return;
+    emitDebug({
+      stage: `azure.${source}`,
+      reason: String(eventArgs?.reason ?? ""),
+      errorCode: String(eventArgs?.errorCode ?? ""),
+      errorDetails: eventArgs?.errorDetails ? String(eventArgs.errorDetails) : "",
+    });
     if (mode === "gated") {
       if (awaitingFinal) {
         finishGatedUtterance(); // tears the session down too
@@ -422,6 +453,7 @@ export const createAzureStreamDetector = ({
   };
 
   const openSession = async () => {
+    emitDebug({ stage: "azure.session_starting", mode });
     const speech = await loadSdk();
     const speechConfig = speech.SpeechConfig.fromSubscription(
       subscriptionKey,
@@ -441,13 +473,17 @@ export const createAzureStreamDetector = ({
       onRecognizing(current, eventArgs);
     recognizer.recognized = (_sender, eventArgs) =>
       onRecognized(current, eventArgs);
-    recognizer.canceled = () => onDropped(current);
-    recognizer.sessionStopped = () => onDropped(current);
+    recognizer.canceled = (_sender, eventArgs) =>
+      onDropped(current, eventArgs, "canceled");
+    recognizer.sessionStopped = (_sender, eventArgs) =>
+      onDropped(current, eventArgs, "session_stopped");
     await new Promise((resolveStart, rejectStart) => {
       recognizer.startContinuousRecognitionAsync(resolveStart, (error) =>
         rejectStart(new Error(String(error))),
       );
     });
+    writtenFrames = 0;
+    emitDebug({ stage: "azure.session_started", mode });
     return current;
   };
 

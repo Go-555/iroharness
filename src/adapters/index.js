@@ -4707,6 +4707,25 @@ export const createStackChanRealtimeSessionHandler = ({
           });
           return null;
         }
+        if (event.type === "debug") {
+          emit({
+            type: "stackchan.detector.debug",
+            stage: event.stage || null,
+            reason: event.reason || undefined,
+            errorCode: event.errorCode || undefined,
+            errorDetails: event.errorDetails || undefined,
+            framesWritten:
+              typeof event.framesWritten === "number"
+                ? event.framesWritten
+                : undefined,
+            samples: typeof event.samples === "number" ? event.samples : undefined,
+            textLength:
+              typeof event.textLength === "number" ? event.textLength : undefined,
+            isSpeech:
+              typeof event.isSpeech === "boolean" ? event.isSpeech : undefined,
+          });
+          return null;
+        }
         if (event.type === "speech.audio") {
           const role = event.quick ? "ack" : "answer";
           const audio = normalizeStackChanSpeechAudio({

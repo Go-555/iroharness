@@ -592,6 +592,8 @@ export const createVoicePipeline = ({
     } else if (event.type === "speech.local_end") {
       metrics?.mark("speech.end");
       fireStaticQuickAck();
+    } else if (event.type === "debug") {
+      onEvent(event);
     } else if (event.type === "speech.end") {
       metrics?.mark("speech.end");
       if (active) interrupt("new-utterance"); // serialize: new utterance wins
