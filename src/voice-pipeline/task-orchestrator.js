@@ -154,6 +154,18 @@ const createTextOptions = ({ verbosity }) =>
     },
   });
 
+const extractOpenAiResponseOutputText = (payload, fallback = "") => {
+  if (typeof payload?.output_text === "string") return payload.output_text;
+  if (typeof payload?.text === "string") return payload.text;
+  const outputText = Array.isArray(payload?.output)
+    ? payload.output
+        .flatMap((item) => (Array.isArray(item?.content) ? item.content : []))
+        .map((content) => (typeof content?.text === "string" ? content.text : typeof content?.value === "string" ? content.value : ""))
+        .join("")
+    : "";
+  return outputText || fallback;
+};
+
 export const createVoiceTaskOrchestrator = ({
   harness,
   planner,
@@ -459,13 +471,7 @@ export const createOpenAiVoiceTaskPlanner = ({
       throw new Error(`OpenAI voice task planner failed: ${response.status} ${responseText}`);
     }
     const payload = safeJsonParse(responseText);
-    const outputText =
-      payload?.output_text ||
-      payload?.text ||
-      payload?.output?.flatMap?.((item) => item?.content || [])
-        ?.map((content) => content?.text || content?.value || "")
-        ?.join("") ||
-      responseText;
+    const outputText = extractOpenAiResponseOutputText(payload, responseText);
     const decision = safeJsonParse(outputText);
     if (!decision) {
       throw new Error("OpenAI voice task planner returned non-JSON output");

@@ -272,3 +272,50 @@ test("OpenAI voice task planner sends low-latency options and parses output_text
   assert.equal(requests[0].body.text.format.name, "voice_task_decision");
   assert.equal(requests[0].body.text.format.strict, true);
 });
+
+test("OpenAI voice task planner ignores response text metadata object and parses output content", async () => {
+  const planner = createOpenAiVoiceTaskPlanner({
+    apiKey: "test-key",
+    fetchImpl: async () => ({
+      ok: true,
+      async text() {
+        return JSON.stringify({
+          text: {
+            format: {
+              type: "json_schema",
+              name: "voice_task_decision",
+            },
+          },
+          output: [
+            {
+              type: "message",
+              content: [
+                {
+                  type: "output_text",
+                  text: JSON.stringify({
+                    intent: "start_task",
+                    ack: "調べるね。",
+                    reply: "",
+                    task_id: "",
+                    task: {
+                      type: "research",
+                      title: "AI調査",
+                      prompt: "AIを調べる",
+                      report_channel: "voice",
+                      slack_target: "",
+                    },
+                    updates: { report_channel: "", slack_target: "" },
+                  }),
+                },
+              ],
+            },
+          ],
+        });
+      },
+    }),
+  });
+
+  const decision = await planner({ input: { text: "AIを調べて", modality: "voice" } });
+  assert.equal(decision.intent, "start_task");
+  assert.equal(decision.task.title, "AI調査");
+});
