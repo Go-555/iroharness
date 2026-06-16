@@ -266,7 +266,7 @@ export const createFileSkillRegistry = ({
   path = null,
   skillDirs = [defaultIroHarnessSkillDir()],
   builtIns = builtInSkillManifests(),
-}) => {
+} = {}) => {
   const registryPath = path;
   // Memoize the snapshot so per-turn list()/get() calls don't re-scan the skill
   // directories from disk every time. `register()` (the only in-API mutation)

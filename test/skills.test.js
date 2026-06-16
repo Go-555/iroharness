@@ -80,6 +80,12 @@ test("file skill registry overlays project skills on built-ins", () => {
   assert.equal(registry.get("ref-local-test").role, "dictionary");
 });
 
+test("file skill registry can use default directories", () => {
+  const registry = createFileSkillRegistry();
+
+  assert.equal(registry.get("web-research").id, "web-research");
+});
+
 test("file skill registry reads OpenClaw-style skill directories", () => {
   const dir = mkdtempSync(join(tmpdir(), "iroharness-skills-dir-"));
   const skillDir = join(dir, ".iroharness", "skills");
