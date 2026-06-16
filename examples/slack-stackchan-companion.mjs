@@ -1,4 +1,5 @@
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
+import { spawn } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { join, resolve } from "node:path";
@@ -32,9 +33,13 @@ import {
   createFileQuickResponderContextManager,
   createOpenAiVoiceTaskPlanner,
   createQuickResponderPro,
+  buildXurlSearchQuery,
+  createXurlReadOnlyResearchRunner,
+  createXurlResearchContext,
   resolveQuickBrain,
   createQuickResponder,
   createSileroVad,
+  shouldUseXurlResearch,
   createVoiceTaskOrchestrator,
   createVoicePipeline,
   createVoiceTurnMetrics,
@@ -358,6 +363,15 @@ const buildVoiceTaskPrompt = ({ task, input }) =>
     .filter(Boolean)
     .join("\n");
 
+const createXurlTaskContext = async ({ xurlRunner, task, input, purpose }) => {
+  if (!xurlRunner || !shouldUseXurlResearch({ task, input, text: purpose })) {
+    return "";
+  }
+  const query = buildXurlSearchQuery({ task, input });
+  const xurlResult = await xurlRunner.search({ query });
+  return createXurlResearchContext({ xurlResult });
+};
+
 const createStackChanVoiceTaskHarness = ({
   harness,
   workRunner = null,
@@ -377,6 +391,15 @@ const createStackChanVoiceTaskHarness = ({
     textVerbosity: process.env.IROHARNESS_TASK_ROUTER_VERBOSITY || "low"
   });
   const deliverSlack = createSlackTaskDelivery({ botToken });
+  const xurlRunner =
+    process.env.IROHARNESS_XURL_ENABLED === "0"
+      ? null
+      : createXurlReadOnlyResearchRunner({
+          command: process.env.IROHARNESS_XURL_COMMAND || "xurl",
+          maxResults: Number(process.env.IROHARNESS_XURL_MAX_RESULTS || "10"),
+          timeoutMs: Number(process.env.IROHARNESS_XURL_TIMEOUT_MS || "15000"),
+          spawnImpl: spawn
+        });
   console.log("StackChan voice task router enabled (AIAvatarKit-style background tasks).");
   return createVoiceTaskOrchestrator({
     harness,
@@ -389,13 +412,20 @@ const createStackChanVoiceTaskHarness = ({
       "",
     async runTask({ task, input }) {
       const purpose = buildVoiceTaskPrompt({ task, input });
+      const xurlContext = await createXurlTaskContext({
+        xurlRunner,
+        task,
+        input,
+        purpose
+      });
+      const taskPurpose = [purpose, xurlContext].filter(Boolean).join("\n\n");
       const taskRunner = process.env.IROHARNESS_STACKCHAN_TASK_RUNNER || "main";
       if (taskRunner === "codex" && workRunner && typeof workRunner.run === "function") {
         return workRunner.run(
           {
             id: task.id,
             title: task.title,
-            purpose,
+            purpose: taskPurpose,
             metadata: {
               ...(task.metadata || {}),
               workspace: codexWorkspace,
@@ -416,7 +446,7 @@ const createStackChanVoiceTaskHarness = ({
       return harness.receive({
         ...input,
         modality: "text",
-        text: purpose,
+        text: taskPurpose,
         metadata: {
           ...(input?.metadata || {}),
           voiceTaskId: task.id,

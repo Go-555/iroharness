@@ -439,6 +439,8 @@ export const createOpenAiVoiceTaskPlanner = ({
     "- check_task_status: user asks progress/status.",
     "- cancel_task: user asks to stop/cancel.",
     "For start_task, include task.type, task.title, task.prompt, task.report_channel.",
+    "If the user asks to search X, Twitter, x.com, posts, or tweets, set task.type to x_research and keep the X/Twitter terms in task.prompt.",
+    "If the user asks for general web/current research, set task.type to web_research.",
     "For update_active_task, use task_id:'latest' unless the user specifies another task. Put delivery changes in updates.report_channel.",
     "For unused fields, use an empty string. For task/update objects, fill every key.",
     "Allowed report_channel values: voice, slack, both, none.",

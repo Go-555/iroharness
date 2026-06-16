@@ -51,6 +51,14 @@ test("built-in skills separate reference, generator, and evaluator roles", () =>
     ["web_search"],
   );
   assert.equal(
+    skills.some((skill) => skill.id === "x-research"),
+    true,
+  );
+  assert.deepEqual(
+    skills.find((skill) => skill.id === "x-research").metadata.allowedTools,
+    ["xurl.search", "xurl.read", "xurl.user", "web_search"],
+  );
+  assert.equal(
     skills.find((skill) => skill.id === "run-stackchan-avatar-pack").evaluator,
     "eval-stackchan-avatar-pack",
   );

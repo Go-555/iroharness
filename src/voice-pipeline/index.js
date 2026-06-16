@@ -17,3 +17,9 @@ export { wrapVadSttDetector, createAzureStreamDetector } from "./speech-detector
 export { toBrainStream, parseSseStream } from "./brain-stream.js";
 export { resamplePcm16 } from "./resampler.js";
 export { createVoiceTaskOrchestrator, createOpenAiVoiceTaskPlanner } from "./task-orchestrator.js";
+export {
+  buildXurlSearchQuery,
+  createXurlReadOnlyResearchRunner,
+  createXurlResearchContext,
+  shouldUseXurlResearch,
+} from "./xurl-research.js";
