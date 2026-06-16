@@ -333,7 +333,8 @@ const createSlackTaskDelivery = ({ botToken, apiBaseUrl = "https://slack.com/api
 const buildVoiceTaskPrompt = ({ task, input }) =>
   [
     "StackChanの音声依頼から始まったバックグラウンドタスクです。",
-    "ユーザーには短い相槌を返し済みです。完了後に音声またはSlackへ結果を返すため、最終成果を日本語で実用的にまとめてください。",
+    "ユーザーには短い相槌を返し済みです。iroharness main agent として、会話文脈と利用可能な内部ランナーを踏まえて進めてください。",
+    "必要なら通常のルーティングで作業ランナーを使い、完了後に音声またはSlackへ返せる最終成果を日本語で実用的にまとめてください。",
     "",
     `依頼: ${task.prompt}`,
     input?.metadata?.originalTranscript ? `元の音声認識: ${input.metadata.originalTranscript}` : ""
@@ -372,7 +373,8 @@ const createStackChanVoiceTaskHarness = ({
       "",
     async runTask({ task, input }) {
       const purpose = buildVoiceTaskPrompt({ task, input });
-      if (workRunner && typeof workRunner.run === "function") {
+      const taskRunner = process.env.IROHARNESS_STACKCHAN_TASK_RUNNER || "main";
+      if (taskRunner === "codex" && workRunner && typeof workRunner.run === "function") {
         return workRunner.run(
           {
             id: task.id,
@@ -398,11 +400,12 @@ const createStackChanVoiceTaskHarness = ({
       return harness.receive({
         ...input,
         modality: "text",
-        text: `Codexで次のタスクを実行して。\n\n${purpose}`,
+        text: purpose,
         metadata: {
           ...(input?.metadata || {}),
           voiceTaskId: task.id,
-          voiceTaskType: task.type
+          voiceTaskType: task.type,
+          voiceTaskRunner: taskRunner
         }
       });
     },
