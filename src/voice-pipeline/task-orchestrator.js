@@ -101,6 +101,59 @@ const completionSummary = (task) => {
   return resultText(task) || `${task.title}が完了したよ。`;
 };
 
+const voiceTaskDecisionJsonSchema = Object.freeze({
+  type: "object",
+  additionalProperties: false,
+  required: ["intent", "ack", "reply", "task_id", "task", "updates"],
+  properties: {
+    intent: {
+      type: "string",
+      enum: ["fast_chat", "start_task", "update_active_task", "check_task_status", "cancel_task"],
+    },
+    ack: { type: "string" },
+    reply: { type: "string" },
+    task_id: { type: "string" },
+    task: {
+      type: "object",
+      additionalProperties: false,
+      required: ["type", "title", "prompt", "report_channel", "slack_target"],
+      properties: {
+        type: { type: "string" },
+        title: { type: "string" },
+        prompt: { type: "string" },
+        report_channel: {
+          type: "string",
+          enum: ["", "voice", "slack", "both", "none"],
+        },
+        slack_target: { type: "string" },
+      },
+    },
+    updates: {
+      type: "object",
+      additionalProperties: false,
+      required: ["report_channel", "slack_target"],
+      properties: {
+        report_channel: {
+          type: "string",
+          enum: ["", "voice", "slack", "both", "none"],
+        },
+        slack_target: { type: "string" },
+      },
+    },
+  },
+});
+
+const createTextOptions = ({ verbosity }) =>
+  Object.freeze({
+    verbosity,
+    format: {
+      type: "json_schema",
+      name: "voice_task_decision",
+      strict: true,
+      schema: voiceTaskDecisionJsonSchema,
+    },
+  });
+
 export const createVoiceTaskOrchestrator = ({
   harness,
   planner,
@@ -375,6 +428,7 @@ export const createOpenAiVoiceTaskPlanner = ({
     "- cancel_task: user asks to stop/cancel.",
     "For start_task, include task.type, task.title, task.prompt, task.report_channel.",
     "For update_active_task, use task_id:'latest' unless the user specifies another task. Put delivery changes in updates.report_channel.",
+    "For unused fields, use an empty string. For task/update objects, fill every key.",
     "Allowed report_channel values: voice, slack, both, none.",
     "Use concise Japanese acks such as 調べるね。 or 送るようにしておくね。",
   ].join("\n");
@@ -397,7 +451,7 @@ export const createOpenAiVoiceTaskPlanner = ({
         }),
         max_output_tokens: maxOutputTokens,
         reasoning: { effort: reasoningEffort },
-        text: { verbosity: textVerbosity },
+        text: createTextOptions({ verbosity: textVerbosity }),
       }),
     });
     const responseText = await response.text();

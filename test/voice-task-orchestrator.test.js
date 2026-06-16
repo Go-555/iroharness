@@ -267,5 +267,8 @@ test("OpenAI voice task planner sends low-latency options and parses output_text
   assert.equal(requests[0].url, "https://api.openai.com/v1/responses");
   assert.equal(requests[0].body.model, "gpt-test");
   assert.deepEqual(requests[0].body.reasoning, { effort: "none" });
-  assert.deepEqual(requests[0].body.text, { verbosity: "low" });
+  assert.equal(requests[0].body.text.verbosity, "low");
+  assert.equal(requests[0].body.text.format.type, "json_schema");
+  assert.equal(requests[0].body.text.format.name, "voice_task_decision");
+  assert.equal(requests[0].body.text.format.strict, true);
 });
