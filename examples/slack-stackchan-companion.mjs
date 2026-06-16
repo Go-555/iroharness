@@ -40,6 +40,7 @@ import {
   createVoiceTurnMetrics,
   loadSileroSession
 } from "../src/voice-pipeline/index.js";
+import { createFileSkillRegistry } from "../src/skills/index.js";
 
 const requireEnv = (name) => {
   const value = process.env[name];
@@ -269,6 +270,20 @@ const createCharacterFromRuntime = ({ profileDir }) => {
   });
 };
 
+const createOpenAiToolsForSlot = ({ prefix, slot }) => {
+  const toolNames = String(process.env[`${prefix}_TOOLS`] || "")
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+  const wantsWebSearch =
+    toolNames.includes("web_search") ||
+    process.env[`${prefix}_WEB_SEARCH`] === "1";
+  if (slot !== "text" || !wantsWebSearch) {
+    return [];
+  }
+  return [{ type: "web_search" }];
+};
+
 const createBrainForSlot = ({ slot, codexWorkspace }) => {
   const prefix = `IROHARNESS_${slot.toUpperCase()}_BRAIN`;
   const provider = process.env[`${prefix}_PROVIDER`] || "echo";
@@ -283,7 +298,8 @@ const createBrainForSlot = ({ slot, codexWorkspace }) => {
       model,
       maxOutputTokens: Number(process.env[`${prefix}_MAX_TOKENS`] || (slot === "voice" ? "96" : "700")),
       reasoningEffort: process.env[`${prefix}_REASONING_EFFORT`] || null,
-      textVerbosity: process.env[`${prefix}_VERBOSITY`] || null
+      textVerbosity: process.env[`${prefix}_VERBOSITY`] || null,
+      tools: createOpenAiToolsForSlot({ prefix, slot })
     });
   }
   if (provider === "codex") {
@@ -987,6 +1003,7 @@ const createSlackStackChanCompanion = async () => {
   // Hoisted so the dynamic quick responder can reuse the same voice brain
   // instance for its lightweight first-utterance call.
   const voiceBrain = createBrainForSlot({ slot: "voice", codexWorkspace });
+  const skills = createFileSkillRegistry();
   const harness = createIroHarness({
     character: createCharacterFromRuntime(runtimePaths),
     projectOs,
@@ -997,7 +1014,8 @@ const createSlackStackChanCompanion = async () => {
       text: createBrainForSlot({ slot: "text", codexWorkspace })
     },
     devices: [stackchan],
-    microHarnesses
+    microHarnesses,
+    skills
   });
   let activeRealtimeSession = null;
   const voiceHarness = createStackChanVoiceTaskHarness({

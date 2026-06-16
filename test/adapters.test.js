@@ -1945,6 +1945,54 @@ test("OpenAI Responses brain posts voice prompt and normalizes spoken text", asy
   assert.match(calls[0].body.input, /こんにちは/);
 });
 
+test("OpenAI Responses text brain can expose hosted tools and skill listing", async () => {
+  const calls = [];
+  const brain = createOpenAiResponsesBrain({
+    id: "text-openai-tools",
+    slot: "text",
+    apiKey: "test-key",
+    baseUrl: "https://api.test/v1",
+    model: "gpt-text-test",
+    tools: [{ type: "web_search" }],
+    fetchImpl: async (_endpoint, options) => {
+      calls.push({ body: JSON.parse(options.body) });
+      return {
+        ok: true,
+        async text() {
+          return JSON.stringify({
+            output_text: "調べた結果です。"
+          });
+        }
+      };
+    }
+  });
+
+  const output = await brain.respond({
+    character: { id: "iroha", name: "Iroha" },
+    actor: { user: { displayName: "Owner" } },
+    audience: { relationship: "owner" },
+    input: {
+      modality: "text",
+      text: "AIについてリサーチして"
+    },
+    route: { kind: "text" },
+    state: {},
+    projectOs: { tickets: [] },
+    skills: [
+      {
+        id: "web-research",
+        name: "web-research",
+        description: "Use when the user asks for current facts."
+      }
+    ]
+  });
+
+  assert.equal(output.text, "調べた結果です。");
+  assert.deepEqual(calls[0].body.tools, [{ type: "web_search" }]);
+  assert.match(calls[0].body.instructions, /AVAILABLE SKILLS/);
+  assert.match(calls[0].body.instructions, /web-research/);
+});
+
 test("OpenAI Responses brain allows ack-answer tags when requested by voice metadata", async () => {
   const calls = [];
   const brain = createOpenAiResponsesBrain({

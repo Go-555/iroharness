@@ -1328,6 +1328,19 @@ const extractOpenAiResponsesText = (payload = {}) => {
     .trim();
 };
 
+const formatOpenAiSkillsForPrompt = (skills = []) => {
+  if (!Array.isArray(skills) || skills.length === 0) return null;
+  const lines = skills
+    .map((skill) => {
+      const id = String(skill?.id || skill?.name || "").trim();
+      const description = String(skill?.description || "").trim();
+      if (!id && !description) return null;
+      return `- ${id || skill.name}: ${description || "No description."}`;
+    })
+    .filter(Boolean);
+  return lines.length > 0 ? `AVAILABLE SKILLS:\n${lines.join("\n")}` : null;
+};
+
 const formatOpenAiBrainPrompt = ({ slot, context }) => {
   const character = context.character || {};
   const audience = context.audience || {};
@@ -1364,6 +1377,7 @@ const formatOpenAiBrainPrompt = ({ slot, context }) => {
     character.identity ? `IDENTITY:\n${character.identity}` : null,
     character.memory ? `MEMORY:\n${character.memory}` : null,
     character.voiceStyle ? `VOICE:\n${character.voiceStyle}` : null,
+    slot === "text" ? formatOpenAiSkillsForPrompt(context.skills) : null,
   ]
     .filter(Boolean)
     .join("\n\n");
@@ -1388,6 +1402,7 @@ export const createOpenAiResponsesBrain = ({
   maxOutputTokens = slot === "voice" ? 96 : 700,
   reasoningEffort = null,
   textVerbosity = null,
+  tools = [],
   fetchImpl = globalThis.fetch,
 } = {}) => {
   if (!apiKey) {
@@ -1397,6 +1412,9 @@ export const createOpenAiResponsesBrain = ({
     throw new Error("createOpenAiResponsesBrain requires fetchImpl");
   }
   const endpoint = `${String(baseUrl).replace(/\/+$/, "")}/responses`;
+  const responseTools = Array.isArray(tools)
+    ? tools.filter((tool) => tool && typeof tool === "object")
+    : [];
   const requestBody = ({ prompt, stream = false }) => ({
     model,
     instructions: prompt.system,
@@ -1405,6 +1423,7 @@ export const createOpenAiResponsesBrain = ({
     ...(stream ? { stream: true } : {}),
     ...(reasoningEffort ? { reasoning: { effort: reasoningEffort } } : {}),
     ...(textVerbosity ? { text: { verbosity: textVerbosity } } : {}),
+    ...(responseTools.length > 0 ? { tools: responseTools } : {}),
   });
   return Object.freeze({
     id,
