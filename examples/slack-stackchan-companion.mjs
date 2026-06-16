@@ -30,10 +30,12 @@ import {
   createAzureStreamDetector,
   createDynamicQuickResponder,
   createFileQuickResponderContextManager,
+  createOpenAiVoiceTaskPlanner,
   createQuickResponderPro,
   resolveQuickBrain,
   createQuickResponder,
   createSileroVad,
+  createVoiceTaskOrchestrator,
   createVoicePipeline,
   createVoiceTurnMetrics,
   loadSileroSession
@@ -58,6 +60,11 @@ const readBody = (request) =>
 const sendJson = (response, status, payload) => {
   response.writeHead(status, { "content-type": "application/json" });
   response.end(JSON.stringify(payload));
+};
+
+const truncateText = (text, maxLength = 3900) => {
+  const value = String(text || "");
+  return value.length <= maxLength ? value : `${value.slice(0, maxLength - 1)}…`;
 };
 
 const safeEqual = (left, right) => {
@@ -288,6 +295,135 @@ const createBrainForSlot = ({ slot, codexWorkspace }) => {
     });
   }
   return createEchoBrain(`${slot}-echo`);
+};
+
+const createSlackTaskDelivery = ({ botToken, apiBaseUrl = "https://slack.com/api", fetchImpl = globalThis.fetch }) => {
+  if (!botToken) {
+    return async () => {
+      throw new Error("SLACK_BOT_TOKEN is required for Slack task delivery");
+    };
+  }
+  if (typeof fetchImpl !== "function") {
+    throw new Error("createSlackTaskDelivery requires fetchImpl");
+  }
+  return async ({ target, text, task }) => {
+    if (!target) {
+      throw new Error("Set IROHARNESS_STACKCHAN_REPORT_SLACK_CHANNEL for Slack task delivery");
+    }
+    const response = await fetchImpl(`${apiBaseUrl.replace(/\/+$/, "")}/chat.postMessage`, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${botToken}`,
+        "content-type": "application/json; charset=utf-8"
+      },
+      body: JSON.stringify({
+        channel: target,
+        text: truncateText([`StackChan task: ${task?.title || "voice task"}`, "", text].join("\n"))
+      })
+    });
+    const responseText = await response.text();
+    const payload = responseText.trim() ? JSON.parse(responseText) : {};
+    if (!response.ok || payload.ok === false) {
+      throw new Error(`Slack task delivery failed: ${response.status} ${payload.error || responseText}`);
+    }
+    return payload;
+  };
+};
+
+const buildVoiceTaskPrompt = ({ task, input }) =>
+  [
+    "StackChanの音声依頼から始まったバックグラウンドタスクです。",
+    "ユーザーには短い相槌を返し済みです。完了後に音声またはSlackへ結果を返すため、最終成果を日本語で実用的にまとめてください。",
+    "",
+    `依頼: ${task.prompt}`,
+    input?.metadata?.originalTranscript ? `元の音声認識: ${input.metadata.originalTranscript}` : ""
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+const createStackChanVoiceTaskHarness = ({
+  harness,
+  workRunner = null,
+  stackchanTts,
+  botToken,
+  getSession,
+  codexWorkspace
+}) => {
+  if (process.env.IROHARNESS_STACKCHAN_TASK_ROUTER !== "1") {
+    return harness;
+  }
+  const planner = createOpenAiVoiceTaskPlanner({
+    apiKey: process.env.IROHARNESS_TASK_ROUTER_OPENAI_API_KEY || process.env.OPENAI_API_KEY,
+    baseUrl: process.env.IROHARNESS_TASK_ROUTER_OPENAI_BASE_URL || process.env.OPENAI_BASE_URL || "https://api.openai.com/v1",
+    model: process.env.IROHARNESS_TASK_ROUTER_MODEL || process.env.IROHARNESS_VOICE_BRAIN_MODEL || "gpt-5.5",
+    reasoningEffort: process.env.IROHARNESS_TASK_ROUTER_REASONING_EFFORT || "none",
+    textVerbosity: process.env.IROHARNESS_TASK_ROUTER_VERBOSITY || "low"
+  });
+  const deliverSlack = createSlackTaskDelivery({ botToken });
+  console.log("StackChan voice task router enabled (AIAvatarKit-style background tasks).");
+  return createVoiceTaskOrchestrator({
+    harness,
+    planner,
+    defaultReportChannel: process.env.IROHARNESS_STACKCHAN_TASK_REPORT_CHANNEL || "voice",
+    defaultSlackTarget:
+      process.env.IROHARNESS_STACKCHAN_REPORT_SLACK_CHANNEL ||
+      process.env.SLACK_REPORT_CHANNEL_ID ||
+      process.env.SLACK_CHANNEL_ID ||
+      "",
+    async runTask({ task, input }) {
+      const purpose = buildVoiceTaskPrompt({ task, input });
+      if (workRunner && typeof workRunner.run === "function") {
+        return workRunner.run(
+          {
+            id: task.id,
+            title: task.title,
+            purpose,
+            metadata: {
+              ...(task.metadata || {}),
+              workspace: codexWorkspace,
+              source: "stackchan-voice"
+            }
+          },
+          {
+            input,
+            actor: {
+              identity: {
+                displayName: input?.actor?.displayName || "StackChan",
+                platformUserId: input?.actor?.platformUserId || null
+              }
+            }
+          }
+        );
+      }
+      return harness.receive({
+        ...input,
+        modality: "text",
+        text: `Codexで次のタスクを実行して。\n\n${purpose}`,
+        metadata: {
+          ...(input?.metadata || {}),
+          voiceTaskId: task.id,
+          voiceTaskType: task.type
+        }
+      });
+    },
+    async deliverVoice({ text }) {
+      const session = getSession?.();
+      if (session?.accepted && typeof session.speak === "function") {
+        await session.speak({ text: truncateText(text, 240) });
+        return;
+      }
+      if (stackchanTts) {
+        await stackchanTts.stream({
+          text: truncateText(text, 240),
+          voice: process.env.IROHARNESS_STACKCHAN_VOICE || "iroha"
+        });
+      }
+    },
+    deliverSlack,
+    onEvent: (event) => {
+      console.log(JSON.stringify({ realtime: "stackchan.voice_task", ...event }));
+    }
+  });
 };
 
 const createStackChanStt = () => {
@@ -829,10 +965,9 @@ const createSlackStackChanCompanion = async () => {
     }
   });
 
-  const microHarnesses =
+  const codexMicroHarness =
     process.env.IROHARNESS_RUN_CODEX === "1"
-      ? [
-          createCodexAppServerMicroHarness({
+      ? createCodexAppServerMicroHarness({
             cwd: codexWorkspace,
             model: process.env.CODEX_MODEL || "gpt-5.4",
             approvalPolicy: process.env.CODEX_APPROVAL_POLICY || "on-request",
@@ -843,8 +978,8 @@ const createSlackStackChanCompanion = async () => {
               networkAccess: process.env.CODEX_NETWORK_ACCESS === "1"
             }
           })
-        ]
-      : [];
+      : null;
+  const microHarnesses = codexMicroHarness ? [codexMicroHarness] : [];
 
   // Hoisted so the dynamic quick responder can reuse the same voice brain
   // instance for its lightweight first-utterance call.
@@ -862,8 +997,16 @@ const createSlackStackChanCompanion = async () => {
     microHarnesses
   });
   let activeRealtimeSession = null;
-  const voicePipeline = await createStackChanVoicePipeline({
+  const voiceHarness = createStackChanVoiceTaskHarness({
     harness,
+    workRunner: codexMicroHarness,
+    stackchanTts,
+    botToken,
+    getSession: () => activeRealtimeSession,
+    codexWorkspace
+  });
+  const voicePipeline = await createStackChanVoicePipeline({
+    harness: voiceHarness,
     brain: voiceBrain,
     // 専用 quick brain（IROHARNESS_QUICK_BRAIN_PROVIDER 設定時のみ・本家 pro.py の分離 QR クライアント相当）
     quickBrain: process.env.IROHARNESS_QUICK_BRAIN_PROVIDER
@@ -879,7 +1022,7 @@ const createSlackStackChanCompanion = async () => {
     stackchanStt && stackchanTts
       ? createStackChanRealtimeSessionHandler({
           id: "stackchan-realtime",
-          harness,
+          harness: voiceHarness,
           stt: stackchanStt,
           tts: stackchanTts,
           voicePipeline,
@@ -961,7 +1104,9 @@ const createSlackStackChanCompanion = async () => {
             fallbackText
           })
         : fallbackText);
-    const result = await harness.receive({
+    const invokeHarness =
+      payload.type === "audio" || payload.type === "ptt" ? voiceHarness : harness;
+    const result = await invokeHarness.receive({
       source: "m5stack",
       modality: payload.type === "audio" || payload.type === "ptt" ? "voice" : "text",
       text,

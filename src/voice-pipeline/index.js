@@ -16,3 +16,4 @@ export { createSileroVad, loadSileroSession } from "./silero-vad.js";
 export { wrapVadSttDetector, createAzureStreamDetector } from "./speech-detector.js";
 export { toBrainStream, parseSseStream } from "./brain-stream.js";
 export { resamplePcm16 } from "./resampler.js";
+export { createVoiceTaskOrchestrator, createOpenAiVoiceTaskPlanner } from "./task-orchestrator.js";
