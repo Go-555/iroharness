@@ -33,7 +33,7 @@ public:
 
 private:
     bool sdAvailable_;
-    const fs::FS* fs_;
+    fs::FS* fs_;
     bool fsAvailable_;
     const BuiltinAsset* builtinAssets_;
     size_t builtinAssetCount_;
