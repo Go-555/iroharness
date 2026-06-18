@@ -2,6 +2,7 @@
 
 #include "Config.h"
 
+#include <FS.h>
 #include <SPI.h>
 #include <cstddef>
 #include <cstdint>
@@ -21,6 +22,8 @@ public:
     bool beginSD(uint8_t csPin, SPIClass& spi = SPI, uint32_t frequency = 25000000);
     void useSD(bool available = true) { sdAvailable_ = available; }
     bool sdAvailable() const { return sdAvailable_; }
+    void useFS(fs::FS& fs, bool available = true);
+    bool fsAvailable() const { return fsAvailable_; }
 
     void setBuiltinAssets(const BuiltinAsset* assets, size_t count);
 
@@ -30,11 +33,14 @@ public:
 
 private:
     bool sdAvailable_;
+    const fs::FS* fs_;
+    bool fsAvailable_;
     const BuiltinAsset* builtinAssets_;
     size_t builtinAssetCount_;
 
     const BuiltinAsset* findBuiltinAsset(const char* path) const;
     bool readSDBytes(const char* path, uint8_t** out, size_t* len) const;
+    bool readFSBytes(const char* path, uint8_t** out, size_t* len) const;
     bool readBuiltinBytes(const BuiltinAsset& asset, uint8_t** out, size_t* len) const;
 };
 

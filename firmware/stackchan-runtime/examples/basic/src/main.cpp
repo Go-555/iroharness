@@ -24,22 +24,24 @@ void setup() {
     Serial.printf("[IroHarness StackChan] heap=%u psram=%u\n", ESP.getFreeHeap(), ESP.getFreePsram());
 
     bool configLoaded = false;
-    if (SD.begin(GPIO_NUM_4, SPI, 25000000)) {
+    bool sdMounted = SD.begin(GPIO_NUM_4, SPI, 25000000);
+    if (sdMounted) {
         Serial.println("[IroHarness StackChan] SD mounted");
         configLoaded = config.loadFromSD("/config.local.json") || config.loadFromSD("/config.json");
     } else {
         Serial.println("[IroHarness StackChan] SD not available");
     }
 
-    if (!configLoaded) {
-        if (SPIFFS.begin(true)) {
-            Serial.println("[IroHarness StackChan] SPIFFS mounted");
+    bool spiffsMounted = SPIFFS.begin(true);
+    if (spiffsMounted) {
+        Serial.println("[IroHarness StackChan] SPIFFS mounted");
+        if (!configLoaded) {
             configLoaded =
                 config.loadFromFS(SPIFFS, "/config.local.json") ||
                 config.loadFromFS(SPIFFS, "/config.json");
-        } else {
-            Serial.println("[IroHarness StackChan] SPIFFS not available");
         }
+    } else {
+        Serial.println("[IroHarness StackChan] SPIFFS not available");
     }
 
     if (config.wsHost[0] == '\0') {
@@ -49,7 +51,11 @@ void setup() {
 
     avatar.useStackChan();
 
-    if (!avatar.begin(config)) {
+    aiavatar::ResourceProvider resources;
+    resources.useSD(sdMounted);
+    resources.useFS(SPIFFS, spiffsMounted);
+
+    if (!avatar.begin(config, resources)) {
         Serial.println("[IroHarness StackChan] runtime init failed");
         while (true) delay(1000);
     }
